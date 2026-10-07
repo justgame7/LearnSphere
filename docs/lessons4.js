@@ -72,9 +72,9 @@ SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'orders';
 SELECT 'public.orders'::regclass::oid;     -- name -> OID
 SELECT 16385::regclass;                    -- OID  -> name`},
 {h:'Learn the catalogs from psql itself'},
-{p:'Every backslash command in `psql` is just a catalog query. Start psql with `-E` (or run `\\\\set ECHO_HIDDEN on`) and it prints the SQL it sends. Reading those queries is the quickest way to learn which catalog holds what.'},
+{p:'Every backslash command in `psql` is just a catalog query. Start psql with `-E` (or run `\\set ECHO_HIDDEN on`) and it prints the SQL it sends. Reading those queries is the quickest way to learn which catalog holds what.'},
 {code:`psql -E -d appdb
-appdb=# \\\\dt
+appdb=# \\dt
 ********* QUERY **********
 SELECT n.nspname, c.relname, ... FROM pg_catalog.pg_class c ...`},
 {note:'Never run `UPDATE` or `DELETE` on catalog tables. A wrong edit can corrupt the cluster. Use DDL (`CREATE`, `ALTER`, `DROP`) and let the server maintain the catalogs.'}],
@@ -110,19 +110,19 @@ createdb -U postgres -O app_owner -T template0 -E UTF8 appdb`},
 {h:'Using your own template'},
 {code:`-- Prepare a "golden" template with extensions and standard schemas
 CREATE DATABASE tpl_app TEMPLATE template0;
-\\\\c tpl_app
+\\c tpl_app
 CREATE EXTENSION pg_stat_statements;
 CREATE SCHEMA app AUTHORIZATION app_owner;
-\\\\c postgres
+\\c postgres
 ALTER DATABASE tpl_app WITH IS_TEMPLATE true ALLOW_CONNECTIONS false;
 
 -- every new tenant database starts identical
 CREATE DATABASE customer42 TEMPLATE tpl_app;`},
 {h:'Altering, renaming and dropping'},
-{code:`ALTER DATABASE appdb RENAME TO appdb_old;      -- no sessions allowed
-ALTER DATABASE appdb OWNER TO new_owner;
+{code:`ALTER DATABASE appdb OWNER TO new_owner;
 ALTER DATABASE appdb SET work_mem = '32MB';    -- per-database default
 ALTER DATABASE appdb CONNECTION LIMIT 50;
+ALTER DATABASE appdb RENAME TO appdb_old;      -- no sessions allowed; use the new name from here on
 
 DROP DATABASE IF EXISTS appdb_old;
 DROP DATABASE appdb_old WITH (FORCE);          -- v13+: terminates sessions first`},
@@ -137,7 +137,7 @@ src:[['CREATE DATABASE',D+'sql-createdatabase.html'],['Template Databases',D+'ma
 {h:'Client variables (libpq)'},
 {t:[['Variable','Equivalent option','Meaning'],['`PGHOST`','`-h`','Server host name or socket directory'],['`PGPORT`','`-p`','Server port (default `5432`)'],['`PGDATABASE`','`-d`','Database to connect to'],['`PGUSER`','`-U`','Role name to connect as'],['`PGPASSWORD`','(none)','Password. **Discouraged**: visible to other processes on some systems. Use `~/.pgpass` instead'],['`PGPASSFILE`','(none)','Path of the password file (default `~/.pgpass`)'],['`PGSERVICE`','`service=`','Named connection defined in `pg_service.conf`'],['`PGSSLMODE`','`sslmode=`','`disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`'],['`PGCONNECT_TIMEOUT`','`connect_timeout=`','Seconds to wait for a connection'],['`PGOPTIONS`','`options=`','Server settings sent at connect, e.g. `-c statement_timeout=30s`'],['`PGAPPNAME`','`application_name=`','Label shown in `pg_stat_activity`']]},
 {h:'Server-side utility variables'},
-{t:[['Variable','Used by','Meaning'],['`PGDATA`','`pg_ctl`, `initdb`, `postgres`, `pg_controldata`','Data directory of the cluster. Replaces `-D`'],['`PATH`','Shell','Must include the `bin` directory of the PostgreSQL version you intend to use'],['`PGTZ`, `PGCLIENTENCODING`','libpq clients','Session time zone and client encoding'],['`PSQLRC`, `PAGER`, `EDITOR`','`psql`','Startup file, pager (e.g. `less -S`), editor for `\\\\e`']]},
+{t:[['Variable','Used by','Meaning'],['`PGDATA`','`pg_ctl`, `initdb`, `postgres`, `pg_controldata`','Data directory of the cluster. Replaces `-D`'],['`PATH`','Shell','Must include the `bin` directory of the PostgreSQL version you intend to use'],['`PGTZ`, `PGCLIENTENCODING`','libpq clients','Session time zone and client encoding'],['`PSQLRC`, `PAGER`, `EDITOR`','`psql`','Startup file, pager (e.g. `less -S`), editor for `\\e`']]},
 {h:'Precedence'},
 {flow:['Explicit command-line option (`-h`, `-p`)','Connection string / `service`','Environment variable','Compiled-in default']},
 {h:'Setting them permanently'},
@@ -153,7 +153,7 @@ export PGUSER=postgres
 source ~/.bash_profile
 env | grep ^PG
 which psql pg_ctl
-psql -c "\\\\conninfo"`},
+psql -c "\\conninfo"`},
 {h:'Multi-cluster profiles with an environment script'},
 {p:'Graphical installers create a script (commonly `pg_env.sh`) that exports `PGDATA`, `PGPORT`, `PGUSER`, `PGLOCALEDIR` and `PATH`. On package installs you can create the same thing yourself, one file per cluster, and **source** the one you want.'},
 {code:`# /opt/pgenv/pg18_5432.env
@@ -281,9 +281,9 @@ CREATE SCHEMA hr
 CREATE TABLE sales.orders (id bigint PRIMARY KEY, total numeric);
 SELECT * FROM sales.orders;
 
-ALTER SCHEMA sales RENAME TO sales_v2;
 ALTER SCHEMA sales OWNER TO new_owner;
 ALTER TABLE sales.orders SET SCHEMA archive;      -- move an object
+ALTER SCHEMA hr RENAME TO human_resources;        -- rename a schema
 
 DROP SCHEMA archive;                              -- fails if not empty
 DROP SCHEMA archive CASCADE;                      -- drops everything inside`},
@@ -318,8 +318,8 @@ SELECT pg_size_pretty(pg_relation_size('public.orders'))        AS heap_only,
        pg_size_pretty(pg_indexes_size('public.orders'))         AS indexes,
        pg_size_pretty(pg_total_relation_size('public.orders'))  AS total;`},
 {h:'Using psql meta-commands'},
-{t:[['Command','Shows'],['`\\\\l+`','Databases with **size**, tablespace and description'],['`\\\\dt+`','Tables with size (table + TOAST, excluding indexes)'],['`\\\\di+`','Indexes with size'],['`\\\\db+`','Tablespaces with size'],['`\\\\dn+`','Schemas with owner, privileges and description (**not** size)']]},
-{note:'`\\\\dn+` does not display schema size. To size a schema you must add up its relations with a query, as shown below.'},
+{t:[['Command','Shows'],['`\\l+`','Databases with **size**, tablespace and description'],['`\\dt+`','Tables with size (table + TOAST, excluding indexes)'],['`\\di+`','Indexes with size'],['`\\db+`','Tablespaces with size'],['`\\dn+`','Schemas with owner, privileges and description (**not** size)']]},
+{note:'`\\dn+` does not display schema size. To size a schema you must add up its relations with a query, as shown below.'},
 {h:'Reports a DBA keeps handy'},
 {code:`-- all databases, largest first
 SELECT datname, pg_size_pretty(pg_database_size(datname)) AS size
@@ -358,15 +358,17 @@ src:[['Database Object Size Functions',D+'functions-admin.html#FUNCTIONS-ADMIN-D
 FROM pg_available_extensions WHERE name LIKE 'pg_%' ORDER BY name;
 
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+CREATE SCHEMA IF NOT EXISTS extensions;
 CREATE EXTENSION pgcrypto SCHEMA extensions;     -- install into a chosen schema
 ALTER EXTENSION pg_stat_statements UPDATE;
 DROP EXTENSION pgcrypto;
-\\\\dx                                             -- list installed in this database`},
+-- list installed extensions in this database
+\\dx`},
 {ul:['Extensions are installed **per database**, not per cluster. Use `template1` or a custom template to preinstall them everywhere.','Installing usually requires superuser. Since v13, extensions marked **trusted** can be installed by any role with `CREATE` on the database.','Some modules need to load code at startup through `shared_preload_libraries`, which needs a **restart**.']},
 {h:'Frequently used modules'},
 {t:[['Module','Purpose','Preload needed'],['`pg_stat_statements`','Execution statistics of every normalised SQL statement','Yes'],['`auto_explain`','Logs execution plans of slow queries','Yes (or `LOAD`)'],['`pg_buffercache`','Inspect what is in `shared_buffers`','No'],['`pg_prewarm`','Load relations into cache; can restore cache after restart','Optional'],['`pgstattuple`','Measure table and index bloat precisely','No'],['`pageinspect`','Look inside raw pages','No'],['`amcheck`','Verify B-tree and heap integrity','No'],['`pg_walinspect`','Read WAL records with SQL','No'],['`pgcrypto`','Hashing and encryption functions','No'],['`pg_trgm`','Fuzzy text search, fast `LIKE \'%x%\'`','No'],['`postgres_fdw`, `dblink`','Query other PostgreSQL databases','No'],['`file_fdw`','Read server-side files as tables','No'],['`pgbench`, `oid2name`, `vacuumlo`','Command-line tools','n/a']]},
 {h:'Worked example: pg_stat_statements'},
-{flow:['Add to `shared_buffers`-style preload list in `postgresql.conf`','Restart the cluster','`CREATE EXTENSION` in the database','Run workload','Query the view']},
+{flow:['Add the module to `shared_preload_libraries` in `postgresql.conf`','Restart the cluster','`CREATE EXTENSION` in the database','Run workload','Query the view']},
 {code:`# postgresql.conf   (restart required)
 shared_preload_libraries = 'pg_stat_statements'
 pg_stat_statements.track = all
@@ -400,7 +402,7 @@ src:[['Additional Supplied Modules',D+'contrib.html'],['CREATE EXTENSION',D+'sql
 {h:'Locale and collation'},
 {t:[['Setting','Controls'],['`LC_COLLATE`','Sort order of text (`ORDER BY`, `<`, `>`, B-tree index order)'],['`LC_CTYPE`','Which characters are letters, digits, upper or lower case'],['`lc_messages`, `lc_monetary`, `lc_numeric`, `lc_time`','Language of messages and formatting; can change per session']]},
 {h:'Locale providers'},
-{t:[['Provider','Source','Characteristics'],['`libc`','Operating system C library','Default. Ordering can change when the OS or glibc is upgraded'],['`icu`','ICU library built into PostgreSQL','Versioned, more consistent across platforms'],['`builtin` (v17+)','PostgreSQL itself','Simple, stable `C` and `C.UTF-8` behaviour, no external dependency']]},
+{t:[['Provider','Source','Characteristics'],['`libc`','Operating system C library','Default. Ordering can change when the OS or glibc is upgraded'],['`icu`','ICU library (PostgreSQL must be built with ICU support)','Versioned, more consistent across platforms'],['`builtin` (v17+)','PostgreSQL itself','Simple, stable `C` and `C.UTF-8` behaviour, no external dependency']]},
 {h:'Why it matters in practice'},
 {ul:['**Index use for prefix searches.** `LIKE \'abc%\'` can use a plain B-tree index only under the `C` collation. With another locale create the index with `text_pattern_ops`.','**Uniqueness and sorting** follow the collation. `\'a\'` and `\'A\'` may sort differently between servers.','**Collation version drift.** After an OS upgrade the library may sort differently, silently invalidating text indexes. PostgreSQL records the collation version and warns on mismatch.']},
 {code:`SELECT datname, pg_encoding_to_char(encoding) AS encoding,

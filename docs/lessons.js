@@ -93,7 +93,7 @@ src:[['PostgreSQL Yum Repository','https://yum.postgresql.org/'],['Installation 
 {h:'Packages'},
 {t:[['Package','Provides'],['`postgresql18-libs`','Shared client libraries (needed first)'],['`postgresql18`','Client programs (`psql`, `pg_dump`)'],['`postgresql18-server`','Server binaries and service file'],['`postgresql18-contrib`','Extra modules and extensions']]},
 {code:`sudo rpm -ivh postgresql18-libs-*.rpm
-sudo rpm -ivh postgresql18-*.rpm
+sudo rpm -ivh postgresql18-18.*.rpm
 sudo rpm -ivh postgresql18-server-*.rpm
 
 sudo /usr/pgsql-18/bin/postgresql-18-setup initdb
@@ -131,7 +131,7 @@ pg_dumpall -U postgres -f /backup/all.sql
 # 3. stop
 sudo systemctl stop postgresql-18`},
 {h:'Remove by installation method'},
-{t:[['Method','Command','Data directory'],['yum / dnf','`sudo dnf remove postgresql18*`','Kept (`/var/lib/pgsql/18`)'],['RPM','`sudo rpm -e postgresql18-server postgresql18 postgresql18-libs`','Kept'],['Source','`sudo make uninstall` in source tree','Kept'],['Windows','Apps & features uninstaller','Often kept, remove manually']]},
+{t:[['Method','Command','Data directory'],['yum / dnf','`sudo dnf remove "postgresql18*"`','Kept (`/var/lib/pgsql/18`)'],['RPM','`sudo rpm -e postgresql18-server postgresql18 postgresql18-libs`','Kept'],['Source','`sudo make uninstall` in source tree','Kept'],['Windows','Apps & features uninstaller','Often kept, remove manually']]},
 {note:'Only delete the data directory after confirming your backup restores.'}],
 src:[['pg_dumpall',D+'app-pg-dumpall.html'],['Installation from Binaries',D+'install-binaries.html']]}
 };

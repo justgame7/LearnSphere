@@ -47,7 +47,7 @@ src:[['Versioning policy','https://www.postgresql.org/support/versioning/'],['Re
 {p:'Whatever method you used, finish with the same checklist. A server that merely starts is not yet a server ready for use.'},
 {t:[['Check','How','Why'],['Correct version','`SELECT version();`','Confirms the binaries you intended'],['Data directory','`SHOW data_directory;`','Know what to back up'],['Config files','`SHOW config_file;` `SHOW hba_file;`','Where to edit settings'],['Service starts at boot','`systemctl is-enabled postgresql-18`','Survives reboots'],['Superuser password','`ALTER ROLE postgres PASSWORD \'...\';`','No password means local-only trust'],['Listening address','`SHOW listen_addresses;`','Default is `localhost` only'],['Locale and encoding','`\\l`','Hard to change later'],['Logging enabled','`SHOW logging_collector;`','You need logs when things fail'],['First backup','`pg_dumpall -f all.sql`','Baseline before any real data']]},
 {flow:['Verify version','Set passwords','Review `pg_hba.conf`','Enable logging','Configure firewall','Take first backup']},
-{note:'Run PostgreSQL as the non-root `postgres` OS user and keep the data directory permissions at `0700`; the server refuses to start otherwise.'}],
+{note:'Run PostgreSQL as the non-root `postgres` OS user and keep the data directory permissions at `0700` (`0750` is also accepted); the server refuses to start with looser permissions.'}],
 src:[['Post-installation setup',D+'install-post.html']]},
 
 'pg:2:0':{blocks:[
@@ -116,7 +116,7 @@ src:[['Server Shutdown',D+'server-shutdown.html'],['pg_ctl',D+'app-pg-ctl.html']
 local   all       postgres                   peer
 host    all       all       127.0.0.1/32     scram-sha-256
 host    appdb     appuser   10.0.0.0/24      scram-sha-256
-hostssl all       all       0.0.0.0/0        reject`},
+host    all       all       0.0.0.0/0        reject`},
 {t:[['Method','Meaning'],['`trust`','Allow with no password. Unsafe outside a lab'],['`scram-sha-256`','Password check with SCRAM. Recommended'],['`md5`','Legacy password hashing, deprecated'],['`peer`','Local only: OS user name must match role'],['`reject`','Always refuse']]},
 {code:`SHOW config_file;
 SHOW hba_file;
