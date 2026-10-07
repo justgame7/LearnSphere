@@ -86,12 +86,19 @@ h2{font-size:14px;font:600 12px var(--mono);letter-spacing:.8px;text-transform:u
 .tw th{text-align:left;font:600 12px var(--mono);text-transform:uppercase;letter-spacing:.5px;color:var(--mut);background:var(--panel2)}
 .tw th,.tw td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
 .tw tr:last-child td{border-bottom:0}.tw td:first-child{font-weight:600;white-space:nowrap}
-.fl{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 20px;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
-.fl .st{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:8px 12px;font-size:13.5px}
-.fl .st b{font:700 11px var(--mono);color:#06100E;background:var(--accent);border-radius:7px;padding:2px 7px}
-.fl .ar{color:var(--accent);font-weight:700}
+.fl{display:flex;flex-wrap:wrap;align-items:center;gap:8px 6px;margin:0 0 20px;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.fl .sw{display:inline-flex;align-items:center;gap:6px;max-width:100%;min-width:0}
+.fl .tx{min-width:0;overflow-wrap:anywhere}
+.fl .st{display:flex;align-items:flex-start;gap:8px;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:8px 12px;font-size:13.5px}
+.fl .st b{flex:none;margin-top:1px;font:700 11px var(--mono);color:#06100E;background:var(--accent);border-radius:7px;padding:2px 7px}
+.fl .ar{flex:none;color:var(--accent);font-weight:700;line-height:1}
+@media(max-width:640px){
+.fl{flex-direction:column;align-items:stretch;gap:0;padding:14px}
+.fl .sw{flex-direction:column;align-items:stretch;gap:0}
+.fl .ar{align-self:flex-start;margin:3px 0 3px 17px;transform:rotate(90deg)}
+}
 .cb{position:relative;margin:0 0 18px}
-.cb pre{margin:0;padding:16px;overflow-x:auto;background:#0B0E13;color:#D7E0EC;border:1px solid var(--line);border-radius:14px;font:12.5px/1.6 var(--mono)}
+.cb pre{margin:0;padding:40px 16px 16px;overflow-x:auto;background:#0B0E13;color:#D7E0EC;border:1px solid var(--line);border-radius:14px;font:12.5px/1.6 var(--mono)}
 .cb button{position:absolute;top:8px;right:8px;font:600 11px var(--mono);padding:4px 9px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);color:var(--mut)}
 .nt{margin:0 0 18px;padding:14px 16px;border-radius:14px;background:color-mix(in srgb,var(--accent) 10%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 35%,var(--line));font-size:14px}
 .nt:before{content:"💡 ";}
@@ -242,7 +249,7 @@ function blk(b){
  if(b.h)return `<h4>${fx(b.h)}</h4>`;
  if(b.ul)return `<ul>${b.ul.map(i=>`<li>${fx(i)}</li>`).join('')}</ul>`;
  if(b.t)return `<div class="tw"><table><thead><tr>${b.t[0].map(c=>`<th>${fx(c)}</th>`).join('')}</tr></thead><tbody>${b.t.slice(1).map(r=>`<tr>${r.map(c=>`<td>${fx(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
- if(b.flow)return `<div class="fl">${b.flow.map((f,i)=>`${i?'<span class="ar">→</span>':''}<span class="st"><b>${i+1}</b>${fx(f)}</span>`).join('')}</div>`;
+ if(b.flow)return `<div class="fl">${b.flow.map((f,i,a)=>`<span class="sw"><span class="st"><b>${i+1}</b><span class="tx">${fx(f)}</span></span>${i<a.length-1?'<span class="ar" aria-hidden="true">→</span>':''}</span>`).join('')}</div>`;
  if(b.code)return `<div class="cb"><button onclick="cpy(this)">Copy</button><pre>${esc(b.code)}</pre></div>`;
  if(b.svg)return `<div class="dg">${b.svg}</div>`;
  if(b.note)return `<div class="nt">${fx(b.note)}</div>`;

@@ -1,5 +1,5 @@
 /* LearnSphere service worker. Bump VERSION on every release so installed apps update. */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL = `ls-shell-${VERSION}`;
 const RUNTIME = `ls-runtime-${VERSION}`;
 const ASSETS = [
