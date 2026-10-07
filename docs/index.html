@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0A0C10">
+<meta name="description" content="LearnSphere: structured, bite-sized lessons with progress saved on your device.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="LearnSphere">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>LearnSphere</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0A0C10;--panel:#12151B;--panel2:#181C24;--line:#232832;--tx:#E8ECF2;--mut:#8A93A3;--accent:#35E0C0;--pg:#7AA7FF;--rs:#FF7A59;--r:18px;
+--sans:'Space Grotesk',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;box-sizing:border-box}
+@media(prefers-color-scheme:light){:root:not([data-theme=dark]){--bg:#F4F6FA;--panel:#fff;--panel2:#EEF1F6;--line:#DDE2EB;--tx:#10141C;--mut:#5E6878;--accent:#0FA68C}}
+:root[data-theme=light]{--bg:#F4F6FA;--panel:#fff;--panel2:#EEF1F6;--line:#DDE2EB;--tx:#10141C;--mut:#5E6878;--accent:#0FA68C}
+*,*:before,*:after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 var(--sans);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+background-image:radial-gradient(600px 300px at 85% -50px,color-mix(in srgb,var(--accent) 14%,transparent),transparent),radial-gradient(500px 300px at 0 120px,color-mix(in srgb,var(--pg) 10%,transparent),transparent);background-repeat:no-repeat}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+.wrap{max-width:980px;margin:0 auto;padding:0 18px 60px}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;backdrop-filter:blur(14px);background:color-mix(in srgb,var(--bg) 78%,transparent);border-bottom:1px solid var(--line)}
+.bar{max-width:980px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;gap:12px}
+.logo{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:-.3px;font-size:18px;cursor:pointer}
+.logo i{width:28px;height:28px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--pg));display:grid;place-items:center;color:#06100E;font-style:normal;font-size:15px}
+.sp{flex:1}
+#inst[hidden]{display:none}
+.ib{width:36px;height:36px;border-radius:11px;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center}
+.crumbs{display:flex;gap:6px;align-items:center;flex-wrap:wrap;color:var(--mut);font:12px var(--mono);padding:18px 0 4px}
+.crumbs a{color:var(--mut);cursor:pointer}.crumbs a:hover{color:var(--accent)}
+h1{font-size:clamp(26px,5vw,38px);letter-spacing:-1px;line-height:1.1;margin:14px 0 6px}
+.sub{color:var(--mut);margin:0 0 22px;max-width:60ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px;position:relative;overflow:hidden;transition:transform .18s,border-color .18s;cursor:pointer;animation:up .4s both}
+.card:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--c,var(--accent)) 60%,var(--line))}
+.card:before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--c,var(--accent));opacity:.9}
+.card.off{opacity:.65;cursor:default}.card.off:hover{transform:none;border-color:var(--line)}
+@keyframes up{from{opacity:0;transform:translateY(8px)}}
+.chip{display:inline-flex;gap:6px;align-items:center;font:600 11px var(--mono);padding:4px 9px;border-radius:99px;background:var(--panel2);color:var(--mut);border:1px solid var(--line)}
+.chip.live{color:var(--accent)}
+.meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.card h3{margin:12px 0 4px;font-size:20px;letter-spacing:-.4px}
+.card p{margin:0;color:var(--mut);font-size:13.5px}
+.bt{height:6px;border-radius:9px;background:var(--panel2);overflow:hidden;margin-top:14px}
+.bt b{display:block;height:100%;background:var(--c,var(--accent));border-radius:9px;transition:width .4s}
+.pct{font:600 12px var(--mono);color:var(--mut);margin-top:6px;display:flex;justify-content:space-between}
+.ico{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font:700 20px var(--mono);background:color-mix(in srgb,var(--c) 16%,transparent);color:var(--c)}
+.hero{background:linear-gradient(135deg,color-mix(in srgb,var(--c) 18%,var(--panel)),var(--panel));border:1px solid var(--line);border-radius:24px;padding:22px;margin:14px 0 24px;display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.hero .tx{flex:1;min-width:230px}
+.ring{--p:0;width:96px;height:96px;border-radius:50%;background:conic-gradient(var(--c) calc(var(--p)*1%),var(--panel2) 0);display:grid;place-items:center}
+.ring span{width:78px;height:78px;border-radius:50%;background:var(--panel);display:grid;place-items:center;font:700 18px var(--mono)}
+.btn{background:var(--accent);color:#06100E;font-weight:700;padding:11px 18px;border-radius:12px;display:inline-flex;gap:8px;align-items:center}
+.btn.ghost{background:var(--panel2);color:var(--tx);border:1px solid var(--line)}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.stats{display:flex;gap:22px;flex-wrap:wrap;margin-top:6px}.stats div{font:12px var(--mono);color:var(--mut)}.stats b{display:block;font:700 20px var(--sans);color:var(--tx)}
+.sec{display:flex;gap:14px;align-items:flex-start}
+.num{font:700 13px var(--mono);color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);border-radius:10px;padding:6px 9px}
+.sec h3{margin:0 0 3px;font-size:17px}
+.lec{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:9px;overflow:hidden}
+.lh{display:flex;gap:12px;align-items:center;padding:13px 14px;cursor:pointer}
+.chk{width:24px;height:24px;border-radius:8px;border:2px solid var(--line);display:grid;place-items:center;flex:none;color:transparent;font-size:14px;transition:.15s}
+.done .chk{background:var(--accent);border-color:var(--accent);color:#06100E}
+.lh .t{flex:1;font-weight:500}.done .t{color:var(--mut)}
+.lh small{font:12px var(--mono);color:var(--mut)}
+.ld{display:none;padding:0 14px 14px 50px;color:var(--mut);font-size:14px}
+.open .ld{display:block}.open .lh{background:var(--panel2)}
+.ld .mk{margin-top:10px;display:inline-flex}
+.quiz .chk{border-radius:50%}.quiz .t{color:var(--mut)}
+.pn{display:flex;justify-content:space-between;gap:10px;margin-top:22px;flex-wrap:wrap}
+h2{font-size:14px;font:600 12px var(--mono);letter-spacing:.8px;text-transform:uppercase;color:var(--mut);margin:26px 0 12px}
+@media(max-width:520px){.ld{padding-left:14px}.hero{padding:18px}}
+
+.ls{max-width:760px}
+.ls p{color:var(--tx);margin:0 0 14px;line-height:1.65}
+.ls h4{font:700 19px var(--sans);letter-spacing:-.3px;margin:30px 0 10px;padding-left:12px;border-left:3px solid var(--c,var(--accent))}
+.ls ul{margin:0 0 16px;padding:0;list-style:none}.ls li{position:relative;padding:5px 0 5px 22px}
+.ls li:before{content:"";position:absolute;left:4px;top:14px;width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.ls code{font:13px var(--mono);background:var(--panel2);border:1px solid var(--line);padding:1px 6px;border-radius:6px;color:var(--accent)}
+.tw{overflow-x:auto;margin:0 0 18px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+.tw table{border-collapse:collapse;width:100%;font-size:14px}
+.tw th{text-align:left;font:600 12px var(--mono);text-transform:uppercase;letter-spacing:.5px;color:var(--mut);background:var(--panel2)}
+.tw th,.tw td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+.tw tr:last-child td{border-bottom:0}.tw td:first-child{font-weight:600;white-space:nowrap}
+.fl{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 20px;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.fl .st{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:8px 12px;font-size:13.5px}
+.fl .st b{font:700 11px var(--mono);color:#06100E;background:var(--accent);border-radius:7px;padding:2px 7px}
+.fl .ar{color:var(--accent);font-weight:700}
+.cb{position:relative;margin:0 0 18px}
+.cb pre{margin:0;padding:16px;overflow-x:auto;background:#0B0E13;color:#D7E0EC;border:1px solid var(--line);border-radius:14px;font:12.5px/1.6 var(--mono)}
+.cb button{position:absolute;top:8px;right:8px;font:600 11px var(--mono);padding:4px 9px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);color:var(--mut)}
+.nt{margin:0 0 18px;padding:14px 16px;border-radius:14px;background:color-mix(in srgb,var(--accent) 10%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 35%,var(--line));font-size:14px}
+.nt:before{content:"💡 ";}
+.dg{margin:0 0 18px;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow-x:auto}.dg svg{width:100%;min-width:560px;height:auto;display:block}
+.srcs{margin-top:30px;padding-top:14px;border-top:1px solid var(--line);font:12px var(--mono);color:var(--mut)}
+.srcs a{color:var(--accent);display:block;margin-top:6px;word-break:break-all}
+.tag{font:600 10px var(--mono);color:var(--accent);border:1px solid var(--accent);border-radius:99px;padding:2px 7px}
+.ld .btn{margin-right:8px}
+</style></head>
+<body>
+<header><div class="bar"><div class="logo" onclick="location.hash='#/'"><i>L</i>LearnSphere</div><div class="sp"></div>
+<button class="ib" id="inst" title="Install app" aria-label="Install app" hidden style="width:auto;padding:0 12px;font:600 12px var(--mono)">Install</button>
+<button class="ib" id="th" title="Toggle theme" aria-label="Toggle theme">◐</button></div></header>
+<main class="wrap" id="app"></main>
+<script src="lessons.js"></script>
+<script src="lessons2.js"></script>
+<script src="lessons3.js"></script>
+<script>
+/* ---------- DATA ---------- */
+// lecture: [title, mm:ss, description]; quiz: section quiz title
+const COURSES=[
+{id:'pg',name:'PostgreSQL DBA',tag:'PG',color:'var(--pg)',level:'Beginner → Production',blurb:'Install, secure, back up, tune and replicate PostgreSQL like a production DBA.',
+outcomes:['Installation & configuration','Architecture & WAL','Backup & recovery','Replication & HA','Performance tuning','Security & roles'],
+sections:[
+{t:'Introduction',q:'Introduction Quiz',l:[
+['Introduction to PostgreSQL DBA','3:01',''],
+['What is PostgreSQL','7:46','What PostgreSQL is and why it stays a reliable open-source relational database: ACID, MVCC, security, scalability and extensibility.'],
+['DBA Role and Responsibilities','4:01','The DBA role and real-world tasks. Compares PostgreSQL with Oracle and SQL Server: open-source features, ACID, indexing and high availability.']]},
+{t:'Installation Methods',q:'Installation Methods Quiz',l:[
+['Postgres Installation','9:28','Installation methods on Windows and Linux: Windows GUI installer, Linux in VirtualBox, connecting with PuTTY and WinSCP.'],
+['Source Method Installation','28:23',''],
+['Yum Method Installation','11:40','Install PostgreSQL 18 on a Linux server via yum and the enterprise repository. Initialize the database, enable the service with systemctl, verify version and data directory.'],
+['RPM Method Installation','9:32','RPM installation for enterprise stability, upgrades and package management: library, client and server installs, cluster initialization and verification.'],
+['GUI Installation','15:01','Production-ready Windows install: verify environment, set install and data directories, default port 5432, validate with pgAdmin and psql.'],
+['Postgres Uninstallations','13:50','Controlled uninstall as part of the lifecycle: pre-checks, backups with pg_dumpall, and clean removal for yum, rpm, source or Windows.']]},
+{t:'Basic Configuration and Connectivity',q:'Shutdown, Multicluster & Tools Quiz',l:[
+['Remote connection from Linux to pgAdmin','13:49','Connect a remote Linux server to pgAdmin on Windows: validate network, configure pg_hba.conf and listen_addresses, adjust firewall, register the server.'],
+['Multicluster Configuration','27:25',''],
+['Shutdown Modes','11:17','Shutdown modes with pg_ctl: smart (default), fast and immediate. Production use, safety and recovery implications, restart vs reload.']]},
+{t:'PostgreSQL Architecture',q:'Architecture, WAL & Checkpoint Quiz',l:[
+['Architecture – PostMaster Process','15:29','How the postmaster starts PostgreSQL, validates config, spawns a backend per client and coordinates background processes for crash recovery.'],
+['Architecture – Backend Process','13:44','A dedicated backend per client connection forks from the postmaster, attaches to shared memory and handles parsing, planning and execution.'],
+['Architecture – Background Process','12:30','Checkpointer, background writer, WAL writer, archiver, stats collector and more, working under the postmaster for durability and availability.'],
+['Architecture – Memory','12:59','Shared memory vs local memory per backend, and how the buffer manager uses shared buffers to cache 8 KB data pages.'],
+['Architecture – WAL','13:46','Write-ahead logging: LSN, WAL buffers and WAL segment files supporting crash recovery through redo and checkpoints with fsync.']]},
+{t:'Database and Storage Management',q:'Templates, Schema & Session Management Quiz',l:[
+['Catalog Views','23:45','The data dictionary and metadata about databases, objects and privileges. Practical pg_catalog and information_schema queries for monitoring and auditing.'],
+['DB Creation and Template Databases','16:35','Create and manage databases from a production view: default and template databases, creation syntax, safe dropping, template hygiene.'],
+['Environment Variables','6:55','Environment variables to simplify connections, multi-cluster setups with pg_env.sh and batch profiles, standardized data paths.'],
+['Cluster Hierarchy','9:42','Cluster → databases → schemas → tables → columns; logical vs physical architecture, tablespaces and OIDs.'],
+['Kill Sessions','14:08','Cancel or terminate long-running or blocked queries with pg_cancel_backend and pg_terminate_backend; find blockers with pg_stat_activity.'],
+['Schema Management','15:25','Schemas to organize databases, isolate security and support multi-tenant designs: system catalogs, search_path, governance best practices.'],
+['How to Find DB, Schema, Table Sizes','4:51','Database, schema and table sizes using \\l, \\dn+ meta-commands and pg_size_pretty.'],
+['Contrib Module','9:40','Add extensions such as pg_stat_statements via contrib: shared_preload_libraries and restarting the cluster.']]},
+{t:'Logging and Parameters',q:'Configuration, Autovacuum & Memory Quiz',l:[
+['Enable Logging Mechanism','8:47','Enable and verify logging, configure destinations, rotation and statements to troubleshoot performance, errors and audit activity.'],
+['Parameters Basic','7:03',''],
+['Parameter Types','3:53','GUC parameters: how name, setting, unit and context reveal defaults or changes; pg_settings queries for debugging and tuning.'],
+['Parameter Reload or Restart','3:57','Parameter context decides reload vs restart (e.g. log_min_duration_statement vs shared_buffers) and maintenance windows.'],
+['Parameter Changes by ALTER Command','2:17','ALTER SYSTEM writes to postgresql.auto.conf, which overrides postgresql.conf on reload.'],
+['Memory Tuning Parameters','2:43','Tune shared_buffers, work_mem and effective_cache_size; e.g. 8 GB shared buffers on a 32 GB server.'],
+['WAL and Checkpoint Parameters','1:53','wal_level replica, 30-minute checkpoint timeout and 1 GB max_wal_size; automatic checkpoints and growing WAL files.'],
+['Logging Parameters','2:48','Enable log collector, destination and directory, restart, then query execution time, errors and disconnections.'],
+['Autovacuum Parameter','3:09','Autovacuum prevents table bloat and transaction wraparound by cleaning dead tuples and reclaiming space, shown on a test table.']]},
+{t:'User Management & Security',q:'Roles, Privileges & Security Quiz',l:[
+['User Management Introduction','3:35','Role-level architecture to least-privilege design: users vs roles, the public role, grant/revoke strategies, role inheritance.'],
+['Authentication and Authorization','11:41','Authentication vs authorization and how pg_hba.conf controls connections: trust, md5, scram, peer. Layered, role-based permissions.'],
+['Public Role','6:38','The public role, privilege escalation via search_path hijacking, and protection: revoke CREATE on public, schema-qualified calls.'],
+['User Creation','7:38','Secure user creation: attributes, avoiding superusers, role-based access, row-level security and connection limits.'],
+['Grant and Revoke','8:22','Role-based access control with GRANT/REVOKE: read-only and write roles, assigning permissions to roles, managing memberships.'],
+['INHERIT vs NOINHERIT','10:04','Enterprise privilege model separating duties into a developer role and a NOINHERIT migration role with explicit activation.'],
+['Row Level Security','10:01','Per-row access via policies for multi-tenant isolation in one table using session variables like app.current_company.']]},
+{t:'Tablespaces & Storage',q:'Tablespace & WAL Concepts Quiz',l:[
+['WAL Format','10:20','WAL files ensure durability, crash recovery and replication in pg_wal with 16 MB segments and LSN-based naming.'],
+['Tablespace Creation and Drop','9:30','Tablespaces map logical names to physical paths: create, assign and drop across databases; pg_default and pg_global.'],
+['Tablespace Online Moving','10:12','Move tables and indexes to a new tablespace online to limit downtime.'],
+['Tablespace Offline Moving','8:44','Move a tablespace offline to reclaim disk safely: stop the database, move files, back up, update the symbolic link.']]},
+{t:'Backup & Recovery',q:'Backup Tools & Strategies Quiz',l:[
+['Backup and Restore','6:11','Logical and physical backups with pg_dump and pg_dumpall for migration, refresh and recovery.'],
+['Backup Formats: Advantages and Disadvantages','6:32','Plain, custom, tar and directory formats; pg_dump vs pg_dumpall; restore speed, parallelism and production considerations.'],
+['Connection Options','7:29','pg_dump connection options -d, -h, -p, -U, password handling with -w, plus -f, -F, -j, -a/-s, -c, -Z and -v.'],
+['Restore','4:42','Pick the right restore method per format: psql for plain, pg_restore for custom.'],
+['Backup Practicals','15:28','pg_dump in plain, tar, custom and directory formats for single or multiple tables, schemas and full databases, with real-world naming.'],
+['Restore Practicals','7:25','Practical restores using psql for plain backups and pg_restore for custom and directory formats.'],
+['pg_dumpall','7:52','Cluster-level backup capturing all databases, schemas, data and global objects such as users and tablespaces.'],
+['Physical Backup','5:50','pg_basebackup for data files, WAL and configs; online/offline backups and point-in-time recovery; combine logical and physical strategy.']]},
+{t:'Upgrade & Replication',q:'Replication & Upgrade Tools Quiz',l:[
+['Upgrade from 17 to 18','15:21','Major upgrade with pg_upgrade: dual binaries, port change 5432 → 5433, pre-upgrade validation, migration and post-upgrade object-count checks.'],
+['Replication Theory','6:30','WAL-based streaming replication between primary and standby; hot standby and failover for high availability and recovery.'],
+['Streaming Replication Setup','12:16','Configure streaming replication on PostgreSQL 18 from a base backup, with a replication user, archiving and wal_level replica.']]}
+]},
+{id:'rs',name:'Amazon Redshift',tag:'RS',color:'var(--rs)',level:'Coming soon',blurb:'Cloud data warehousing on AWS: cluster design, distribution, loading and tuning.',sections:[]}
+];
+if(window.EXTRA_LECTURES)Object.entries(window.EXTRA_LECTURES).forEach(([i,a])=>COURSES[0].sections[i].l.push(...a));
+/* ---------- HELPERS ---------- */
+const $=s=>document.querySelector(s),app=$('#app');
+let P={};try{P=JSON.parse(localStorage.getItem('ls_prog')||'{}')}catch(e){}
+const save=()=>{try{localStorage.setItem('ls_prog',JSON.stringify(P))}catch(e){}};
+const sec2=t=>{const[m,s]=t.split(':').map(Number);return m*60+s};
+const fmt=s=>{const h=Math.floor(s/3600),m=Math.round(s%3600/60);return h?`${h}h ${m}m`:`${m}m`};
+const key=(si,li)=>si+'-'+li,done=(c,si,li)=>!!(P[c.id]||{})[key(si,li)];
+const dur=l=>l.reduce((a,x)=>a+sec2(x[1]),0);
+const cnt=c=>c.sections.reduce((a,s)=>a+s.l.length,0);
+const dn=c=>Object.keys(P[c.id]||{}).length;
+const pct=c=>cnt(c)?Math.round(dn(c)/cnt(c)*100):0;
+const secDone=(c,si)=>c.sections[si].l.filter((_,li)=>done(c,si,li)).length;
+const nextUp=c=>{for(let si=0;si<c.sections.length;si++)for(let li=0;li<c.sections[si].l.length;li++)if(!done(c,si,li))return[si,li];return null};
+const esc=s=>s.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+const go=h=>location.hash=h;
+/* ---------- VIEWS ---------- */
+function vCourses(){
+ const live=COURSES.filter(c=>c.sections.length&&dn(c)&&pct(c)<100)[0];
+ let h=`<h1>Learn by course.<br><span style="color:var(--accent)">Pick up where you stopped.</span></h1><p class="sub">Structured, bite-sized lessons with progress saved on this device.</p>`;
+ if(live){const n=nextUp(live),L=live.sections[n[0]].l[n[1]];
+  h+=`<div class="hero" style="--c:${live.color}"><div class="ring" style="--p:${pct(live)}"><span>${pct(live)}%</span></div><div class="tx"><span class="chip live">● CONTINUE</span><h3 style="margin:10px 0 2px;font-size:22px">${live.name}</h3><div style="color:var(--mut)">Up next: ${esc(L[0])}</div><div class="row"><button class="btn" onclick="go('#/c/${live.id}/${n[0]}')">Resume ▸</button></div></div></div>`}
+ h+=`<h2>Courses</h2><div class="grid">`+COURSES.map((c,i)=>{const on=c.sections.length;
+  return `<div class="card ${on?'':'off'}" style="--c:${c.color};animation-delay:${i*70}ms" ${on?`onclick="go('#/c/${c.id}')"`:''}><div class="ico">${c.tag}</div><h3>${c.name}</h3><p>${c.blurb}</p>
+  <div class="meta">${on?`<span class="chip">${c.sections.length} sections</span><span class="chip">${cnt(c)} lectures</span>`:`<span class="chip">Curriculum coming soon</span>`}</div>
+  ${on?`<div class="bt"><b style="width:${pct(c)}%"></b></div><div class="pct"><span>${dn(c)}/${cnt(c)} done</span><span>${pct(c)}%</span></div>`:''}</div>`}).join('')+`</div>`;
+ return h}
+function vTopics(c){
+ const n=nextUp(c),tot=c.sections.reduce((a,s)=>a+dur(s.l),0);
+ let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›<span>${c.name}</span></div>
+ <div class="hero" style="--c:${c.color}"><div class="tx"><span class="chip">${c.level}</span><h1 style="margin:10px 0 6px">${c.name}</h1><p class="sub" style="margin:0 0 6px">${c.blurb}</p>
+ <div class="stats"><div><b>${c.sections.length}</b>sections</div><div><b>${cnt(c)}</b>lectures</div></div>
+ <div class="row">${n?`<button class="btn" onclick="go('#/c/${c.id}/${n[0]}')">${dn(c)?'Resume':'Start course'} ▸</button>`:`<span class="chip live">✓ Course complete</span>`}</div></div>
+ <div class="ring" style="--p:${pct(c)}"><span>${pct(c)}%</span></div></div>
+ <div class="row" style="margin:-8px 0 6px">${c.outcomes.map(o=>`<span class="chip">✓ ${o}</span>`).join('')}</div><h2>Topics</h2><div class="grid">`;
+ h+=c.sections.map((s,si)=>{const d=secDone(c,si),p=Math.round(d/s.l.length*100);
+  return `<div class="card" style="--c:${c.color};animation-delay:${si*45}ms" onclick="go('#/c/${c.id}/${si}')"><div class="sec"><span class="num">${String(si+1).padStart(2,'0')}</span><div style="flex:1"><h3>${esc(s.t)}</h3><p>${s.l.length} lectures</p></div>${p==100?'<span style="color:var(--accent)">✓</span>':''}</div>
+  <div class="bt"><b style="width:${p}%"></b></div><div class="pct"><span>${d}/${s.l.length}</span><span>${p}%</span></div></div>`}).join('')+`</div>`;
+ return h}
+function vSub(c,si){
+ const s=c.sections[si];if(!s)return vTopics(c);
+ const d=secDone(c,si),p=Math.round(d/s.l.length*100);
+ let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›<a onclick="go('#/c/${c.id}')">${c.name}</a>›<span>Section ${si+1}</span></div>
+ <h1>${esc(s.t)}</h1><p class="sub">${s.l.length} lectures · ${d} completed</p><div class="bt" style="--c:${c.color};margin:-6px 0 22px"><b style="width:${p}%"></b></div>`;
+ h+=s.l.map((x,li)=>`<div class="lec ${done(c,si,li)?'done':''}" id="l${li}"><div class="lh" onclick="this.parentNode.classList.toggle('open')"><span class="chk" onclick="event.stopPropagation();tog('${c.id}',${si},${li})">✓</span><span class="t">${esc(x[0])}</span>${hasL(c,si,li)?'<span class="tag">LESSON</span>':''}</div>
+  <div class="ld">${x[2]?esc(x[2]):'Overview not available.'}<br>${hasL(c,si,li)?`<button class="btn mk" onclick="go('#/c/${c.id}/${si}/${li}')">Open lesson ▸</button>`:''}<button class="btn ghost mk" onclick="tog('${c.id}',${si},${li})">${done(c,si,li)?'Mark as not done':'Mark as done'}</button></div></div>`).join('');
+ h+=`<div class="lec quiz"><div class="lh"><span class="chk" style="color:var(--mut)">?</span><span class="t">${esc(s.q)}</span><small>QUIZ</small></div></div>`;
+ h+=`<div class="pn">${si>0?`<button class="btn ghost" onclick="go('#/c/${c.id}/${si-1}')">◂ ${esc(c.sections[si-1].t)}</button>`:'<span></span>'}${si<c.sections.length-1?`<button class="btn" onclick="go('#/c/${c.id}/${si+1}')">${esc(c.sections[si+1].t)} ▸</button>`:`<button class="btn" onclick="go('#/c/${c.id}')">Back to topics</button>`}</div>`;
+ return h}
+const LS=()=>window.LESSONS||{};
+const hasL=(c,si,li)=>!!LS()[c.id+':'+si+':'+li];
+const fx=s=>esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+function blk(b){
+ if(b.p)return `<p>${fx(b.p)}</p>`;
+ if(b.h)return `<h4>${fx(b.h)}</h4>`;
+ if(b.ul)return `<ul>${b.ul.map(i=>`<li>${fx(i)}</li>`).join('')}</ul>`;
+ if(b.t)return `<div class="tw"><table><thead><tr>${b.t[0].map(c=>`<th>${fx(c)}</th>`).join('')}</tr></thead><tbody>${b.t.slice(1).map(r=>`<tr>${r.map(c=>`<td>${fx(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+ if(b.flow)return `<div class="fl">${b.flow.map((f,i)=>`${i?'<span class="ar">→</span>':''}<span class="st"><b>${i+1}</b>${fx(f)}</span>`).join('')}</div>`;
+ if(b.code)return `<div class="cb"><button onclick="cpy(this)">Copy</button><pre>${esc(b.code)}</pre></div>`;
+ if(b.svg)return `<div class="dg">${b.svg}</div>`;
+ if(b.note)return `<div class="nt">${fx(b.note)}</div>`;
+ return ''}
+function cpy(b){const t=b.nextElementSibling.textContent;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{b.textContent='Copied'},()=>{b.textContent='Select & copy'});setTimeout(()=>b.textContent='Copy',1500)}
+function adj(c,si,li,d){let a=si,b=li+d;if(b<0){a--;if(a<0)return null;b=c.sections[a].l.length-1}else if(b>=c.sections[a].l.length){a++;if(a>=c.sections.length)return null;b=0}return[a,b]}
+function vLesson(c,si,li){
+ const s=c.sections[si],x=s&&s.l[li];if(!x)return vSub(c,si);
+ const L=LS()[c.id+':'+si+':'+li],pv=adj(c,si,li,-1),nx=adj(c,si,li,1),d=done(c,si,li);
+ let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›<a onclick="go('#/c/${c.id}')">${c.name}</a>›<a onclick="go('#/c/${c.id}/${si}')">${esc(s.t)}</a></div><div class="ls" style="--c:${c.color}"><h1>${esc(x[0])}</h1><div class="meta" style="margin:0 0 22px"><span class="chip">Section ${si+1} · Lecture ${li+1}</span>${x[1]!=='0:00'?`<span class="chip">${x[1]} video</span>`:`<span class="chip live">★ Bonus lesson</span>`}</div>`;
+ h+=L?L.blocks.map(blk).join('')+(L.src&&L.src.length?`<div class="srcs">SOURCES${L.src.map(r=>`<a href="${r[1]}" target="_blank" rel="noopener">${esc(r[0])} ↗</a>`).join('')}</div>`:''):`<p>${x[2]?esc(x[2]):'Lesson not available yet.'}</p>`;
+ h+=`<div class="row" style="margin-top:26px"><button class="btn ${d?'ghost':''}" onclick="tog('${c.id}',${si},${li})">${d?'✓ Completed (undo)':'Mark as done'}</button></div>
+ <div class="pn">${pv?`<button class="btn ghost" onclick="go('#/c/${c.id}/${pv[0]}/${pv[1]}')">◂ ${esc(c.sections[pv[0]].l[pv[1]][0])}</button>`:'<span></span>'}${nx?`<button class="btn" onclick="go('#/c/${c.id}/${nx[0]}/${nx[1]}')">${esc(c.sections[nx[0]].l[nx[1]][0])} ▸</button>`:''}</div></div>`;
+ return h}
+function tog(cid,si,li){const k=key(si,li);P[cid]=P[cid]||{};if(P[cid][k])delete P[cid][k];else P[cid][k]=1;save();
+ const open=[...document.querySelectorAll('.lec.open')].map(e=>e.id);render(true);open.forEach(i=>{const e=document.getElementById(i);e&&e.classList.add('open')})}
+function render(keep){
+ const[,r,id,si,li]=location.hash.split('/');let c=COURSES.find(x=>x.id===id&&x.sections.length);
+ app.innerHTML=r==='c'&&c?(li!==undefined?vLesson(c,+si,+li):si!==undefined?vSub(c,+si):vTopics(c)):vCourses();
+ if(!keep)window.scrollTo(0,0)}
+addEventListener('hashchange',()=>render());
+$('#th').onclick=()=>{const r=document.documentElement,dark=getComputedStyle(r).getPropertyValue('--bg').trim()==='#0A0C10';r.dataset.theme=dark?'light':'dark'};
+render();
+</script><script>
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}
+let _dp=null;const _ib=document.getElementById('inst');
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();_dp=e;_ib.hidden=false});
+_ib.addEventListener('click',async()=>{if(!_dp)return;_dp.prompt();await _dp.userChoice;_dp=null;_ib.hidden=true});
+window.addEventListener('appinstalled',()=>{_ib.hidden=true});
+</script>
+</body></html>
