@@ -6199,3 +6199,915 @@ window.EXTRA_LECTURES[0]=(window.EXTRA_LECTURES[0]||[]).concat([
 ['The PostgreSQL Ecosystem: Extensions, Tools and Managed Services','0:00','Contrib and third-party extensions, tools for backup, HA, pooling and monitoring, managed services, PostgreSQL-compatible engines and how to vet them.'],
 ['A DBA Routine: Checklists, Runbooks and Change Management','0:00','Daily, weekly, monthly and yearly checklists with queries, incident response, change requests, runbook and inventory templates.']]);
 })();
+
+
+/* LearnSphere: Section 2 (Installation Methods) depth update.
+   Appended to pg-lesson.js AFTER the Section 1 update; the index.html inline script merges window.EXTRA_LECTURES[1] into Section 2.
+   - Enriches the 7 existing lectures (pg:1:0 .. pg:1:6) by inserting new blocks before their "(Section NN)" back-fill notes.
+   - Adds 8 new lectures: pg:1:7 .. pg:1:14. Docs links target PostgreSQL 18.
+   - Back-fills two short notes into Section 1 (pg:0:3 Versions, pg:0:4 Lab Setup). */
+(function(){
+const D='https://www.postgresql.org/docs/18/';
+const dg=window.LS_DG;
+/* insert new blocks before the first "(Section NN)" cross-reference heading, else append */
+const X=(k,blocks,src)=>{const L=window.LESSONS[k];if(!L)return;
+ let i=L.blocks.findIndex(b=>b.h&&/\(Section/.test(b.h));if(i<0)i=L.blocks.length;
+ L.blocks.splice(i,0,...blocks);if(src)L.src=(L.src||[]).concat(src)};
+/* define a new lecture */
+const N=(k,blocks,src)=>{window.LESSONS[k]={blocks:blocks,src:src||[]}};
+
+/* ---------- diagrams ---------- */
+const stagesSvg=dg(700,200,[
+[10,40,200,110,'1 INSTALL|binaries and libraries|(package, source, installer)',2],
+[250,40,200,110,'2 INITIALISE|initdb creates the cluster|(PGDATA, template1, pg_wal)',2],
+[490,40,200,110,'3 RUN|postmaster starts|(systemctl, pg_ctl, service)',2]],
+[[210,95,250,95],[450,95,490,95]]);
+const aptSvg=dg(700,260,[
+[10,15,200,50,'psql, pg_dump, ...|/usr/bin wrappers',0],[250,15,200,50,'pg_wrapper|chooses version and cluster',2],[490,15,200,50,'/usr/lib/postgresql/18/bin|the real binaries',0],
+[10,115,200,55,'/etc/postgresql/18/main|postgresql.conf, pg_hba.conf',0],[250,115,200,55,'/var/lib/postgresql/18/main|PGDATA of cluster 18/main',0],[490,115,200,55,'/var/log/postgresql|postgresql-18-main.log',0],
+[250,200,200,45,'postgresql@18-main.service|one systemd unit per cluster',2]],
+[[210,40,250,40],[450,40,490,40],[350,65,350,115],[350,170,350,200],[210,142,250,142],[450,142,490,142]]);
+const ctrSvg=dg(700,230,[
+[10,15,200,60,'Host|volume or bind mount|(persistent data)',0],[250,15,230,150,'Container (postgres:18)',1],[505,15,185,60,'Client|psql or application',0],
+[265,45,200,50,'postgres (postmaster)|uid 999, not root',2],[265,105,200,45,'/var/lib/postgresql|volume mount point',0]],
+[[210,45,265,128],[505,45,465,70],[350,95,350,105]]);
+const initdbSvg=dg(700,250,[
+[10,15,680,220,'PGDATA created by initdb',1],
+[30,45,190,50,'global/|shared catalogs',0],[245,45,190,50,'base/|the databases',0],[460,45,210,50,'pg_wal/|first WAL segment',2],
+[30,115,190,50,'postgresql.conf|pg_hba.conf',2],[245,115,190,50,'PG_VERSION|major version marker',0],[460,115,210,50,'pg_xact, pg_multixact|commit status, row locks',0],
+[30,180,640,40,'Plus pg_stat, pg_tblspc, pg_logical, pg_replslot, pg_commit_ts and other state directories',0]],
+[]);
+const tshootSvg=dg(700,200,[
+[10,70,125,55,'Symptom|error text',0],[150,70,125,55,'Read the log|journal or file',2],[290,70,125,55,'Classify|which layer?',0],[430,70,125,55,'Fix one thing|then re-test',0],[570,70,120,55,'Record it|runbook note',2]],
+[[135,97,150,97],[275,97,290,97],[415,97,430,97],[555,97,570,97]]);
+
+/* ================================================================ ENRICH pg:1:0  Postgres Installation */
+X('pg:1:0',[
+{h:"Installing is three separate stages"},
+{p:"Beginners often say install when they mean three different things. Keeping them apart explains most installation problems: the stage that failed tells you where to look."},
+{svg:stagesSvg},
+{t:[["Stage","What happens","Done by","Typical failure"],["1 Install","Program files (`postgres`, `psql`, libraries, share files) are copied to disk","`dnf`, `apt`, `rpm`, `make install`, the Windows installer, a container image","Missing repository, dependency conflict, no disk space"],["2 Initialise","`initdb` creates a new **cluster**: the data directory with `template1`, `template0`, `postgres`, the system catalogs and the first WAL segment","`initdb`, `postgresql-NN-setup initdb`, `pg_createcluster`, the container entrypoint","Directory not empty, wrong owner, locale not installed"],["3 Run","The postmaster starts, reads `postgresql.conf` and `pg_hba.conf` and accepts connections","`systemctl`, `pg_ctl`, `pg_ctlcluster`, a Windows service","Port in use, bad permissions on PGDATA, invalid parameter"]]},
+{ul:["Installing the package does **not** create a cluster on RHEL-family systems. Debian and Ubuntu packages do create one (`18/main`) automatically.","One installation (binaries) can serve many clusters; each cluster has its own `PGDATA`, port and service.","A cluster belongs to one major version. Binaries of another major version refuse to start it."]},
+{h:"Pre-installation checklist"},
+{t:[["Check","Command or action","Why it matters"],["Supported OS and architecture","`cat /etc/os-release`, `uname -m`","Repositories are published per OS release and CPU architecture"],["Free disk space","`df -h /var/lib /`","Binaries need a few hundred MB; the data directory is the real consumer. Plan separate space for WAL and backups"],["Memory","`free -h`","Sizes `shared_buffers` and `max_connections`; very small VMs need modest settings"],["Port 5432 is free","`ss -ltnp | grep 5432`","A second server on the same port fails to start"],["No existing PostgreSQL","`rpm -qa | grep -i postgres` or `dpkg -l | grep postgres`","Avoid mixing distribution packages with PGDG packages"],["Dedicated non-root OS user","`id postgres`","The server refuses to run as root; packages create the `postgres` user for you"],["Time and locale","`timedatectl`, `localectl`","Correct time makes logs and backups meaningful; the locale is fixed at `initdb`"],["Root or `sudo` access and outbound HTTPS","`sudo -v`, `curl -I https://download.postgresql.org`","Needed to add repositories and download packages"],["Security tools","`getenforce`, `firewall-cmd --state`","SELinux and the firewall are on by default on RHEL and often block custom paths or ports"],["Snapshot or backup of the VM","Hypervisor snapshot","A clean rollback point for practice systems"]]},
+{h:"Method comparison matrix"},
+{t:[["Criterion","Windows installer","PGDG package (yum, apt)","Distribution package","RPM files","Source build","Container image"],["Effort to install","Low (wizard)","Low","Lowest","Medium","High","Low"],["Security patches","Re-run the installer","`dnf update` or `apt upgrade`","With the OS","Manual, per package","Rebuild every minor","Pull a new image tag"],["Several major versions side by side","Yes (separate folders and services)","Yes (`postgresql17`, `postgresql18`)","Usually one","Yes","Yes (different prefixes)","Yes (different images)"],["Choice of compile options","No","No","No","No","**Yes**","No (unless you build your own image)"],["Service files and init scripts","Windows service","Included","Included","Included","You write them","None; the container is the service"],["Best for","Learning, Windows desktops","Production Linux","Quick start with older version","Air-gapped servers","Special builds, development","Tests, CI, disposable environments"]]},
+{note:"The first four lectures after this one follow a Linux-first order: source, yum, RPM, then the Windows installer. New lectures at the end of the section cover operating-system preparation, `initdb`, Debian and Ubuntu, containers, systemd, extensions, hardening and troubleshooting."},
+{h:"Sources of PostgreSQL software"},
+{t:[["Source","What you get","Trust model"],["postgresql.org source tarballs","Release source code, with published checksums","The project itself"],["PGDG yum and apt repositories","Current major versions for many OS releases, maintained by the community packagers","Repository packages are signed; import the project key"],["EDB Windows installer","Server, pgAdmin 4, command-line tools and Stack Builder for Windows","Linked from the official download page"],["Operating-system distribution","One version chosen by the OS vendor, patched through the OS lifecycle","The OS vendor"],["Docker Official Image `postgres`","Debian-based and Alpine images maintained by the Docker community","Docker Official Images programme"]]}
+],[["Server Setup and Operation",D+"runtime.html"],["Creating a Database Cluster",D+"creating-cluster.html"],["PostgreSQL Downloads","https://www.postgresql.org/download/"]]);
+
+/* ================================================================ ENRICH pg:1:1  Source method */
+X('pg:1:1',[
+{h:"Prerequisites for a source build"},
+{t:[["Need","RHEL family package","Debian and Ubuntu package","Notes"],["C compiler and make","`gcc`, `make`","`build-essential`","GNU make is required; the compiler must support C11"],["Readline (line editing in `psql`)","`readline-devel`","`libreadline-dev`","Without it use `--without-readline`; `psql` loses history and editing"],["zlib (compression)","`zlib-devel`","`zlib1g-dev`","Needed by `pg_dump` compression; use `--without-zlib` only if you must"],["OpenSSL (TLS)","`openssl-devel`","`libssl-dev`","Pair with `--with-openssl`"],["ICU (collations)","`libicu-devel`","`libicu-dev`","ICU support is enabled by default in current versions"],["systemd notification","`systemd-devel`","`libsystemd-dev`","Pair with `--with-systemd` so `Type=notify` works"],["pkg-config","`pkgconf-pkg-config`","`pkg-config`","Used to find ICU, libxml2 and others"],["Perl","`perl`","`perl`","Needed by the build scripts"],["Optional: LZ4, Zstandard, XML, XSLT, Python","`lz4-devel`, `libzstd-devel`, `libxml2-devel`, `libxslt-devel`, `python3-devel`","`liblz4-dev`, `libzstd-dev`, `libxml2-dev`, `libxslt1-dev`, `python3-dev`","Each matches a `--with-*` option"]]},
+{note:"Release tarballs already contain the generated parser files, so `bison` and `flex` are needed only when building from a Git checkout."},
+{h:"Verify the download"},
+{code:`# download the tarball and the checksum file from the official source directory
+curl -O https://ftp.postgresql.org/pub/source/v18.0/postgresql-18.0.tar.gz
+curl -O https://ftp.postgresql.org/pub/source/v18.0/postgresql-18.0.tar.gz.sha256
+
+# compare the checksum (prints OK when it matches)
+sha256sum -c postgresql-18.0.tar.gz.sha256`},
+{p:"Replace `18.0` with the current minor release shown on the download page. A checksum proves the file was not damaged or altered in transit; download the checksum from the official site, not from the same mirror page you fetched the tarball from if you can avoid it."},
+{h:"Full configure option reference (most used)"},
+{t:[["Autoconf option","Meson option","Effect","Remark"],["`--prefix=PATH`","`--prefix=PATH`","Installation root","Use a versioned path such as `/opt/pgsql/18` to allow side-by-side versions"],["`--with-openssl`","`-Dssl=openssl`","TLS and SCRAM channel binding support","Almost always wanted"],["`--with-systemd`","`-Dsystemd=enabled`","Service readiness notification to systemd","Required for `Type=notify` units"],["`--with-icu`","`-Dicu=enabled`","ICU collation provider","On by default in current Autoconf builds"],["`--with-llvm`","`-Dllvm=enabled`","JIT compilation","Needs LLVM development packages; only helps long analytic queries"],["`--with-lz4`, `--with-zstd`","`-Dlz4=enabled`, `-Dzstd=enabled`","LZ4 and Zstandard compression for TOAST, WAL and dumps","Useful for large JSONB or text columns"],["`--with-liburing`","`-Dliburing=enabled`","io_uring asynchronous I/O (`io_method = io_uring`, new in 18)","Linux only; needs `liburing-devel`"],["`--with-libcurl`","`-Dlibcurl=enabled`","OAuth 2.0 client authentication (new in 18)","Needed for OAuth validators and client support"],["`--with-python`, `--with-perl`, `--with-tcl`","`-Dplpython=enabled`, `-Dplperl=enabled`, `-Dpltcl=enabled`","Procedural languages","Add only the languages you will use"],["`--with-libxml`, `--with-libxslt`","`-Dlibxml=enabled`, `-Dlibxslt=enabled`","XML data type functions and `xml2`","Rarely needed"],["`--with-pgport=NUMBER`","`-Dpgport=NUMBER`","Default port compiled into the binaries","Handy for a lab with several builds"],["`--enable-debug`","`--buildtype=debug` or `-Ddebug=true`","Debug symbols","Larger binaries; useful for crash analysis and `perf`"],["`--enable-cassert`","`-Dcassert=true`","Internal assertion checks","Development only: noticeably slower"],["`--with-blocksize=N`, `--with-segsize=N`, `--with-wal-blocksize=N`","`-Dblocksize=N`, `-Dsegsize=N`, `-Dwal_blocksize=N`","Change page and segment sizes","Produces clusters that are incompatible with standard builds and with `pg_upgrade` from them; leave at defaults"]]},
+{h:"Build, test and install: the full sequence"},
+{flow:["configure (checks system)","make -j (compile)","make check (regression tests)","make install (copy files)","install contrib modules","ldconfig and PATH","systemd unit","initdb and start"]},
+{code:`# as a normal user (never root) inside the source directory
+./configure --prefix=/opt/pgsql/18 --with-openssl --with-systemd --with-lz4 --with-zstd
+make world-bin -j"$(nproc)"      # server, client tools and all contrib modules, no documentation
+make check                       # temporary install + regression tests (cannot run as root)
+
+# as root
+sudo make install-world-bin      # installs server, tools and contrib
+sudo ln -sfn /opt/pgsql/18 /opt/pgsql/current`},
+{t:[["Make target","Builds or installs","When to use"],["`make` or `make all`","Server, client programs, libraries","Minimal build; contrib modules are **not** included"],["`make world`","Everything above plus documentation and all contrib modules","Needs the documentation toolchain (xsltproc and others)"],["`make world-bin`","Everything except the documentation","Best default for a server build"],["`make install`, `make install-world`, `make install-world-bin`","Matching install targets","Pair each install with the build target you ran"],["`make check`","Runs the regression test suite against a temporary installation","Run once after compiling to catch a faulty toolchain"],["`make installcheck`","Runs the same tests against an already running server","Use on a scratch server only"],["`make clean`, `make distclean`","Removes build products, or also the `configure` results","Before re-running `configure` with other options"],["`make uninstall`","Removes the installed files","Leaves PGDATA untouched"]]},
+{h:"Meson in full"},
+{code:`meson setup build --prefix=/opt/pgsql/18 -Dssl=openssl -Dsystemd=enabled -Dlz4=enabled -Dzstd=enabled
+meson compile -C build
+meson test -C build --suite setup --suite regress     # regression tests
+sudo meson install -C build`},
+{h:"Make the installation usable"},
+{code:`# 1. command search path and default data directory for the postgres user
+sudo tee /etc/profile.d/pgsql.sh >/dev/null <<'EOF'
+export PATH=/opt/pgsql/current/bin:\$PATH
+export PGDATA=/var/lib/pgsql/18/data
+EOF
+
+# 2. shared libraries outside the standard paths (libpq.so, extensions)
+echo /opt/pgsql/current/lib | sudo tee /etc/ld.so.conf.d/postgresql.conf
+sudo ldconfig
+
+# 3. manual pages
+echo 'MANPATH_MAP /opt/pgsql/current/bin /opt/pgsql/current/share/man' | sudo tee /etc/man_db.conf.d/pgsql.conf 2>/dev/null
+
+# 4. confirm which binary runs
+which psql && psql --version && pg_config --configure`},
+{p:"`pg_config --configure` prints the exact options a build used. It is the first command to run when you inherit a source-built server."},
+{h:"A systemd unit for a source build"},
+{p:"A source build installs no service file. The unit below follows the example in the official documentation. It requires a build with `--with-systemd` for `Type=notify`; otherwise use `Type=forking` with `pg_ctl` or run the server with `Type=simple` and accept slower start detection."},
+{code:`# /etc/systemd/system/postgresql-18.service
+[Unit]
+Description=PostgreSQL 18 database server (source build)
+Documentation=https://www.postgresql.org/docs/18/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=postgres
+Environment=PGDATA=/var/lib/pgsql/18/data
+ExecStart=/opt/pgsql/current/bin/postgres -D \${PGDATA}
+ExecReload=/bin/kill -HUP \$MAINPID
+KillMode=mixed
+KillSignal=SIGINT
+TimeoutSec=infinity
+
+[Install]
+WantedBy=multi-user.target`},
+{code:`sudo systemctl daemon-reload
+sudo systemctl enable --now postgresql-18
+systemctl status postgresql-18`},
+{p:"The lecture *Managing PostgreSQL with systemd* explains every line, including why `KillSignal=SIGINT` gives a fast shutdown."},
+{h:"Common build errors"},
+{t:[["Message","Cause","Fix"],["`configure: error: readline library not found`","Development package missing","Install `readline-devel` or `libreadline-dev`, or use `--without-readline`"],["`configure: error: zlib library not found`","`zlib-devel` missing","Install it; do not disable zlib on a real server"],["`configure: error: OpenSSL library not found` or header not found","`openssl-devel` missing","Install the development package, then re-run `configure`"],["`configure: error: ICU library not found`","`libicu-devel` or `pkg-config` missing","Install both, or build with `--without-icu`"],["`make: bison: command not found`","Building from a Git checkout","Install `bison` and `flex`, or use a release tarball"],["`make check` fails with `cannot be run as root`","Running tests as root","Run `make check` as an ordinary user"],["`error while loading shared libraries: libpq.so.5` after install","Library path not registered","Add the `lib` directory to `/etc/ld.so.conf.d` and run `ldconfig`"],["`pg_ctl: command not found` for the postgres user","`PATH` set only for your login","Use the full path or set `PATH` in `/etc/profile.d`"]]},
+{h:"Uninstall a source build"},
+{code:`sudo systemctl disable --now postgresql-18
+cd postgresql-18.0 && sudo make uninstall     # removes installed files, keeps PGDATA
+sudo rm -f /etc/systemd/system/postgresql-18.service /etc/ld.so.conf.d/postgresql.conf /etc/profile.d/pgsql.sh
+sudo systemctl daemon-reload && sudo ldconfig`},
+{p:"`make uninstall` needs the same source tree and configuration as the install. If you removed it, delete the prefix directory by hand. Keep one build directory per installed minor version for this reason."}
+],[["Installation from Source Code",D+"installation.html"],["Requirements",D+"install-requirements.html"],["Building and Installation with Autoconf and Make",D+"install-make.html"],["Building and Installation with Meson",D+"install-meson.html"],["Server startup with systemd",D+"server-start.html"]]);
+
+/* ================================================================ ENRICH pg:1:2  Yum method */
+X('pg:1:2',[
+{h:"What the PGDG repository RPM installs"},
+{p:"The `pgdg-redhat-repo` package places one file in `/etc/yum.repos.d/` that defines several repositories: a common repository, one repository per supported major version, and testing repositories (disabled by default). It also installs the repository signing key. You normally only touch the repository of the major version you want."},
+{code:`# list the repositories that the PGDG file defined
+dnf repolist --all | grep -i pgdg
+
+# list every PostgreSQL 18 package that is available
+dnf list available "postgresql18*"
+
+# inspect a package before installing it
+dnf info postgresql18-server`},
+{h:"Differences between EL8, EL9 and EL10"},
+{t:[["Topic","EL8 and EL9 (RHEL, Rocky, AlmaLinux, Oracle Linux)","EL10"],["Repository URL","`.../reporpms/EL-8-x86_64/...` or `EL-9-x86_64`","`.../reporpms/EL-10-x86_64/...`"],["Distribution `postgresql` module","Present in AppStream: **disable it** with `dnf -qy module disable postgresql` so it cannot shadow PGDG packages","Check with `dnf module list postgresql`; if no module exists, skip this step"],["Package manager","`dnf` (`yum` is an alias)","`dnf`"],["Default crypto policy","`DEFAULT`; SCRAM and TLS 1.2 or newer work out of the box","Stricter defaults: use TLS 1.2 or newer certificates and modern algorithms"],["CPU architectures","`x86_64`, `aarch64`, `ppc64le`, `s390x`","Check the repository page for the architecture you use"]]},
+{note:"Repository availability changes over time. Treat the repository page at yum.postgresql.org as the source of truth for supported OS releases and architectures, and re-check it before each new server build."},
+{h:"Package set"},
+{t:[["Package","Provides","Needed on"],["`postgresql18-libs`","`libpq` and client libraries","Every host that connects"],["`postgresql18`","Client programs: `psql`, `pg_dump`, `pg_restore`, `pg_basebackup`","Hosts used for administration"],["`postgresql18-server`","The server, `initdb`, `pg_ctl`, the systemd unit and the setup script","Database servers"],["`postgresql18-contrib`","Extra modules: `pg_stat_statements`, `pgcrypto`, `pg_trgm`, `postgres_fdw`, ...","Almost every server"],["`postgresql18-devel`","Headers and `pg_config` for building extensions","Build hosts only"],["`postgresql18-plpython3`, `-plperl`, `-pltcl`","Procedural languages","Only when used"],["`postgresql18-llvmjit`","JIT compilation provider","Only if JIT is wanted"],["`postgresql18-docs`","Documentation","Rarely on servers"]]},
+{h:"Initialise with options: PGSETUP_INITDB_OPTIONS"},
+{p:"`postgresql-18-setup initdb` is a small wrapper around `initdb`. Pass extra `initdb` options through the environment variable `PGSETUP_INITDB_OPTIONS`. This is the supported way to choose locale, checksums and WAL segment size on package installs."},
+{code:`sudo PGSETUP_INITDB_OPTIONS="--encoding=UTF8 --locale=en_US.UTF-8 --data-checksums --auth-local=peer --auth-host=scram-sha-256" \\
+  /usr/pgsql-18/bin/postgresql-18-setup initdb
+
+sudo -u postgres cat /var/lib/pgsql/18/data/PG_VERSION
+sudo -u postgres grep -v '^#' /var/lib/pgsql/18/data/pg_hba.conf | grep -v '^$'`},
+{p:"Data checksums are already the default in version 18, so `--data-checksums` above is shown for clarity and is harmless. The lecture *initdb in Depth* explains each option."},
+{h:"Put the data directory somewhere else"},
+{p:"The packaged unit reads `PGDATA` from an `Environment=` line. Never edit the file under `/usr/lib/systemd/system/`; a package update would overwrite it. Create a **drop-in override** instead. Do this **before** running the setup script, because the script reads the unit to find the data directory."},
+{code:`# 1. create the directory with the right owner and mode
+sudo mkdir -p /data/pgsql/18/data
+sudo chown -R postgres:postgres /data/pgsql
+sudo chmod 700 /data/pgsql/18/data
+
+# 2. override PGDATA with a drop-in file
+sudo systemctl edit postgresql-18
+#   in the editor that opens, enter exactly:
+#   [Service]
+#   Environment=PGDATA=/data/pgsql/18/data
+
+# 3. give the new path the SELinux label PostgreSQL expects
+sudo semanage fcontext -a -t postgresql_db_t "/data/pgsql(/.*)?"
+sudo restorecon -Rv /data/pgsql
+
+# 4. initialise and start
+sudo /usr/pgsql-18/bin/postgresql-18-setup initdb
+sudo systemctl enable --now postgresql-18
+sudo -u postgres psql -Atc "SHOW data_directory;"`},
+{h:"SELinux and firewalld"},
+{t:[["Task","Command","Remark"],["Check SELinux mode","`getenforce`","`Enforcing` is the right mode on production servers"],["Label a custom data directory","`semanage fcontext -a -t postgresql_db_t \"/data/pgsql(/.*)?\"` then `restorecon -Rv /data/pgsql`","Without the label the server fails with permission denied even though Unix permissions are correct"],["Allow a non-default port","`semanage port -a -t postgresql_port_t -p tcp 5433`","Needed when a second cluster listens on 5433"],["Look for denials","`ausearch -m avc -ts recent`","The `audit2why` command explains a denial"],["Open the port","`firewall-cmd --permanent --add-service=postgresql` then `firewall-cmd --reload`","Open for specific source addresses with a rich rule when possible"],["Check the result","`firewall-cmd --list-all`, `ss -ltnp | grep postgres`","Confirm both the firewall rule and the listening address"]]},
+{h:"Keep a version under control"},
+{code:`# stop accidental major upgrades (minor updates still need to be allowed deliberately)
+sudo dnf install -y python3-dnf-plugin-versionlock
+sudo dnf versionlock add "postgresql18*"
+sudo dnf versionlock list
+sudo dnf versionlock delete "postgresql18*"        # when you plan an update
+
+# update packages of the same major version only
+sudo dnf update "postgresql18*"
+sudo systemctl restart postgresql-18`},
+{p:"Minor updates replace binaries on disk but the running server keeps using the old code until it restarts. Always restart in a planned window and confirm with `SELECT version();`."},
+{h:"Troubleshooting yum installs"},
+{t:[["Symptom","Likely cause","Action"],["`No match for argument: postgresql18-server`","Repository not added, wrong EL release in URL, or distro module hiding packages","Re-add the correct repo RPM; on EL8 and EL9 disable the `postgresql` module"],["`GPG key retrieval failed` or `NOKEY`","Signing key not imported","`sudo rpm --import https://download.postgresql.org/pub/repos/yum/keys/PGDG-RPM-GPG-KEY-RHEL`"],["`postgresql-18-setup: command not found`","Server package missing, or binaries not in `PATH`","Use the full path `/usr/pgsql-18/bin/postgresql-18-setup`"],["`Data directory is not empty!`","`initdb` already ran, or leftover files","Inspect the directory; remove only if it holds no data you need"],["Service starts, then stops, with no message","Log is in the data directory log folder","`journalctl -u postgresql-18 -n 50` and the files in `PGDATA/log`"]]}
+],[["PostgreSQL Yum Repository","https://yum.postgresql.org/"],["Server Setup and Operation",D+"runtime.html"],["Managing Kernel Resources",D+"kernel-resources.html"]]);
+
+/* ================================================================ ENRICH pg:1:3  RPM method */
+X('pg:1:3',[
+{h:"Download the packages and their dependencies"},
+{p:"On a connected machine, fetch the exact package set. On the air-gapped server install the files with `dnf`, not bare `rpm`, so that dependencies are resolved from the local files."},
+{code:`# on a connected build host (same OS release and architecture as the target)
+sudo dnf install -y dnf-plugins-core
+mkdir -p ~/pg18-rpms && cd ~/pg18-rpms
+dnf download --resolve --alldeps postgresql18-server postgresql18 postgresql18-libs postgresql18-contrib
+
+# copy the folder to the target server (scp, USB, internal share), then:
+sudo dnf install -y ./*.rpm        # resolves order and dependencies from the local files`},
+{h:"Verify a package before installing"},
+{code:`# import the repository signing key once
+sudo rpm --import https://download.postgresql.org/pub/repos/yum/keys/PGDG-RPM-GPG-KEY-RHEL
+
+# check digests and signature (look for 'digests signatures OK')
+rpm -K postgresql18-server-*.rpm`},
+{p:"A line that ends with `NOT OK` or `NOKEY` means the file is damaged, was altered, or the key is missing. Do not install it."},
+{h:"RPM query and verify commands"},
+{t:[["Goal","Command","Output"],["Is it installed, and which version?","`rpm -q postgresql18-server`","Package name and version"],["All PostgreSQL packages","`rpm -qa | grep -i postgres`","Every installed PostgreSQL package"],["Package details","`rpm -qi postgresql18-server`","Version, build date, packager, URL"],["Files that a package owns","`rpm -ql postgresql18-server`","Every installed path"],["Which package owns a file","`rpm -qf /usr/pgsql-18/bin/psql`","Owning package"],["Files in an uncommitted RPM file","`rpm -qlp postgresql18-server-*.rpm`","Paths inside the file"],["Dependencies","`rpm -qR postgresql18-server`","Required packages and libraries"],["Detect modified or missing files","`rpm -V postgresql18-server`","Silent when intact; letters show what changed (S size, 5 digest, T time)"],["Configuration file changes","`rpm -qc postgresql18-server`","Files treated as config by the package"]]},
+{h:"Dependency problems"},
+{t:[["Error","Meaning","Fix"],["`Failed dependencies: libicu.so.NN()(64bit) is needed`","A required library is not installed","Install the providing package from the OS repository; `rpm -q --whatprovides` or `dnf provides '*/libicu.so.*'` identifies it"],["`Failed dependencies: postgresql18-libs(x86-64) = 18.x is needed`","Wrong install order or mixed minor versions","Install all packages in one `dnf install ./*.rpm` command with matching versions"],["`package postgresql18-server is already installed`","Same version present","Use `rpm -Uvh` to upgrade, or remove first"],["`conflicts with file from package postgresql-libs`","Distribution packages are installed","Remove distribution PostgreSQL packages before installing PGDG ones"]]},
+{note:"Avoid `rpm --nodeps` and `--force`. They hide a real problem and can leave a server that starts, then fails when a missing library is first loaded."},
+{h:"Build a local repository for air-gapped servers"},
+{p:"When several servers need the same packages, create a small repository once and point every server to it. Updates then work like any other repository."},
+{code:`# on the build host or an internal file server
+sudo dnf install -y createrepo_c
+sudo mkdir -p /srv/repo/pgdg18 && sudo cp ~/pg18-rpms/*.rpm /srv/repo/pgdg18/
+sudo createrepo_c /srv/repo/pgdg18
+
+# on each client: /etc/yum.repos.d/local-pgdg18.repo
+[local-pgdg18]
+name=Local PostgreSQL 18 packages
+baseurl=file:///srv/repo/pgdg18
+enabled=1
+gpgcheck=0
+# for a shared server use baseurl=https://repo.example.local/pgdg18 and set gpgcheck=1 with a gpgkey line`},
+{p:"Setting `gpgcheck=0` is acceptable only when you verified every file with `rpm -K` before copying it into the repository. For a shared repository sign the metadata or the packages and enable `gpgcheck`."},
+{h:"Upgrade versus install"},
+{t:[["Command","Effect","Use when"],["`rpm -ivh`","Install a package that is not yet installed","First installation"],["`rpm -Uvh`","Upgrade, or install if absent","Minor update of the same major version"],["`rpm -Fvh`","Freshen: upgrade only packages that are already installed","Apply a folder of updates to what exists"],["`rpm -e`","Erase a package","Uninstall; data directory stays"],["`dnf install ./file.rpm`","Install with dependency resolution","Preferred in almost all cases"]]}
+],[["RPM Guide: Verifying packages","https://rpm-software-management.github.io/rpm/manual/"],["PostgreSQL Yum Repository","https://yum.postgresql.org/"]]);
+
+/* ================================================================ ENRICH pg:1:4  GUI installer */
+X('pg:1:4',[
+{h:"The wizard page by page"},
+{t:[["Wizard page","What it asks","Recommended choice","Why"],["Installation Directory","Folder for the program files","Default under `C:\\Program Files\\PostgreSQL\\NN`","Keep binaries on the system disk; they are small and replaceable"],["Select Components","PostgreSQL Server, pgAdmin 4, Stack Builder, Command Line Tools","Server and Command Line Tools always; pgAdmin on administration workstations; skip Stack Builder on servers","Fewer components mean fewer things to patch"],["Data Directory","Where the cluster lives (`PGDATA`)","A dedicated, backed-up volume such as `D:\\pgdata\\18`","Data should not share a disk with the OS or application logs"],["Password","Password of the database superuser `postgres`","Long random password, stored in a password manager","This account owns everything in the cluster"],["Port","TCP port of the server","`5432`, unless another server already uses it","A different port means every client must be told"],["Advanced Options (Locale)","Locale of the new cluster","The OS locale for most sites; `C` or `en_US` style choices matter for sorting","The locale is fixed when the cluster is created; see the `initdb` lecture"],["Pre Installation Summary","Review of all choices","Read it; this is the last chance to go back","Mistakes in directory or port are tedious to change later"],["Ready to Install, then Completion","Starts the copy; optional Stack Builder launch","Untick Stack Builder unless you need a driver","Avoid unplanned downloads"]]},
+{h:"What the installer creates on Windows"},
+{t:[["Item","Name or location","Remark"],["Windows service","`postgresql-x64-18` (name shown in `services.msc`)","Starts automatically at boot, runs as the account `NT AUTHORITY\\NetworkService`"],["Program folder","`C:\\Program Files\\PostgreSQL\\18`","Holds `bin`, `lib`, `share`, `pgAdmin 4`"],["Data directory","Folder chosen in the wizard","`postgresql.conf` and `pg_hba.conf` live here"],["Start menu entries","SQL Shell (psql), pgAdmin 4, Stack Builder","`SQL Shell` prompts for server, database, port, user"],["Uninstaller","`uninstall-postgresql.exe` in the program folder","Also listed under Installed apps"]]},
+{h:"Manage the service"},
+{code:`# open an elevated Command Prompt or PowerShell
+sc query postgresql-x64-18                         # status
+net stop  postgresql-x64-18                        # stop (waits for shutdown)
+net start postgresql-x64-18                        # start
+
+# the same with PostgreSQL tools (uses the data directory path)
+"C:\\Program Files\\PostgreSQL\\18\\bin\\pg_ctl.exe" status  -D "D:\\pgdata\\18"
+"C:\\Program Files\\PostgreSQL\\18\\bin\\pg_ctl.exe" restart -D "D:\\pgdata\\18"
+
+# register a service for a cluster you created with initdb yourself
+"C:\\Program Files\\PostgreSQL\\18\\bin\\pg_ctl.exe" register -N postgresql-second -D "D:\\pgdata\\second" -o "-p 5433"`},
+{p:"In `services.msc` open the service, choose the **Recovery** tab and keep the first failure action at *Restart the Service* so a crash is followed by an automatic restart. Set **Startup type** to *Automatic (Delayed Start)* if the data drive appears late."},
+{h:"Make `psql` work from any prompt"},
+{code:`# add the bin folder to the machine PATH (elevated PowerShell)
+[Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\\Program Files\\PostgreSQL\\18\\bin", "Machine")
+
+# new prompt, then:
+psql --version
+psql -U postgres -h localhost -p 5432`},
+{h:"Windows firewall and remote access"},
+{ul:["The installer can add a firewall rule for the port. Check **Windows Defender Firewall with Advanced Security**, inbound rules, for the PostgreSQL entry and restrict its **Remote IP addresses** to your administration subnet.","Remote clients also need `listen_addresses` in `postgresql.conf` and a matching line in `pg_hba.conf`. Both are covered in Section 4 and in *Users and Security*.","Do not open port 5432 to the internet. Use a VPN or SSH tunnel."]},
+{h:"Windows file permissions"},
+{p:"The data directory must be readable and writable by the service account and by Administrators, and by nobody else. Check with `icacls D:\\pgdata\\18`. If you move the data directory to another disk, give the service account **Full control** on the new folder, then update the service with `pg_ctl unregister` and `pg_ctl register` (or edit the service path), otherwise the service fails with an access error."},
+{h:"Unattended (silent) installation"},
+{p:"The installer supports a command-line mode for repeatable builds. Run the installer with `--help` to list all options for your exact version; the common ones are below."},
+{code:`postgresql-18.0-1-windows-x64.exe --mode unattended --unattendedmodeui none ^
+  --superpassword "ChangeMe-Long-Random" --serverport 5432 ^
+  --prefix "C:\\Program Files\\PostgreSQL\\18" --datadir "D:\\pgdata\\18" ^
+  --enable-components server,commandlinetools --disable-components pgAdmin,stackbuilder`},
+{p:"Do not leave the superuser password in shell history or a script in a shared folder. Pass it from a secret store or change it immediately after the install with `ALTER ROLE postgres PASSWORD ...`."},
+{h:"Binary zip archive (no installer)"},
+{p:"A zip archive of the binaries is also available for Windows. It performs only stage 1 of the three stages: you extract it, run `initdb` yourself, then start the server with `pg_ctl` or register a service. It is handy for developer machines with several versions and for build servers that must not run an installer."},
+{h:"Windows troubleshooting"},
+{t:[["Symptom","Likely cause","Action"],["`psql` is not recognised","Bin folder not in `PATH`","Add it to the machine PATH, open a new prompt"],["Service will not start; Event Viewer shows access denied","Service account lacks rights on the data directory","Grant Full control with `icacls`, then start again"],["Installer fails near the end with a data directory error","Directory already contains files, or a previous cluster is half removed","Use an empty folder, or remove leftovers (see the uninstall lecture)"],["`password authentication failed for user postgres`","Wrong password typed during install","Temporarily set the `host` rule in `pg_hba.conf` to `trust` for `127.0.0.1`, reload, reset the password, restore the rule"],["Cannot connect from another computer","`listen_addresses = localhost`, firewall, or `pg_hba.conf`","Check all three in this order; see the remote connection lecture"]]}
+],[["Installation from Binaries",D+"install-binaries.html"],["Windows download page","https://www.postgresql.org/download/windows/"],["pg_ctl",D+"app-pg-ctl.html"]]);
+
+/* ================================================================ ENRICH pg:1:5  Uninstall */
+X('pg:1:5',[
+{h:"Removal checklist by platform"},
+{t:[["Step","Linux (dnf or rpm)","Debian and Ubuntu","Windows"],["Stop the service","`systemctl stop postgresql-18`","`systemctl stop postgresql@18-main` or `pg_ctlcluster 18 main stop`","`net stop postgresql-x64-18`"],["Disable autostart","`systemctl disable postgresql-18`","`systemctl disable postgresql`","Uninstaller removes the service"],["Remove packages","`dnf remove \"postgresql18*\"`","`apt remove postgresql-18` (keeps config) or `apt purge postgresql-18`","Apps and features, or `uninstall-postgresql.exe`"],["Data directory","Kept; remove by hand only after confirming a restore works","`apt purge` does **not** drop a cluster you created; use `pg_dropcluster 18 main`","Kept; delete the folder by hand"],["Configuration","`/var/lib/pgsql/18/data/*.conf` stay with the data","`/etc/postgresql/18/main` kept until `purge` or `pg_dropcluster`","Stay in the data directory"],["Repository","`dnf remove pgdg-redhat-repo`","Remove the list file and key from `/etc/apt/sources.list.d` and `/usr/share/keyrings`","Not applicable"],["OS user","`userdel postgres` only if no other cluster needs it","Same","Windows account `postgres` created by the installer may remain"]]},
+{h:"Systemd and process cleanup"},
+{code:`# 1. units, drop-ins and failed state
+systemctl list-units --all | grep -i postgres
+ls /etc/systemd/system/postgresql*.d /etc/systemd/system/postgresql* 2>/dev/null
+sudo rm -rf /etc/systemd/system/postgresql-18.service.d     # override you created with systemctl edit
+sudo systemctl daemon-reload
+sudo systemctl reset-failed
+
+# 2. stray processes and listeners
+ps -ef | grep [p]ostgres
+ss -ltnp | grep -E ':5432|postgres'
+ls -l /tmp/.s.PGSQL.* /var/run/postgresql 2>/dev/null     # leftover socket files
+
+# 3. leftover files on disk (list first, delete only what you recognise)
+sudo find / -xdev \\( -name 'postmaster.pid' -o -name 'PG_VERSION' \\) 2>/dev/null`},
+{p:"The last command finds data directories that were forgotten. A `postmaster.pid` file whose process does not exist is stale and safe to ignore after the uninstall, but a `PG_VERSION` file marks a directory that still holds a database."},
+{h:"Windows leftovers"},
+{ul:["**Service**: if `sc query postgresql-x64-18` still answers after uninstalling, run `sc delete postgresql-x64-18` from an elevated prompt.","**Folders**: `C:\\Program Files\\PostgreSQL\\18` (if not emptied), the data directory, and `%APPDATA%\\postgresql` which can hold `pgpass.conf` with saved passwords.","**pgAdmin 4 settings**: stored per user under `%APPDATA%\\pgAdmin`; delete them if the server list should not survive.","**Local account**: the installer may have created a Windows user named `postgres`. Remove it in *Computer Management* only if no other installation uses it.","**Environment**: remove the PostgreSQL entry from the machine `PATH` and any `PGDATA`, `PGHOST` or `PGPORT` variables."]},
+{h:"Remove only what you intend"},
+{t:[["Goal","Do","Do not"],["Replace version 17 with 18","Install 18, migrate with `pg_upgrade` or dump and restore, keep 17 until the new server is verified, then remove 17","Remove 17 first"],["Free disk after migrating","Remove old binaries, then old data directory after a verified backup","Delete `PGDATA` while the server is running"],["Start again in a lab","Revert the VM snapshot","Hand-delete scattered files and hope"],["Remove a second cluster only","Stop its unit, remove its data directory and unit, keep the binaries","Uninstall the packages, which breaks other clusters"]]},
+{note:"Deleting `PGDATA` is the one action here that destroys data permanently. Take a `pg_dumpall` or a physical backup, restore it on another machine, and only then delete."}
+],[["pg_ctl",D+"app-pg-ctl.html"],["Server Shutdown",D+"server-shutdown.html"]]);
+
+/* ================================================================ ENRICH pg:1:6  Post-installation checklist */
+X('pg:1:6',[
+{h:"A scored checklist"},
+{p:"Use the table as a sign-off sheet. Every row has a command that proves the item, and an expected result. A server that passes all rows is ready for the *Production Baseline* lecture and for application use."},
+{t:[["#","Check","Command","Expected result"],["1","Version is the intended major and minor","`SELECT version();`","Matches your build sheet"],["2","Data directory and config files are where you planned","`SHOW data_directory;` `SHOW config_file;` `SHOW hba_file;`","Paths on the intended volume"],["3","Data checksums status is known","`SHOW data_checksums;`","`on` (default in 18); record `off` if you chose it"],["4","Encoding and locale are as designed","`SELECT datname, pg_encoding_to_char(encoding), datcollate FROM pg_database;`","UTF8 and the expected collation"],["5","Server starts at boot","`systemctl is-enabled postgresql-18`","`enabled`"],["6","Server restarts after a crash","`systemctl show postgresql-18 -p Restart`","Matches your policy"],["7","Superuser password is set and strong","`\\password postgres` in `psql`","Stored in a password manager"],["8","Local rule uses peer or scram, not trust","`SELECT line_number, type, database, user_name, address, auth_method FROM pg_hba_file_rules;`","No `trust` lines on a shared or remote server"],["9","Listening address is intentional","`SHOW listen_addresses;` `ss -ltnp`","`localhost` until remote access is designed"],["10","Port is open only where needed","`firewall-cmd --list-all`","Source-restricted rule or none"],["11","Logging is useful","`SHOW logging_collector;` `SHOW log_line_prefix;`","Collector on, prefix includes time, pid, user, database"],["12","Time zone and clock","`SHOW timezone;` `timedatectl`","Synchronised; time zone set on purpose"],["13","A first backup exists and has been restored once","`pg_dumpall` or `pg_basebackup`","Restore test succeeded on another host"],["14","Inventory entry written","Your inventory document","Name, host, port, version, owner, backup method"]]},
+{h:"Verify from the operating system side"},
+{code:`ps -ef | grep [p]ostgres | head            # postmaster plus its helper processes
+sudo -u postgres pg_isready                # accepting connections?
+sudo -u postgres psql -Atc "SELECT pg_postmaster_start_time(), current_setting('server_version');"
+ls -ld /var/lib/pgsql/18/data              # drwx------ postgres postgres
+sudo -u postgres ls /var/lib/pgsql/18/data | head -30`},
+{note:"Rows 5 to 12 are expanded in the lectures *OS Preparation*, *Managing PostgreSQL with systemd* and *Post-Installation Hardening and the Production Baseline*. Do them once, write the result down, and repeat the same sheet for every server you build."}
+],[["Post-installation setup",D+"install-post.html"],["The pg_hba_file_rules view",D+"view-pg-hba-file-rules.html"]]);
+
+/* ================================================================ BACK-FILL into Section 1 */
+X('pg:0:3',[
+{h:"Defaults in version 18 that affect a new installation (Section 02)"},
+{t:[["Change in 18","Effect on a new server","Where it is covered"],["`initdb` enables **data checksums** by default; `--no-data-checksums` turns them off","Page corruption by storage is detected on read; small CPU cost. `pg_upgrade` needs the old and new cluster to agree on checksums","*initdb in Depth* (Section 02)"],["Docker image stores data in a **version-specific directory** and declares `/var/lib/postgresql` as its volume","Old guides that mount `/var/lib/postgresql/data` no longer persist data on 18","*Containers: Docker and Podman* (Section 02)"],["Source builds gain `--with-liburing` and `--with-libcurl`","Asynchronous I/O with `io_uring` and OAuth authentication need these libraries at build time","*Source Method Installation* (Section 02)"]]}
+],[["Release Notes: PostgreSQL 18",D+"release-18.html"]]);
+X('pg:0:4',[
+{h:"Practice the install stages with snapshots (Section 02)"},
+{p:"Section 2 separates installation into three stages: install, initialise, run. Take a snapshot between stages in your lab: after the OS is ready, after the binaries are installed, and after `initdb`. You can then repeat any stage, for example run `initdb` with different locale or checksum choices, without rebuilding the VM. The *OS Preparation* lecture lists the operating-system settings to apply to the lab VM before the first snapshot."}
+]);
+
+/* ================================================================ NEW LECTURES 1:7 .. 1:14 */
+
+/* ---------------------------------------------------------------- 1:7  OS preparation and kernel tuning */
+N('pg:1:7',[
+{p:"PostgreSQL is a normal user-space program, but it leans hard on the operating system for memory, files and processes. Most surprises in production (killed processes, slow checkpoints, files that cannot be opened) come from operating-system defaults, not from PostgreSQL. This lecture lists what to decide and set **before** `initdb`, with the reason for each item and the command that proves it. The official manual covers the same ground in *Server Setup and Operation* and *Managing Kernel Resources*."},
+{h:"The preparation sequence"},
+{flow:["Plan sizes and disks","Create the postgres OS user","Prepare file systems and mounts","Set memory and kernel parameters","Set limits for the service","Time, locale, firewall, SELinux","Record and snapshot"]},
+{h:"1. Sizing: decide before you install"},
+{t:[["Resource","Rule of thumb for a first plan","Reason"],["CPU","One core per 4 to 8 active connections as a starting point; more for analytics","Each connection is a process; parallel queries use extra workers"],["RAM","Enough that the hot data and indexes fit in RAM (shared buffers plus the OS cache)","Disk reads are the dominant cost; see the memory lecture in Section 3"],["Data disk","Current data, plus indexes (often 30 to 100 percent of table size), plus growth, plus 20 to 30 percent free","Vacuum, rebuilds and `pg_repack` need temporary space"],["WAL disk","Several times `max_wal_size`, more with archiving or replication slots","A stuck archive or slot makes WAL pile up"],["Backup space","At least the database size, times retention","Backups kept on the same disk as data are not backups"],["Network","1 Gbit or better between primary and standby; low latency for synchronous replication","Replication and base backups saturate slow links"],["Swap","Small, mostly as a safety net","Heavy swapping looks like a hung database"]]},
+{p:"These are planning heuristics, not rules from the manual. Measure your real workload and adjust. Section 6 and the performance lectures turn them into parameters."},
+{h:"2. The `postgres` operating-system user"},
+{ul:["Packages create the user `postgres` (and group) for you. For source builds create it yourself: `sudo useradd -r -m -d /var/lib/pgsql -s /bin/bash postgres`.","The server **must not run as root**. It refuses to start: `root execution of the PostgreSQL server is not permitted`.","Only this user owns and accesses the data directory. Do not use it for logins by people; administrators use `sudo -u postgres`.","Keep the user and group numeric IDs identical on primary and standby hosts when you share storage or restore file-level backups."]},
+{h:"3. Disks, file systems and mount points"},
+{t:[["Topic","Recommendation","Explanation"],["File system","`xfs` or `ext4` on Linux","Both are well tested with PostgreSQL. Use a journalling file system; avoid network file systems for `PGDATA` unless you fully understand NFS mount options"],["Separate volumes","Data, WAL (`pg_wal`), logs and backups on separate volumes where possible","A full log or backup disk must not stop the data disk; WAL traffic is sequential and benefits from its own device"],["Mount point layout","Mount the volume at `/data` and create `/data/pgsql/18/data` inside it","A file-system root contains `lost+found`; `initdb` refuses a directory that is not empty. The manual advises using a subdirectory of the mount point"],["Mount options","`noatime` (or `relatime`)","Avoids a write for every read of a file"],["Disk write cache","Use a controller or SSD with power-loss protection, or disable volatile write caches","`fsync` is only as honest as the device; a volatile cache can lose committed data on power loss"],["I/O scheduler","`none` or `mq-deadline` for SSD and NVMe","Defaults are usually fine; avoid changing without measurement"],["LVM or RAID","Fine; keep snapshots for backups, not as the only copy","RAID is availability, not backup"]]},
+{code:`# example: a dedicated XFS volume for data
+sudo mkfs.xfs /dev/vdb
+sudo mkdir -p /data
+echo '/dev/vdb  /data  xfs  defaults,noatime  0 0' | sudo tee -a /etc/fstab
+sudo mount -a && df -h /data
+
+sudo mkdir -p /data/pgsql/18/data
+sudo chown -R postgres:postgres /data/pgsql
+sudo chmod 700 /data/pgsql/18/data`},
+{h:"4. Memory: overcommit, the OOM killer and swappiness"},
+{p:"Linux can promise more memory than exists (**overcommit**). When memory really runs out, the kernel's **OOM killer** picks a process to kill, and the postmaster or a large backend is a likely victim. Killing a backend makes the postmaster restart all processes in crash recovery. The manual therefore recommends settings that avoid surprises."},
+{t:[["Setting","Typical value","Explanation"],["`vm.overcommit_memory`","`2`","Refuse allocations beyond the limit instead of promising memory that may not exist. This is the setting recommended in the manual; the failed allocation then shows up as an `out of memory` error in one session"],["`vm.overcommit_ratio`","`80` to `90`, or use `vm.overcommit_kbytes`","With mode 2 the limit is swap plus this percentage of RAM; a low ratio on a server with little swap can reject normal work"],["`vm.swappiness`","`1` to `10`","Prefers dropping page cache over swapping out database memory. This is common community and vendor guidance, not a manual requirement"],["`vm.dirty_background_ratio` and `vm.dirty_ratio`","Low values such as `5` and `10`, or the `_bytes` forms on large-RAM hosts","Starts writing dirty pages earlier so checkpoint `fsync` calls do not hit a huge backlog"],["`vm.zone_reclaim_mode`","`0`","Avoids needless reclaim on NUMA machines"]]},
+{note:"Test `vm.overcommit_memory=2` with your own memory settings before production: with `work_mem`, `max_connections` and `shared_buffers` sized carelessly it makes legitimate queries fail. If you keep the default overcommit, protect the postmaster from the OOM killer as described in the systemd lecture."},
+{h:"5. Huge pages and transparent huge pages"},
+{t:[["Feature","What it is","Recommendation"],["Explicit huge pages (`vm.nr_hugepages`)","Memory the kernel reserves in 2 MB pages that PostgreSQL maps for shared memory (`huge_pages = try` or `on`)","Worth using when `shared_buffers` is several GB or more: less page-table overhead, and the memory cannot be swapped"],["Transparent huge pages (THP)","The kernel merges small pages into huge pages in the background","Often causes latency spikes for databases; many vendors advise `madvise` or `never`. The manual describes explicit huge pages for PostgreSQL"]]},
+{code:`# how many huge pages does this server need? (run as postgres, with the server STOPPED)
+sudo -u postgres /usr/pgsql-18/bin/postgres -D /var/lib/pgsql/18/data -C shared_memory_size_in_huge_pages
+#   prints for example 4300 -> reserve a little more than that
+
+# apply
+echo 'vm.nr_hugepages = 4400' | sudo tee /etc/sysctl.d/90-postgresql.conf
+sudo sysctl --system
+grep -i huge /proc/meminfo
+
+# then in postgresql.conf
+#   huge_pages = try        # 'on' fails to start if the pages cannot be reserved
+
+# transparent huge pages: check, then set to madvise at boot (tuned or a systemd unit)
+cat /sys/kernel/mm/transparent_hugepage/enabled`},
+{h:"6. A kernel parameter file"},
+{code:`# /etc/sysctl.d/90-postgresql.conf   (review each line against your RAM and workload)
+vm.overcommit_memory = 2
+vm.overcommit_ratio = 90
+vm.swappiness = 1
+vm.dirty_background_ratio = 5
+vm.dirty_ratio = 10
+vm.zone_reclaim_mode = 0
+# vm.nr_hugepages = 4400        # only after computing it as shown above`},
+{code:`sudo sysctl --system                   # load all files
+sysctl vm.overcommit_memory vm.swappiness   # verify one by one`},
+{p:"Shared memory used to need manual `kernel.shmmax` and semaphore tuning on old systems. PostgreSQL now allocates its main shared memory with anonymous `mmap`, and the SysV settings of current Linux kernels are normally large enough. Read *Managing Kernel Resources* only if the server reports `could not create shared memory segment` or semaphore errors at start."},
+{h:"7. Limits for the service"},
+{t:[["Limit","Why PostgreSQL needs it","How to set"],["Open files (`nofile`)","Each backend opens many data files; `max_files_per_process` defaults to 1000, and all processes together need a multiple of that","systemd unit: `LimitNOFILE=65536` (drop-in file); `/etc/security/limits.conf` does **not** apply to services started by systemd"],["Processes (`nproc`)","One process per connection plus helpers","`LimitNPROC=infinity` or a generous number"],["Core dumps","Needed to analyse a crash","`LimitCORE=infinity` and a core pattern or `systemd-coredump`"],["Stack","Deep recursion in queries","Leave default; the `max_stack_depth` parameter must stay below the OS limit"]]},
+{code:`# check the limits of the running postmaster
+cat /proc/$(head -1 /var/lib/pgsql/18/data/postmaster.pid)/limits | grep -E 'open files|processes'`},
+{h:"8. Time, locale and packages"},
+{ul:["**Time**: install and enable `chrony` (or `systemd-timesyncd`). Logs, replication lag, certificate checks and backup recovery points all depend on correct time. Verify with `timedatectl` and `chronyc tracking`.","**Time zone**: set the server to UTC unless you have a firm reason, and set the database `timezone` deliberately.","**Locale**: the locale of the cluster is fixed at `initdb`. Make sure the locale exists (`locale -a`, `localectl list-locales`); on minimal images install the language pack, for example `glibc-langpack-en` or `locales`.","**Collation versions**: sort order comes from the C library. When the C library is upgraded (for example glibc 2.28 changed many orderings), indexes on text columns can become inconsistent. Plan `REINDEX` after operating-system major upgrades; PostgreSQL records the collation version and warns when it differs.","**Remove competing software**: uninstall distribution PostgreSQL packages you do not want, and make sure no other service listens on 5432."]},
+{h:"9. Firewall and SELinux"},
+{p:"Decide now how clients will reach the server and set the rules before you open anything. The commands are in the yum lecture (`firewall-cmd`, `semanage`, `restorecon`). The principle: keep SELinux in *Enforcing* mode, label non-standard directories and ports instead of disabling it, and allow the PostgreSQL port only from the networks that need it."},
+{h:"10. Tuned profiles and a verification script"},
+{p:"On RHEL-family systems the `tuned` service can apply many of these settings as a profile, for example `throughput-performance` or a vendor database profile. Whichever way you apply settings, **write the result down** and verify it with a script so the next server gets the same treatment."},
+{code:`#!/bin/bash
+# os_check.sh - print the facts that matter before initdb
+echo "OS:            $(. /etc/os-release; echo $PRETTY_NAME)"
+echo "Kernel:        $(uname -r)"
+echo "CPU / RAM:     $(nproc) cores / $(free -g | awk '/Mem/{print $2}') GB"
+echo "Swap:          $(free -g | awk '/Swap/{print $2}') GB"
+echo "overcommit:    $(sysctl -n vm.overcommit_memory) (ratio $(sysctl -n vm.overcommit_ratio))"
+echo "swappiness:    $(sysctl -n vm.swappiness)"
+echo "THP:           $(cat /sys/kernel/mm/transparent_hugepage/enabled)"
+echo "Huge pages:    $(grep HugePages_Total /proc/meminfo)"
+echo "SELinux:       $(getenforce 2>/dev/null || echo n/a)"
+echo "Time sync:     $(timedatectl show -p NTPSynchronized --value)"
+echo "Data volume:   $(df -h /data 2>/dev/null | tail -1)"
+echo "postgres user: $(id postgres 2>/dev/null || echo missing)"`},
+{h:"Summary table"},
+{t:[["Area","Decision","Verified by"],["Disks","Separate volumes, mount point subdirectory, `noatime`","`df -h`, `findmnt`"],["Memory","Overcommit mode, swappiness, huge pages","`sysctl`, `/proc/meminfo`"],["Limits","`LimitNOFILE` and friends in the unit","`/proc/PID/limits`"],["Time and locale","Chrony running; locale installed","`timedatectl`, `locale -a`"],["Security","SELinux enforcing, firewall rule, labelled paths","`getenforce`, `firewall-cmd --list-all`"],["Records","Values written to the build sheet","Your inventory"]]}
+],[["Managing Kernel Resources",D+"kernel-resources.html"],["Server Setup and Operation",D+"runtime.html"],["Creating a Database Cluster",D+"creating-cluster.html"],["Resource Consumption settings",D+"runtime-config-resource.html"],["Linux Memory Overcommit",D+"kernel-resources.html#LINUX-MEMORY-OVERCOMMIT"]]);
+
+/* ---------------------------------------------------------------- 1:8  initdb in depth */
+N('pg:1:8',[
+{p:"**`initdb`** creates a new **database cluster**: a data directory (`PGDATA`) that holds the system catalogs, the template databases, the first WAL file and the default configuration. It runs **once** per cluster. Some of the choices you make here are cheap to change later and some are effectively permanent, so this lecture treats `initdb` as a design decision, not a formality. The reference is the manual page for `initdb` and the chapter *Creating a Database Cluster*."},
+{h:"What initdb does"},
+{flow:["Check owner, permissions and empty directory","Choose locale, encoding and providers","Create directory tree and set mode 0700","Write PG_VERSION and sample config","Bootstrap template1 with the catalogs","Create template0 and postgres","Apply options and sync to disk"]},
+{svg:initdbSvg},
+{t:[["Created object","Purpose"],["`template1`","Model for every new database; objects you add to it appear in all later databases"],["`template0`","Pristine copy that never changes; used to create a database with another encoding or locale; connections are not allowed"],["`postgres`","Default database for administration tools"],["Bootstrap superuser","The role named after the OS user running `initdb` (normally `postgres`); its name is fixed by `-U`"],["`pg_hba.conf` and `postgresql.conf`","Generated in `PGDATA` with defaults and the authentication choices you gave"],["First WAL segment","In `pg_wal/`, size set by `--wal-segsize` (default 16 MB)"]]},
+{h:"Syntax and the basic command"},
+{code:`initdb [option ...] [--pgdata | -D] directory
+
+# the simplest cluster (as the postgres OS user)
+initdb -D /data/pgsql/18/data
+
+# a deliberate, production-style cluster
+initdb -D /data/pgsql/18/data \\
+  --encoding=UTF8 --locale=en_US.UTF-8 \\
+  --auth-local=peer --auth-host=scram-sha-256 \\
+  --pwfile=/root/.pgsuperpw --waldir=/wal/pgsql/18 --wal-segsize=64 \\
+  --data-checksums`},
+{h:"Option reference"},
+{t:[["Option","Meaning","Notes"],["`-D`, `--pgdata=DIR`","Data directory to create","Or set `PGDATA`; the directory may exist but must be empty"],["`-E`, `--encoding=ENC`","Character set for `template1` and default for new databases","Use `UTF8` unless a legacy application forces otherwise"],["`--locale=LOCALE`","Default locale for all categories","Also `--lc-collate`, `--lc-ctype`, `--lc-messages`, `--lc-monetary`, `--lc-numeric`, `--lc-time`; `--no-locale` equals `--locale=C`"],["`--locale-provider={libc|icu|builtin}`","Library that implements collation and character classes","Default is `libc`; `icu` is OS independent; `builtin` (since 17) offers `C` and `C.UTF-8` behaviour without OS dependency. Combine with `--icu-locale` or `--builtin-locale`"],["`-k`, `--data-checksums`","Checksum every data page","**Default since version 18**; `--no-data-checksums` disables"],["`--wal-segsize=MB`","Size of each WAL file, a power of two from 1 to 1024","Default 16. Larger segments suit busy servers and archiving; set at `initdb` (a rarely used offline tool can change it later)"],["`-X`, `--waldir=DIR`","Put `pg_wal` on another volume","Creates a symbolic link in `PGDATA`"],["`-A`, `--auth=METHOD`","Authentication method written to `pg_hba.conf` for both local and host lines","`trust` is the default and prints a warning; prefer the two options below"],["`--auth-local=METHOD`, `--auth-host=METHOD`","Method for local sockets and for TCP","`peer` and `scram-sha-256` are a sound pair"],["`-U`, `--username=NAME`","Name of the bootstrap superuser","Defaults to the OS user; keep `postgres` for tool compatibility"],["`-W`, `--pwprompt`; `--pwfile=FILE`","Set the superuser password at creation","Prefer a prompt or a file with mode `0600` that you delete afterwards; never pass a password on the command line"],["`-g`, `--allow-group-access`","Directory mode `0750` instead of `0700`","Lets a backup user in the same group read files; the server accepts both modes"],["`-c`, `--set NAME=VALUE`","Set a server parameter in `postgresql.conf` and use it during `initdb`","Example: `-c max_connections=200`"],["`-T`, `--text-search-config=CFG`","Default full-text configuration","Normally derived from the locale"],["`--no-instructions`","Do not print the closing hints","Useful in scripts"],["`-N`, `--no-sync`; `-S`, `--sync-only`; `--sync-method`","Control fsync behaviour at the end","`--no-sync` is for disposable test clusters only: an OS crash can corrupt the directory"],["`-n`, `--no-clean`; `-d`, `--debug`; `-s`, `--show`","Debugging aids","Keep a failed directory to inspect it"]]},
+{h:"Which choices can you change later?"},
+{t:[["Choice","Reversible?","How, and what it costs"],["Server parameters (`-c` options)","Yes","Edit `postgresql.conf`, reload or restart"],["Authentication in `pg_hba.conf`","Yes","Edit the file and reload"],["Superuser name","Practically no","Fixed in the catalogs; keep `postgres`"],["Encoding of `template1`","Not in place","Create new databases from `template0` with another encoding; to change an existing database dump and restore"],["Default locale and provider","Per database yes, cluster default no","`CREATE DATABASE ... LOCALE ... TEMPLATE template0`; dump and restore for existing data; per-column `COLLATE` for single cases"],["Data checksums","Yes, **offline**","`pg_checksums --enable` or `--disable` on a stopped cluster: rewrites every page, so time grows with database size"],["WAL segment size","Offline only","A special `pg_resetwal` option exists; plan it as a maintenance operation and take a backup first"],["WAL directory location","Yes","Stop server, move `pg_wal`, replace it with a symbolic link"],["Block size (`--with-blocksize` at build time)","No","Different binaries and incompatible clusters"],["Major version of the cluster","Only by `pg_upgrade` or dump and restore","See Section 10"]]},
+{h:"Locale, encoding and collation in practice"},
+{ul:["The **encoding** decides how characters are stored. `UTF8` can store all languages; use it by default.","The **collation** (from the locale) decides sort order and comparisons, and so how indexes are ordered. The `C` locale sorts by bytes: fast and stable, but not language-aware.","The **provider** decides which library implements collations. With `libc` the OS controls them, so an OS upgrade or a standby on another OS release can change index ordering and make indexes wrong. `icu` and `builtin` reduce this risk.","If your applications use language-aware sorting, test it on the exact OS and provider you will run in production, and on every standby."]},
+{code:`-- after initdb: see what you got
+SELECT datname, pg_encoding_to_char(encoding) AS enc, datlocprovider, datcollate, datctype
+FROM pg_database ORDER BY datname;
+
+SHOW data_checksums;                       -- on / off
+SHOW wal_segment_size;                     -- for example 16MB
+SELECT name, setting FROM pg_settings WHERE name IN ('lc_messages','lc_monetary','lc_numeric','lc_time','default_text_search_config');`},
+{h:"Data checksums"},
+{p:"A **data checksum** is a short value stored with each 8 kB data page and verified every time the page is read from disk. It detects corruption introduced by the storage system, which otherwise stays invisible until a query returns wrong data or crashes. Version 18 turns checksums on by default; the manual and community experience say the cost is small. Checksums protect *data* pages; they do not make backups valid by themselves, but `pg_basebackup` and `pg_verifybackup` use them to detect damaged pages."},
+{code:`# check status of a stopped cluster
+pg_checksums --check -D /data/pgsql/18/data
+
+# enable on an existing, cleanly stopped cluster (rewrites all files; time depends on size)
+pg_checksums --enable -D /data/pgsql/18/data -P
+
+# upgrading from an older cluster that has checksums OFF into a new 18 cluster:
+initdb -D /data/pgsql/18/data --no-data-checksums      # make both sides match for pg_upgrade
+#   later, enable checksums offline on the new cluster`},
+{note:"`pg_upgrade` requires the old and new cluster to have the **same** checksum setting. If the old cluster has no checksums, create the new one with `--no-data-checksums`, upgrade, then enable checksums offline when convenient."},
+{h:"Authentication written by initdb"},
+{p:"`initdb` writes the first `pg_hba.conf`. With no authentication option it uses `trust`, meaning **no password is checked** for local connections, and prints a warning. That is acceptable for a throwaway lab and wrong everywhere else. Passing `--auth-local=peer --auth-host=scram-sha-256` and giving the superuser a password closes that gap from the first second."},
+{t:[["Method","Meaning","Where it fits"],["`trust`","Anyone who can connect is accepted","Never on shared systems"],["`peer`","The OS user name must match the database role (local socket only)","Local administration by `postgres` and application OS users"],["`scram-sha-256`","Password exchange using SCRAM; password stored as a salted verifier","All TCP connections; the default `password_encryption` since version 14"],["`md5`","Older challenge-response password method","Legacy clients only; deprecated"]]},
+{h:"Putting WAL on its own volume"},
+{code:`# at initdb time
+initdb -D /data/pgsql/18/data --waldir=/wal/pgsql/18
+
+# afterwards (server stopped)
+sudo -u postgres mv /data/pgsql/18/data/pg_wal /wal/pgsql/18
+sudo -u postgres ln -s /wal/pgsql/18 /data/pgsql/18/data/pg_wal
+ls -l /data/pgsql/18/data/pg_wal`},
+{h:"initdb through package tools"},
+{t:[["Platform","How to run initdb","Passing options"],["RHEL family (PGDG)","`/usr/pgsql-18/bin/postgresql-18-setup initdb`","`PGSETUP_INITDB_OPTIONS=\"...\"` in the environment"],["Debian and Ubuntu","`pg_createcluster 18 main` (automatic at package install)","`pg_createcluster 18 main -- --data-checksums --wal-segsize=64`; defaults in `/etc/postgresql-common/createcluster.conf`"],["Source build or manual","`initdb -D ...` as the `postgres` user","Command-line options"],["Docker image","Entrypoint runs `initdb` on first start with an empty volume","`POSTGRES_INITDB_ARGS`, `POSTGRES_INITDB_WALDIR`"],["Windows installer","Wizard pages","Locale page, data directory page"]]},
+{h:"Errors and what they mean"},
+{t:[["Message","Cause","Fix"],["`initdb: error: directory \"...\" exists but is not empty`","Files already present, often `lost+found` at a mount root","Use a subdirectory of the mount point, or empty the directory if it is truly unused"],["`initdb: error: could not change permissions of directory`","Parent owned by root or wrong user","`chown postgres` the parent or run as the right user"],["`initdb: error: cannot be run as root`","Running as root","Use `sudo -u postgres` or `su - postgres`"],["`initdb: error: invalid locale name \"xx_YY.UTF-8\"`","Locale not installed","Install the language pack, check `locale -a`"],["`initdb: error: encoding mismatch`","Chosen encoding does not fit the locale","Pick a matching encoding, usually `UTF8`"],["`FATAL: could not create shared memory segment` during bootstrap","Memory or kernel limits","See the OS Preparation lecture"]]},
+{h:"A repeatable initdb record"},
+{p:"Because `initdb` choices are hard to reverse, copy the exact command into your build sheet. Later you can compare any cluster with `pg_controldata`, which prints the values the cluster was created with."},
+{code:`sudo -u postgres /usr/pgsql-18/bin/pg_controldata /data/pgsql/18/data | \\
+  grep -E 'Data page checksum|WAL block size|Bytes per WAL segment|Database block size|pg_control version|Catalog version'`}
+],[["initdb",D+"app-initdb.html"],["Creating a Database Cluster",D+"creating-cluster.html"],["Locale Support",D+"locale.html"],["Character Set Support",D+"multibyte.html"],["pg_checksums",D+"app-pgchecksums.html"],["pg_controldata",D+"app-pgcontroldata.html"],["Release Notes 18",D+"release-18.html"]]);
+
+/* ---------------------------------------------------------------- 1:9  Debian and Ubuntu */
+N('pg:1:9',[
+{p:"Debian and Ubuntu are the other very common Linux families for PostgreSQL. Their packages are built differently from RHEL packages: one **cluster is created automatically**, configuration lives under `/etc`, data under `/var/lib/postgresql`, and a set of **`postgresql-common`** tools manages many clusters side by side. You can use the distribution packages or the **PGDG apt repository** (apt.postgresql.org), which carries the current major versions for all supported Debian and Ubuntu releases."},
+{h:"Distribution package or PGDG repository?"},
+{t:[["Choice","You get","Choose it when"],["Distribution package","One major version chosen by the OS release, patched for the life of the OS","The shipped version meets your needs and you value stability above features"],["PGDG apt repository","Current and supported older majors, several side by side, quick minor releases","You need a specific or newer major, or the same version on all hosts"]]},
+{h:"Add the PGDG repository"},
+{code:`# easiest: the helper script shipped in postgresql-common
+sudo apt update
+sudo apt install -y postgresql-common
+sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh      # adds repo and signing key
+
+# manual equivalent
+sudo install -d /usr/share/postgresql-common/pgdg
+sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+. /etc/os-release
+echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt \${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+sudo apt update`},
+{h:"Install the server"},
+{code:`sudo apt install -y postgresql-18            # server, contrib modules and the first cluster '18/main'
+sudo apt install -y postgresql-client-18      # client tools only (for admin hosts)
+
+pg_lsclusters                                  # Ver Cluster Port Status Owner Data directory Log file
+systemctl status postgresql@18-main
+sudo -u postgres psql -c "SELECT version();"`},
+{t:[["Package","Provides"],["`postgresql`","Meta package: depends on the distribution default major version"],["`postgresql-18`","Server, `initdb`, and the contrib modules for version 18"],["`postgresql-client-18`","`psql`, `pg_dump`, `pg_restore`, `pg_basebackup` for version 18"],["`postgresql-client-common`, `postgresql-common`","The `pg_wrapper` and cluster-management tools shared by all versions"],["`postgresql-server-dev-18`","Headers and `pg_config` for building extensions"],["`postgresql-plpython3-18`, `postgresql-18-postgis-3` and similar","Languages and third-party extensions per major version"]]},
+{h:"The Debian layout"},
+{svg:aptSvg},
+{t:[["Item","Path or name"],["Real binaries","`/usr/lib/postgresql/18/bin/` (not in the default `PATH`)"],["Wrapper commands","`/usr/bin/psql`, `pg_dump`, ... (symbolic links to `pg_wrapper`)"],["Configuration of the cluster","`/etc/postgresql/18/main/` with `postgresql.conf`, `pg_hba.conf`, `pg_ident.conf`, `start.conf`, `pg_ctl.conf`, `environment`"],["Data directory","`/var/lib/postgresql/18/main`"],["Log file","`/var/log/postgresql/postgresql-18-main.log`"],["Unix socket directory","`/var/run/postgresql` (`/run/postgresql`)"],["systemd units","`postgresql.service` (umbrella) and `postgresql@18-main.service` (one per cluster)"],["Cluster-creation defaults","`/etc/postgresql-common/createcluster.conf`"]]},
+{note:"On Debian the configuration files are **not** in the data directory. `SHOW config_file;` shows `/etc/postgresql/18/main/postgresql.conf`. Back up both `/etc/postgresql` and the data directory."},
+{h:"The cluster tools of postgresql-common"},
+{t:[["Command","Purpose","Example"],["`pg_lsclusters`","List clusters with version, port, status, paths","`pg_lsclusters`"],["`pg_createcluster`","Create a new cluster and its config","`sudo pg_createcluster 18 reports --port=5433 --start`"],["`pg_dropcluster`","Remove a cluster (stop it first, or use `--stop`)","`sudo pg_dropcluster --stop 18 reports`"],["`pg_ctlcluster`","Start, stop, restart, reload, promote one cluster","`sudo pg_ctlcluster 18 main reload`"],["`pg_upgradecluster`","Upgrade a cluster to a newer installed major version","`sudo pg_upgradecluster 17 main`"],["`pg_conftool`","Read or edit a setting without opening the file","`pg_conftool 18 main set max_connections 200`"],["`pg_wrapper` (via `psql` and others)","Chooses version and cluster for client tools","`psql --cluster 18/main`, or `PGCLUSTER=18/main psql`"]]},
+{h:"Day-to-day commands"},
+{code:`sudo systemctl restart postgresql@18-main        # one cluster
+sudo systemctl reload  postgresql                # reload all clusters
+sudo -u postgres psql                            # peer authentication over the socket
+
+# change a setting without an editor
+sudo pg_conftool 18 main set listen_addresses 'localhost'
+sudo pg_conftool 18 main show shared_buffers
+sudo pg_ctlcluster 18 main restart
+
+# a second cluster on another port
+sudo pg_createcluster 18 second --port=5433 --start
+pg_lsclusters`},
+{h:"Choose initdb options for the automatic cluster"},
+{p:"The package creates `18/main` as soon as it is installed, using defaults. To control locale, checksums or the data directory of that first cluster, set the defaults **before** installing, or drop the automatic cluster and create your own."},
+{code:`# option A: set defaults first
+sudo mkdir -p /etc/postgresql-common
+sudo tee /etc/postgresql-common/createcluster.conf >/dev/null <<'EOF'
+create_main_cluster = true
+data_directory = '/data/pgsql/%v/%c'
+initdb_options = '--data-checksums --wal-segsize=64'
+EOF
+sudo apt install -y postgresql-18
+
+# option B: do not create the cluster at all, then create it by hand
+echo 'create_main_cluster = false' | sudo tee /etc/postgresql-common/createcluster.conf
+sudo apt install -y postgresql-18
+sudo pg_createcluster 18 main -d /data/pgsql/18/main -- --encoding=UTF8 --locale=en_US.UTF-8 --data-checksums`},
+{h:"Firewall and access"},
+{code:`# ufw: allow only the application subnet to reach the port
+sudo ufw allow from 10.20.0.0/24 to any port 5432 proto tcp
+sudo ufw status numbered
+
+# remote access also needs these two edits (see the Section 4 lectures)
+sudo pg_conftool 18 main set listen_addresses '*'
+echo 'host  all  all  10.20.0.0/24  scram-sha-256' | sudo tee -a /etc/postgresql/18/main/pg_hba.conf
+sudo pg_ctlcluster 18 main restart`},
+{h:"Update and remove"},
+{code:`sudo apt update && sudo apt upgrade                  # minor updates; cluster restarts when the package asks
+sudo apt-mark hold postgresql-18                      # freeze while you prepare a change
+sudo apt-mark unhold postgresql-18
+
+sudo apt remove postgresql-18                         # removes programs, keeps config and data
+sudo apt purge  postgresql-18                         # also removes packaged config; data of existing clusters remains
+sudo pg_dropcluster 18 main                           # the supported way to remove a cluster and its data`},
+{h:"Troubleshooting on Debian and Ubuntu"},
+{t:[["Symptom","Likely cause","Action"],["`psql: error: connection to server on socket ... failed: No such file or directory`","Cluster not running, or wrong socket directory","`pg_lsclusters`; start with `pg_ctlcluster`; check `unix_socket_directories`"],["`Peer authentication failed for user \"postgres\"`","Running `psql -U postgres` as another OS user","Use `sudo -u postgres psql`, or connect over TCP with a password"],["Two clusters, and a client talks to the wrong one","Different ports","`psql --cluster 18/second` or `-p 5433`"],["Package upgrade left a cluster down","Major version cluster not started on boot","Check `/etc/postgresql/18/main/start.conf` (`auto`, `manual`, `disabled`)"],["`E: Unable to locate package postgresql-18`","PGDG repo missing or `apt update` not run","Add the repo, run `apt update`"],["Port 5432 refused; second cluster on 5433","`pg_createcluster` picks the next free port","Use the printed port"]]}
+],[["Installation from Binaries",D+"install-binaries.html"],["apt.postgresql.org (PGDG apt repository)","https://wiki.postgresql.org/wiki/Apt"],["PostgreSQL Downloads: Linux (Debian, Ubuntu)","https://www.postgresql.org/download/linux/"],["Creating a Database Cluster",D+"creating-cluster.html"]]);
+
+/* ---------------------------------------------------------------- 1:10  Containers */
+N('pg:1:10',[
+{p:"A **container** packages a program with its libraries and runs it in an isolated process space, using the host kernel. PostgreSQL is available as an **official image** (`postgres`) for Docker, Podman and Kubernetes. Containers give fast, repeatable, disposable servers, which is why they dominate development, testing and CI. The challenge is that a container's file system is **temporary**: the database files must live in a **volume** that outlives the container."},
+{h:"How the pieces fit"},
+{svg:ctrSvg},
+{t:[["Concept","Meaning for PostgreSQL"],["Image","Read-only template: PostgreSQL binaries and an entrypoint script. Pick a tag such as `postgres:18` (Debian-based) or `postgres:18-alpine`"],["Container","A running instance of the image. Remove it and everything written inside it, outside a volume, is gone"],["Volume or bind mount","Storage managed by the runtime (volume) or a host directory (bind mount) holding `PGDATA`"],["Published port","`-p 5432:5432` maps a host port to the container's port; without it only other containers can connect"],["Entrypoint","Script that runs `initdb` on the first start if the data directory is empty, then starts the server"]]},
+{h:"First container"},
+{code:`docker run -d --name pg18 \\
+  -e POSTGRES_PASSWORD='ChangeMe-Long-Random' \\
+  -p 5432:5432 \\
+  -v pgdata18:/var/lib/postgresql \\
+  postgres:18
+
+docker ps
+docker logs -f pg18                       # wait for: database system is ready to accept connections
+docker exec -it pg18 psql -U postgres -c "SELECT version();"
+psql -h localhost -U postgres             # from the host, if psql is installed`},
+{note:"**Version 18 changed the data path.** In `postgres:17` and earlier the image used `PGDATA=/var/lib/postgresql/data` with a volume declared there. From `postgres:18` the image sets `PGDATA=/var/lib/postgresql/18/docker` and declares `/var/lib/postgresql` as the volume, so **mount your volume at `/var/lib/postgresql`**. Old guides that mount `/var/lib/postgresql/data` will silently write to an anonymous volume on 18 and lose data when the container is recreated. The change allows a later `pg_upgrade --link` across major versions on one volume."},
+{h:"Environment variables of the official image"},
+{t:[["Variable","Meaning","Notes"],["`POSTGRES_PASSWORD`","Superuser password","**Required** (unless trust is forced); used only when the data directory is empty"],["`POSTGRES_USER`","Superuser name","Default `postgres`"],["`POSTGRES_DB`","Database created on first start","Defaults to the user name"],["`POSTGRES_INITDB_ARGS`","Extra `initdb` options","Example: `--data-checksums --locale=en_US.UTF-8`"],["`POSTGRES_INITDB_WALDIR`","Separate WAL directory","Needs a second volume"],["`POSTGRES_HOST_AUTH_METHOD`","Method for host connections","`trust` allows passwordless access; do not use outside a laptop test"],["`PGDATA`","Data directory inside the container","Leave the default on 18; changing it is rarely useful"],["`POSTGRES_PASSWORD_FILE` and the other `_FILE` forms","Read the value from a file","Use with Docker or Kubernetes secrets instead of plain variables"]]},
+{note:"All initialisation variables apply only on the **first start with an empty data directory**. Changing them later and restarting does nothing to an existing cluster. Change the password with `ALTER ROLE`, not by editing the variable."},
+{h:"Initialisation scripts"},
+{p:"Files placed in `/docker-entrypoint-initdb.d/` run once, in alphabetical order, after `initdb` and only when the data directory was empty. Supported types are `*.sql`, `*.sql.gz` and `*.sh`. Use them to create roles, databases and extensions."},
+{code:`# ./init/01-app.sql
+CREATE ROLE app LOGIN PASSWORD 'change-me';
+CREATE DATABASE appdb OWNER app;
+\\c appdb
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+
+# attach the folder
+docker run -d --name pg18 -e POSTGRES_PASSWORD=... \\
+  -v pgdata18:/var/lib/postgresql -v "$PWD/init:/docker-entrypoint-initdb.d:ro" postgres:18`},
+{h:"Configure the server"},
+{code:`# 1. pass parameters on the command line (simple, visible in docker inspect)
+docker run -d --name pg18 -e POSTGRES_PASSWORD=... -v pgdata18:/var/lib/postgresql \\
+  postgres:18 -c shared_buffers=512MB -c max_connections=200 -c log_min_duration_statement=500
+
+# 2. or mount your own file
+docker run -d --name pg18 -e POSTGRES_PASSWORD=... -v pgdata18:/var/lib/postgresql \\
+  -v "$PWD/postgresql.conf:/etc/postgresql/postgresql.conf:ro" \\
+  postgres:18 -c config_file=/etc/postgresql/postgresql.conf
+
+# 3. or change settings at runtime and persist them (stored in postgresql.auto.conf inside the volume)
+docker exec -it pg18 psql -U postgres -c "ALTER SYSTEM SET work_mem = '32MB';" -c "SELECT pg_reload_conf();"`},
+{h:"Docker Compose"},
+{code:`# compose.yaml
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_DB: appdb
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    ports: ["127.0.0.1:5432:5432"]        # publish to localhost only
+    volumes:
+      - pgdata18:/var/lib/postgresql
+      - ./init:/docker-entrypoint-initdb.d:ro
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d appdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+secrets:
+  db_password:
+    file: ./db_password.txt
+volumes:
+  pgdata18:`},
+{h:"Podman and rootless containers"},
+{t:[["Topic","Docker","Podman"],["Daemon","Central `dockerd`","Daemonless; each container is a child process"],["Run as non-root","Possible with extra setup","Default (rootless)"],["Command","`docker ...`","`podman ...` (almost the same options)"],["SELinux hosts","Usually works","Add `:Z` to a bind mount so the container may use it, for example `-v /data/pg:/var/lib/postgresql:Z`"],["Start at boot","`restart: unless-stopped`","Generate a systemd unit or use Quadlet files; `podman generate systemd` for older setups"],["Compose","`docker compose`","`podman compose` or `podman play kube`"]]},
+{code:`podman run -d --name pg18 \\
+  -e POSTGRES_PASSWORD='ChangeMe-Long-Random' -p 5432:5432 \\
+  -v pgdata18:/var/lib/postgresql:Z docker.io/library/postgres:18`},
+{h:"Operations"},
+{t:[["Task","Command"],["Logs","`docker logs --tail 100 pg18`"],["Shell","`docker exec -it pg18 bash`"],["Parameters in use","`docker exec pg18 psql -U postgres -Atc \"SHOW shared_buffers;\"`"],["Logical backup","`docker exec pg18 pg_dump -U postgres -Fc appdb > appdb.dump`"],["Restore","`docker exec -i pg18 pg_restore -U postgres -d appdb --clean < appdb.dump`"],["Volume location and size","`docker volume inspect pgdata18`; `docker system df -v`"],["Stop gracefully","`docker stop -t 120 pg18` (the image sends a signal that causes a fast shutdown; allow time for the checkpoint)"],["Health","`docker inspect --format '{{.State.Health.Status}}' pg18`"]]},
+{h:"Upgrades and versions in containers"},
+{ul:["A **minor** update means pulling a newer tag of the same major (`postgres:18`) and recreating the container with the same volume.","A **major** update (17 to 18) is **not** an image swap: the new server will not start the old data. Use dump and restore, or `pg_upgrade` with both versions available, as in Section 10.","Pin tags (`postgres:18.0`, or a digest) in production and update on purpose; `latest` moves without warning."]},
+{h:"When containers are a good fit, and when to be careful"},
+{t:[["Good fit","Take care"],["Developer machines and CI that need a clean database for each test run","Production without a plan for storage, backups, monitoring and restarts"],["Several versions side by side for compatibility testing","Slow or shared network storage under the volume"],["Kubernetes with an operator that manages backups and failover","A container does not change the need for backups, `pg_hba.conf` review and WAL archiving"],["Reproducible lab for this course","Memory limits that are lower than `shared_buffers` plus connections: the kernel kills the container"]]},
+{ul:["Set a container memory limit **above** the total PostgreSQL memory plan, and `shm_size` (default 64 MB in Docker) large enough for parallel queries, which use shared memory in `/dev/shm`.","Publish the port to `127.0.0.1` or a private network, never to the world, and keep `POSTGRES_HOST_AUTH_METHOD` at its secure default.","Back up the **volume contents through PostgreSQL** (`pg_dump`, `pg_basebackup`), not by copying files of a running container."]},
+{h:"Troubleshooting"},
+{t:[["Symptom","Likely cause","Action"],["Data disappears after `docker rm`","Volume mounted at the wrong path (`/var/lib/postgresql/data` on 18)","Mount at `/var/lib/postgresql` and check `docker inspect` for anonymous volumes"],["Container exits immediately; log says the database is uninitialised and no password is set","`POSTGRES_PASSWORD` missing","Provide it, or a `_FILE` variable"],["`initdb: error: directory exists but is not empty`","Bind mount holds `lost+found` or hidden files","Use a subdirectory or an empty folder"],["Permission denied on a bind mount","Host directory owner differs from the container user (uid 999 in the Debian image)","Change the owner, use a named volume, or on SELinux hosts add `:Z`"],["`could not resize shared memory segment`","`/dev/shm` too small","Raise `--shm-size`"],["Password variable ignored after change","Cluster already initialised","Use `ALTER ROLE`"],["Cannot connect from the host","Port not published, or bound to the wrong interface","`docker ps` shows the mapping; test with `ss -ltn`"]]}
+],[["Docker Official Image: postgres","https://hub.docker.com/_/postgres"],["Docker Official Images README for postgres","https://github.com/docker-library/docs/blob/master/postgres/README.md"],["Server Setup and Operation",D+"runtime.html"],["Shared memory and semaphores",D+"kernel-resources.html"]]);
+
+/* ---------------------------------------------------------------- 1:11  systemd */
+N('pg:1:11',[
+{p:"On modern Linux, **systemd** starts PostgreSQL at boot, stops it at shutdown, restarts it when asked and records its output in the journal. Understanding the unit file lets you set limits, move the data directory, protect the server from the OOM killer and make sure a stop request becomes a clean, fast shutdown rather than a crash. This lecture explains the unit that the packages install and the one the manual recommends for source builds."},
+{h:"The unit file, line by line"},
+{code:`# the example from the PostgreSQL manual (Server Start-up, systemd)
+[Unit]
+Description=PostgreSQL database server
+Documentation=man:postgres(1)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=postgres
+ExecStart=/usr/local/pgsql/bin/postgres -D /usr/local/pgsql/data
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+KillSignal=SIGINT
+TimeoutSec=infinity
+
+[Install]
+WantedBy=multi-user.target`},
+{t:[["Line","Meaning","Why it is there"],["`After=` and `Wants=network-online.target`","Start after the network is up","Needed when `listen_addresses` or replication use real network addresses"],["`Type=notify`","The server tells systemd when it is **ready**, which happens after crash recovery finishes","Requires a build with `--with-systemd`; packages have it. Without it systemd cannot tell when startup is complete"],["`User=postgres`","Run as the unprivileged user","The server refuses to run as root"],["`Environment=PGDATA=...`","Data directory (package units)","Setup scripts and wrapper scripts read it; change it with a drop-in"],["`ExecStart=...postgres -D ...`","Run the postmaster in the foreground","systemd supervises it directly, no `pg_ctl` needed"],["`ExecReload=/bin/kill -HUP $MAINPID`","`systemctl reload` sends SIGHUP","Re-reads `postgresql.conf`, `pg_hba.conf` and `pg_ident.conf` without disconnecting sessions"],["`KillSignal=SIGINT`","Stop means SIGINT","SIGINT is the **fast** shutdown mode; the default SIGTERM would be the *smart* mode, which waits for every client to leave"],["`KillMode=mixed`","Send `KillSignal` to the main process only, and SIGKILL to the rest if the timeout expires","The postmaster stops its own children cleanly; leftovers are killed only as a last resort"],["`TimeoutSec=infinity`","Never give up waiting for start or stop","Crash recovery after a big workload, or the shutdown checkpoint, can take minutes; a short timeout would kill the server mid-recovery"],["`WantedBy=multi-user.target`","Start in normal multi-user boot","What `systemctl enable` links"]]},
+{h:"Signals behind the commands"},
+{flow:["systemctl stop","SIGINT to postmaster","Postmaster disconnects clients and tells children to exit","Shutdown checkpoint","Process exits, unit becomes inactive"]},
+{t:[["Signal to postmaster","Shutdown or action","Behaviour"],["SIGTERM","Smart","No new connections; wait for all sessions to end"],["SIGINT","Fast","Abort active transactions, disconnect clients, checkpoint, exit cleanly"],["SIGQUIT","Immediate","Exit without checkpoint; **crash recovery on next start**"],["SIGHUP","Reload","Re-read configuration files"],["SIGKILL","(never send)","Server cannot clean up shared memory; avoid"]]},
+{note:"Never use `kill -9` on the postmaster. If systemd must escalate to SIGKILL after a timeout, the next start performs crash recovery. This is safe, but it means data files were not checkpointed."},
+{h:"The usual commands"},
+{t:[["Task","Command"],["Start, stop, restart","`sudo systemctl start|stop|restart postgresql-18`"],["Reload configuration","`sudo systemctl reload postgresql-18`"],["Enable at boot and start now","`sudo systemctl enable --now postgresql-18`"],["Disable autostart","`sudo systemctl disable postgresql-18`"],["Prevent any start (even by a dependency)","`sudo systemctl mask postgresql-18`; undo with `unmask`"],["Status with last log lines","`systemctl status postgresql-18`"],["Is it enabled? Is it active?","`systemctl is-enabled postgresql-18`; `systemctl is-active postgresql-18`"],["The effective unit with all drop-ins","`systemctl cat postgresql-18`"],["Logs of this service","`journalctl -u postgresql-18 -n 100 --no-pager`; follow with `-f`; since boot `-b`"],["Why did it fail?","`systemctl status -l`, `journalctl -xeu postgresql-18`"]]},
+{p:"On Debian and Ubuntu the units are `postgresql@18-main` for one cluster and `postgresql` for all clusters together (see the apt lecture). Use `pg_ctlcluster` or `systemctl` consistently for one cluster; mixing `pg_ctl` run by hand with systemd leaves systemd believing the service is down."},
+{h:"Change a unit safely with a drop-in"},
+{p:"Files under `/usr/lib/systemd/system/` belong to the package and are replaced on update. Put your changes in a **drop-in** file, which systemd merges on top. `systemctl edit` creates it in `/etc/systemd/system/<unit>.d/override.conf` and reloads systemd for you."},
+{code:`sudo systemctl edit postgresql-18
+# enter, save and close:
+[Service]
+Environment=PGDATA=/data/pgsql/18/data
+LimitNOFILE=65536
+LimitNPROC=infinity
+LimitCORE=infinity
+OOMScoreAdjust=-900
+Environment=PG_OOM_ADJUST_FILE=/proc/self/oom_score_adj
+Environment=PG_OOM_ADJUST_VALUE=0
+
+sudo systemctl restart postgresql-18
+systemctl show postgresql-18 -p Environment -p LimitNOFILE -p OOMScoreAdjust`},
+{t:[["Setting","What it does"],["`LimitNOFILE`","Raises the open-file limit of the postmaster and all backends; needed for many connections or many tables. `/etc/security/limits.conf` is **not** used for systemd services"],["`OOMScoreAdjust=-900`","Makes the Linux OOM killer unlikely to choose the postmaster"],["`PG_OOM_ADJUST_FILE` and `PG_OOM_ADJUST_VALUE`","Tell the postmaster to reset the score for each **backend** to 0, so the killer, if it must act, picks a backend rather than the parent. This is the pattern in the manual (*Linux Memory Overcommit*)"],["`Environment=PGDATA=`","Data directory used by setup scripts and `ExecStart` of package units"],["`LimitCORE=infinity`","Allows core files for crash analysis; pair with a core pattern or `systemd-coredump`"]]},
+{h:"Restart policy"},
+{p:"`Restart=on-failure` is tempting, but PostgreSQL already restarts its own child processes after a backend crash (`restart_after_crash = on`), and a failed postmaster often means a real problem (full disk, corrupt file) that an endless restart loop only hides. Package units leave `Restart` unset. If you add it, set `RestartSec` and `StartLimitBurst`, and **do not** use it with Patroni, Pacemaker or another cluster manager that must control the service."},
+{h:"Hardening options (with care)"},
+{t:[["Option","Effect","Caution for PostgreSQL"],["`NoNewPrivileges=true`","Process cannot gain privileges","Safe"],["`ProtectHome=true`","Hides `/home`","Breaks `COPY`, backups or tablespaces placed under `/home`"],["`PrivateTmp=true`","Own `/tmp` for the service","Hides temporary files that scripts launched by the server share with other programs (for example `COPY ... PROGRAM`)"],["`ProtectSystem=full`","Makes `/usr`, `/boot` and `/etc` read-only","Safe on most servers"],["`ProtectSystem=strict` plus `ReadWritePaths=`","Whole file system read-only except listed paths","List **every** writable location: `PGDATA`, `pg_wal` target, tablespaces, log directory, WAL archive, backup target, `/run/postgresql`"],["`PrivateDevices=true`, `ProtectKernelTunables=true`","Hide devices and kernel settings","Safe; check extensions that read `/sys` or `/proc`"]]},
+{code:`# /etc/systemd/system/postgresql-18.service.d/hardening.conf
+[Service]
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateDevices=true
+# stricter variant: remember every path the server writes to
+#ProtectSystem=strict
+#ReadWritePaths=/data/pgsql /wal/pgsql /var/log/postgresql /archive /run/postgresql`},
+{p:"Test hardening in a lab: apply it, run a checkpoint, a base backup, an archive command and a `COPY` to a file, then check `journalctl` for `Read-only file system` errors."},
+{h:"Verify what the running service sees"},
+{code:`systemctl cat postgresql-18                # unit plus all drop-ins
+systemd-analyze security postgresql-18     # exposure score and hints
+MP=$(sudo head -1 /var/lib/pgsql/18/data/postmaster.pid)
+grep -E 'open files|processes' /proc/$MP/limits
+cat /proc/$MP/oom_score_adj                # postmaster
+ps -o pid,ppid,cmd --ppid $MP | head       # children
+for p in $(pgrep -P $MP | head -3); do echo "$p: $(cat /proc/$p/oom_score_adj)"; done`},
+{h:"Reload or restart? Ask the server"},
+{code:`-- context says what a change needs: postmaster = restart; sighup = reload; user/superuser = per session
+SELECT name, context FROM pg_settings WHERE name IN ('shared_buffers','max_connections','work_mem','log_min_duration_statement');
+
+-- after editing the file and reloading, which values wait for a restart?
+SELECT name, setting, pending_restart FROM pg_settings WHERE pending_restart;
+
+-- did the files parse? any errors?
+SELECT sourcefile, sourceline, name, setting, applied, error FROM pg_file_settings WHERE error IS NOT NULL;`}
+],[["Server Start-up",D+"server-start.html"],["Server Shutdown",D+"server-shutdown.html"],["Linux Memory Overcommit",D+"kernel-resources.html#LINUX-MEMORY-OVERCOMMIT"],["systemd.service","https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html"],["pg_settings view",D+"view-pg-settings.html"]]);
+
+/* ---------------------------------------------------------------- 1:12  extensions and contrib */
+N('pg:1:12',[
+{p:"An **extension** is a named package of SQL objects (functions, types, operators, views) and often a compiled library, that you add to a database with one command. Many of the features DBAs rely on daily, for example `pg_stat_statements`, `pgcrypto`, `pg_trgm` and `postgres_fdw`, are extensions. How you install the **files** depends on how you installed PostgreSQL, so this lecture belongs with the installation methods. Which extensions to choose is covered in the ecosystem lecture of Section 1."},
+{h:"Two steps, always"},
+{flow:["Make the files available on the server (package, make install, PGXS)","Optional: add the library to shared_preload_libraries and restart","CREATE EXTENSION in each database that needs it","Verify with pg_extension and test"]},
+{t:[["Step","Where it happens","Scope"],["1 Files on disk","Operating system: package manager or build","Per installation (all clusters of that major version)"],["2 Preload","`postgresql.conf` and a restart","Per cluster; only for modules that hook into the server"],["3 `CREATE EXTENSION`","Inside one database","Per database; objects live in that database only"]]},
+{h:"What an extension consists of"},
+{t:[["File type","Location (see `pg_config`)","Purpose"],["`name.control`","`SHAREDIR/extension/`","Metadata: default version, requirements, whether it is relocatable or trusted"],["`name--1.0.sql`, `name--1.0--1.1.sql`","`SHAREDIR/extension/`","Install script and version upgrade scripts"],["`name.so`","`PKGLIBDIR`","Compiled code for C-language extensions"]]},
+{code:`pg_config --sharedir --pkglibdir --version --configure
+
+-- inside SQL
+SELECT name, default_version, installed_version, comment
+FROM pg_available_extensions WHERE name IN ('pg_stat_statements','pgcrypto','pg_trgm','postgres_fdw')
+ORDER BY name;`},
+{p:"Version 18 adds the parameter `extension_control_path`, which lets the server find extension files outside the standard directory, useful for read-only images and for testing a build without installing it system-wide. Check the manual page of your version before relying on it."},
+{h:"Install contrib modules by method"},
+{t:[["Installation method","How to get contrib modules","Check"],["RHEL family (PGDG)","`sudo dnf install postgresql18-contrib`","`rpm -ql postgresql18-contrib | head`"],["Debian and Ubuntu","Included in `postgresql-18`","`ls /usr/share/postgresql/18/extension | head`"],["Windows installer","Included with the server component","`dir \"C:\\Program Files\\PostgreSQL\\18\\share\\extension\"`"],["Source build","`make world-bin` and `make install-world-bin`, or `make -C contrib install`","`pg_config --sharedir` then list `extension/`"],["Official container image","Contrib modules are included","`docker exec pg18 ls /usr/share/postgresql/18/extension`"]]},
+{h:"Third-party extensions with PGXS"},
+{p:"Most extensions outside contrib (PostGIS, pg_cron, pgaudit, pg_partman and others) come as **packages** per PostgreSQL major version, for example `postgresql18-postgis`, `postgresql-18-pgaudit` or `pg_cron_18`. When no package exists you can build from source with **PGXS**, the build system shipped with PostgreSQL. It needs the development files (`postgresql18-devel` or `postgresql-server-dev-18`) or your own source build, and it finds them through `pg_config`."},
+{code:`# build a third-party extension against ONE specific installation
+git clone https://example.com/some_extension.git && cd some_extension
+make USE_PGXS=1 PG_CONFIG=/usr/pgsql-18/bin/pg_config
+sudo make USE_PGXS=1 PG_CONFIG=/usr/pgsql-18/bin/pg_config install
+
+# prove it landed in the right place
+ls $(/usr/pgsql-18/bin/pg_config --pkglibdir) | grep some_extension
+ls $(/usr/pgsql-18/bin/pg_config --sharedir)/extension | grep some_extension`},
+{note:"Build and install the extension for **every** major version that you run, and install it on the new server **before** `pg_upgrade`. A missing library is the most common reason a major upgrade stops at the check phase."},
+{h:"Preload libraries"},
+{p:"Some modules hook into the server itself (query statistics, auditing, scheduled jobs). They must be loaded when the postmaster starts, so they appear in `shared_preload_libraries`, and a **restart** (not a reload) is needed."},
+{code:`-- list what is preloaded now
+SHOW shared_preload_libraries;
+
+-- add pg_stat_statements without losing existing entries
+ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements';
+-- then restart:  sudo systemctl restart postgresql-18
+
+-- after the restart, in each database that needs the views
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+SELECT calls, round(total_exec_time::numeric,1) AS ms, left(query,60) FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 5;`},
+{t:[["Module","Needs preload?","Typical use"],["`pg_stat_statements`","Yes","Per-statement statistics"],["`auto_explain`","Yes (or `session_preload_libraries`)","Log plans of slow statements"],["`pgaudit`","Yes","Detailed audit logging"],["`pg_cron`","Yes","Schedule SQL inside the database"],["`pg_prewarm`","Optional (for autoprewarm)","Warm the cache after restart"],["`pgcrypto`, `pg_trgm`, `hstore`, `citext`, `uuid-ossp`","No","Functions, types and index operator classes"],["`postgres_fdw`, `file_fdw`","No","Foreign data access"],["`pg_buffercache`, `pgstattuple`, `pageinspect`","No","Inspect memory and tables"]]},
+{h:"Managing extensions in SQL"},
+{code:`CREATE EXTENSION pg_trgm;                       -- install into the current database
+CREATE EXTENSION postgres_fdw SCHEMA ext;       -- choose a schema (if relocatable)
+\\dx                                             -- psql: list installed extensions
+SELECT extname, extversion, extnamespace::regnamespace FROM pg_extension;
+
+ALTER EXTENSION pg_trgm UPDATE;                 -- run upgrade scripts to the packaged default version
+SELECT * FROM pg_extension_update_paths('pg_trgm') LIMIT 5;
+DROP EXTENSION pg_trgm;                         -- fails if other objects depend on it (use CASCADE with care)`},
+{ul:["`CREATE EXTENSION` normally needs **superuser**. Extensions marked *trusted* in their control file (many contrib modules such as `pg_trgm`, `pgcrypto`, `hstore`, `citext`) can be created by any role that has `CREATE` privilege on the database.","Install into `template1` to have an extension in every future database; existing databases are not changed.","After a **minor** update of the package, objects keep working. After installing new binaries run `ALTER EXTENSION ... UPDATE` where the release notes advise it.","Keep a list of installed extensions per database in your inventory; they must be present on standbys too (the files, not the objects: objects replicate)."]},
+{h:"Troubleshooting"},
+{t:[["Message","Cause","Fix"],["`ERROR: extension \"x\" is not available`","Control file not found for this installation","Install the package for this **major version**; check `pg_config --sharedir`"],["`ERROR: could not open extension control file`","Same, or wrong path","Check the install location and `extension_control_path`"],["`FATAL: could not access file \"$libdir/x\": No such file`","Library missing or wrong version","Install the matching package, restart"],["`ERROR: permission denied to create extension`","Role is not superuser and extension is not trusted","Create it as a superuser"],["`pg_stat_statements must be loaded via shared_preload_libraries`","Preload not set or no restart","Set the parameter, restart"],["`ERROR: extension x has no update path`","Version jump not supported","Use the update path shown by `pg_extension_update_paths`"]]}
+],[["Additional Supplied Modules and Extensions (contrib)",D+"contrib.html"],["Packaging Related Objects into an Extension",D+"extend-extensions.html"],["Extension Building Infrastructure (PGXS)",D+"extend-pgxs.html"],["CREATE EXTENSION",D+"sql-createextension.html"],["pg_config",D+"app-pgconfig.html"],["shared_preload_libraries",D+"runtime-config-client.html#GUC-SHARED-PRELOAD-LIBRARIES"]]);
+
+/* ---------------------------------------------------------------- 1:13  post-install hardening and baseline */
+N('pg:1:13',[
+{p:"A freshly installed server runs with defaults chosen for compatibility and ease of installation, not for production. The **first hour** after installation is the best time to close the obvious gaps, because no application depends on the server yet and every change is easy. This lecture gives an ordered baseline for security, logging, basic memory settings and backup. It is deliberately a starting point: Sections 6 and 7 go deep on parameters and security, and each environment must adjust the numbers to its workload."},
+{h:"The first hour"},
+{flow:["Passwords and roles","Authentication rules (pg_hba.conf)","Listening address and TLS","Logging","Basic memory and WAL settings","Backup and restore test","Record and monitor"]},
+{h:"1. Passwords and roles"},
+{code:`-- superuser password (also use \\password in psql so it never appears in history)
+\\password postgres
+
+-- password hashing must be SCRAM (default since version 14)
+SHOW password_encryption;                      -- scram-sha-256
+
+-- do not let applications use the superuser: create separate roles
+CREATE ROLE app_owner NOLOGIN;
+CREATE ROLE app_rw  LOGIN PASSWORD 'change-me' ;
+CREATE ROLE app_ro  LOGIN PASSWORD 'change-me' ;
+CREATE ROLE dba_alice LOGIN PASSWORD 'change-me' IN ROLE pg_monitor;   -- named admin accounts, not shared logins
+
+-- review who can log in and who is superuser
+SELECT rolname, rolsuper, rolcanlogin, rolreplication, rolbypassrls FROM pg_roles WHERE rolname !~ '^pg_' ORDER BY 1;`},
+{h:"2. Authentication rules"},
+{p:"`pg_hba.conf` is read from top to bottom and the **first matching** line decides. Replace broad `trust` lines with specific, strong ones."},
+{code:`# TYPE  DATABASE  USER        ADDRESS          METHOD
+local   all       postgres                     peer
+local   all       all                          scram-sha-256
+host    all       all         127.0.0.1/32     scram-sha-256
+host    all       all         ::1/128          scram-sha-256
+# remote access, only from the application subnet and only over TLS
+hostssl appdb     app_rw      10.20.0.0/24     scram-sha-256
+# replication, only from the standby addresses
+hostssl replication repl      10.20.1.0/24     scram-sha-256`},
+{code:`-- check the file for errors BEFORE reloading
+SELECT line_number, type, database, user_name, address, auth_method, error FROM pg_hba_file_rules;
+SELECT pg_reload_conf();`},
+{h:"3. Listening address and TLS"},
+{t:[["Parameter","Baseline","Notes"],["`listen_addresses`","`localhost` at first; the specific server address when remote access is designed","`*` is convenient but means all interfaces; pair with a firewall"],["`port`","`5432`","Change only with a reason; document it"],["`ssl`","`on` with a real certificate","Self-signed is fine for a lab; use a certificate from your CA for production"],["`ssl_min_protocol_version`","`TLSv1.2` or higher","Default is already TLS 1.2"],["`unix_socket_permissions`","`0777` default is the usual; restrict with `unix_socket_group` if needed","Local access is also controlled by `pg_hba.conf`"]]},
+{code:`# self-signed certificate for a lab (production: request one from your CA)
+cd /var/lib/pgsql/18/data
+sudo -u postgres openssl req -new -x509 -days 365 -nodes -text -out server.crt -keyout server.key -subj "/CN=pg1.lab.local"
+sudo -u postgres chmod 600 server.key
+sudo -u postgres psql -c "ALTER SYSTEM SET ssl = on;" -c "SELECT pg_reload_conf();"
+psql "host=pg1.lab.local dbname=postgres user=postgres sslmode=require" -c "SELECT ssl, version FROM pg_stat_ssl WHERE pid = pg_backend_pid();"`},
+{h:"4. Logging baseline"},
+{t:[["Parameter","Suggested start","Why"],["`logging_collector`","`on`","Keeps logs in files under `PGDATA/log` (or journald if you prefer; choose one on purpose)"],["`log_directory`, `log_filename`","`log`, `postgresql-%a.log`","One file per weekday rotates automatically"],["`log_rotation_age`, `log_rotation_size`","`1d`, `0`","Predictable files"],["`log_line_prefix`","`%m [%p] %q%u@%d %a `","Time, process id, user, database, application: needed to read any log"],["`log_connections`, `log_disconnections`","`on`","Who connects, from where, for how long"],["`log_checkpoints`","`on`","Checkpoint frequency and duration (on by default since 15)"],["`log_min_duration_statement`","`500ms` or `1s` to start","Finds slow statements without logging everything"],["`log_lock_waits`","`on`","Reports waits longer than `deadlock_timeout`"],["`log_temp_files`","`0` or a size","Spills to disk mean `work_mem` pressure"],["`log_autovacuum_min_duration`","`0` or `1s`","Shows what autovacuum does"]]},
+{h:"5. Basic memory and WAL starting points"},
+{t:[["Parameter","Default","Starting point","Remark"],["`shared_buffers`","128MB","About 25 percent of RAM on a dedicated server (manual's starting suggestion)","Requires a restart"],["`effective_cache_size`","4GB","50 to 75 percent of RAM","Only a planner hint; allocates nothing"],["`work_mem`","4MB","Keep modest (4 to 32 MB)","Per sort or hash **per connection**; many connections multiply it"],["`maintenance_work_mem`","64MB","256MB to 1GB","For `VACUUM`, `CREATE INDEX`"],["`max_connections`","100","Keep, and add a pooler such as PgBouncer before raising","Each connection is a process"],["`wal_level`","`replica`","`replica`; `logical` only if needed","Needed for backups and standbys"],["`max_wal_size`","1GB","4GB or more on a busy server","Fewer forced checkpoints"],["`checkpoint_timeout`","5min","15min on busy servers","Longer recovery, smoother I/O"],["`archive_mode`, `archive_command`","`off`","Set up with the backup tool (Section 9)","Needed for point-in-time recovery"]]},
+{code:`ALTER SYSTEM SET shared_buffers = '2GB';              -- restart needed
+ALTER SYSTEM SET effective_cache_size = '6GB';
+ALTER SYSTEM SET maintenance_work_mem = '512MB';
+ALTER SYSTEM SET log_connections = on;
+ALTER SYSTEM SET log_min_duration_statement = '1s';
+SELECT pg_reload_conf();
+SELECT name, setting, unit, pending_restart FROM pg_settings WHERE name IN ('shared_buffers','effective_cache_size','maintenance_work_mem');`},
+{note:"These are starting points to be replaced by measurement. The manual describes each parameter in *Server Configuration*; Section 6 of this course shows how to read the effect of a change."},
+{h:"6. Operating-system and file hardening"},
+{t:[["Area","Baseline","Check"],["Data directory mode","`0700` (or `0750` with group access)","`ls -ld $PGDATA`"],["Ownership","`postgres:postgres`, no other writers","`find $PGDATA ! -user postgres | head`"],["Private key permissions","`server.key` mode `0600` (or `0640` for root-owned keys with group access)","`ls -l server.key`"],["SELinux","`Enforcing`, labelled directories","`getenforce`"],["Firewall","Port open only to required sources","`firewall-cmd --list-all`"],["`sudo` rights","Only named administrators may become `postgres`","`sudo -l -U alice`"],["Updates","Subscribed to security announcements and a patch window agreed","Calendar entry"],["Backups","Encrypted, offsite, restore tested","Backup report"]]},
+{h:"7. Database-level privilege hygiene"},
+{code:`-- since version 15 ordinary users cannot create objects in schema public of NEW databases;
+-- confirm for each database, and tighten older ones
+SELECT nspname, nspacl FROM pg_namespace WHERE nspname = 'public';
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+
+-- allow connection only to roles that need it
+REVOKE CONNECT ON DATABASE appdb FROM PUBLIC;
+GRANT  CONNECT ON DATABASE appdb TO app_rw, app_ro;`},
+{h:"8. Backup first, and test it"},
+{code:`# a first logical backup of everything (small servers) ...
+sudo -u postgres pg_dumpall -f /backup/first-all.sql
+
+# ... and a physical base backup for point-in-time recovery work later
+sudo -u postgres pg_basebackup -D /backup/base-$(date +%F) -Ft -z -P -X stream
+
+# restore the logical backup on ANOTHER server to prove it works
+psql -f first-all.sql postgres`},
+{h:"9. Sign-off record"},
+{t:[["Item","Value to record"],["Server name, environment, owner","e.g. `sales-prod`, production, Sales IT"],["Version, build method, install date","e.g. 18.x from PGDG on RHEL 9"],["`initdb` command and checksum setting","Exact command line"],["Paths: `PGDATA`, WAL, logs, backups","From `SHOW` commands"],["Network: address, port, firewall rule","As configured"],["Roles created and what each is for","List"],["Backup method, schedule, last restore test","Date and result"],["Deviations from this baseline and why","Short note"]]}
+],[["Server Configuration",D+"runtime-config.html"],["Client Authentication",D+"client-authentication.html"],["Secure TCP/IP Connections with SSL",D+"ssl-tcp.html"],["Error Reporting and Logging",D+"runtime-config-logging.html"],["Resource Consumption",D+"runtime-config-resource.html"],["Database Roles",D+"user-manag.html"],["Securing the public schema",D+"ddl-schemas.html#DDL-SCHEMAS-PATTERNS"]]);
+
+/* ---------------------------------------------------------------- 1:14  troubleshooting installation and first start */
+N('pg:1:14',[
+{p:"Almost every installation problem falls into a short list of causes: **files and permissions**, **configuration**, **resources**, **security layers** (SELinux, firewall) and **authentication**. This lecture gives a method for finding which one you face, the places where PostgreSQL and the operating system write their messages, and a catalogue of real error messages with their fixes. Keep it open the first few times you build a server."},
+{h:"A method that always works"},
+{svg:tshootSvg},
+{ul:["**Read the message** exactly; copy it. Do not retry blindly.","**Find the log.** The first error is the useful one; later errors are often consequences.","**Classify** the problem: file or permission, configuration value, resource, SELinux or firewall, or authentication.","**Change one thing**, then test again.","**Write the cause and the fix** in your runbook."]},
+{h:"Where to look"},
+{t:[["Source","Command or path","Contains"],["systemd journal","`journalctl -u postgresql-18 -n 100 --no-pager`","Start and stop messages, and server output when logging goes to journald"],["PostgreSQL log files","`PGDATA/log/`, `/var/log/postgresql/`, or the file given to `pg_ctl -l`","Server messages with `FATAL`, `ERROR`, `LOG`, `HINT`"],["Foreground start","`sudo -u postgres /usr/pgsql-18/bin/postgres -D /var/lib/pgsql/18/data`","Prints the very first error straight to your terminal; stop with Ctrl-C"],["Parameter check","`postgres -C data_directory -D $PGDATA`; view `pg_file_settings`","Whether the configuration parses"],["Control data","`pg_controldata $PGDATA`","State of the cluster, version, checksums, last checkpoint"],["SELinux","`ausearch -m avc -ts recent`, `sealert -a /var/log/audit/audit.log`","Denied file or port access"],["Kernel","`dmesg -T | tail`, `journalctl -k`","OOM killer, disk errors"],["Windows","Event Viewer, Application log; the `log` folder in the data directory","Service start failures"]]},
+{h:"Server will not start"},
+{t:[["Message","Cause","Fix"],["`FATAL: data directory \"...\" has invalid permissions` and `DETAIL: Permissions should be u=rwx (0700) or u=rwx,g=rx (0750).`","Mode too open or too closed","`chmod 700 $PGDATA`; confirm owner is `postgres`"],["`FATAL: data directory \"...\" has wrong ownership`","Owned by another user (often root)","`chown -R postgres:postgres $PGDATA`"],["`FATAL: lock file \"postmaster.pid\" already exists`","A server is running, or a crash left a stale file","`pg_ctl status`; if no process exists remove only the stale file and start again"],["`FATAL: database files are incompatible with server` with `The data directory was initialized by PostgreSQL version 17, which is not compatible with this version 18.`","Binaries and cluster belong to different major versions","Start with the matching binaries, or upgrade with `pg_upgrade` (Section 10)"],["`LOG: could not bind IPv4 address \"0.0.0.0\": Address already in use` and `HINT: Is another postmaster already running on port 5432?`","Port taken","`ss -ltnp | grep 5432`; stop the other server or change `port`"],["`FATAL: could not create lock file \"/var/run/postgresql/.s.PGSQL.5432.lock\": Permission denied`","Socket directory missing or not writable","Create it (`systemd-tmpfiles` or `mkdir`) owned by `postgres`"],["`FATAL: invalid value for parameter \"...\"` or `syntax error in file \"...postgresql.conf\" line N`","Typo in configuration","Fix the line shown; check with `pg_file_settings`"],["`FATAL: could not access file \"...\": No such file` for a library in `shared_preload_libraries`","Module not installed for this version","Install it or remove it from the list"],["`FATAL: could not create shared memory segment: Cannot allocate memory`","Memory too small for `shared_buffers`, huge pages requested but not reserved","Lower `shared_buffers`, reserve `vm.nr_hugepages`, or set `huge_pages = try`"],["`FATAL: too many connections for role` or `sorry, too many clients already`","`max_connections` reached","Add a pooler; raise `max_connections` only with memory planning"],["`\"root\" execution of the PostgreSQL server is not permitted`","Started as root","Start as `postgres`; use `sudo -u postgres` or the service"],["`PANIC: could not write to file \"pg_wal/xlogtemp.NNN\": No space left on device`","WAL volume full","Free space, then start; investigate stuck archiving or replication slots"],["`Job for postgresql-18.service failed because the control process exited with error code`","Any of the above","`journalctl -xeu postgresql-18` and read the first `FATAL` line"]]},
+{h:"Server runs, client cannot connect"},
+{flow:["Is the server up? pg_isready","Right host and port?","listen_addresses includes the address?","Firewall and SELinux allow the port?","pg_hba.conf has a matching rule?","Credentials and database valid?"]},
+{t:[["Message","Layer","Fix"],["`psql: error: connection to server on socket \"/var/run/postgresql/.s.PGSQL.5432\" failed: No such file or directory`","Server not running, or socket in another directory","`pg_isready`; check `unix_socket_directories`; use `-h localhost`"],["`psql: error: connection to server at \"10.20.0.5\", port 5432 failed: Connection refused`","Server down or not listening on that address, or a firewall rejects","`ss -ltnp` on the server; set `listen_addresses`; open the firewall"],["`... failed: timeout expired` (or connection hangs)","Packets dropped by a firewall or routing","Test with `nc -vz host 5432`; check firewall and network ACLs"],["`FATAL: no pg_hba.conf entry for host \"10.20.0.7\", user \"app\", database \"appdb\", no encryption`","Authentication rules","Add a matching `host` or `hostssl` line, reload"],["`FATAL: password authentication failed for user \"app\"`","Wrong password, or the role has no password","Reset with `ALTER ROLE ... PASSWORD`; check the method in `pg_hba.conf`"],["`FATAL: Peer authentication failed for user \"postgres\"`","`peer` needs the same OS user","`sudo -u postgres psql`, or use TCP with a password"],["`FATAL: role \"x\" does not exist`","Role not created, or typed wrongly","`\\du` as superuser"],["`FATAL: database \"x\" does not exist`","Wrong database name","`\\l`; connect to `postgres` first"],["`FATAL: no pg_hba.conf entry ... no encryption` but `hostssl` rule exists","Client connected without TLS","Use `sslmode=require` or add a `host` rule"],["`FATAL: password authentication failed` only from a new client library","Library does not support SCRAM","Upgrade the driver; avoid weakening the server"]]},
+{h:"Installation-time problems"},
+{t:[["Symptom","Cause","Fix"],["`bash: psql: command not found`","Binaries not in `PATH`","Use the full path (`/usr/pgsql-18/bin/psql`) or add to `PATH`; Debian uses wrappers"],["`dnf` cannot find packages, or installs the distribution version","Repository or module problem","See the yum lecture"],["`postgresql-18-setup initdb` says the data directory is not empty","Cluster already created","Inspect `ls -la $PGDATA`; remove only if empty of value"],["`locale ... not found` during `initdb`","Locale not installed","Install language pack; `locale -a`"],["Cannot find config files on Debian","They are in `/etc/postgresql`","`SHOW config_file;`"],["Works until reboot, then stopped","Service not enabled","`systemctl enable postgresql-18`"],["Works with `pg_ctl`, fails under systemd","Different user, environment, limits or SELinux context","Compare with `systemctl cat`; check `ausearch`"],["Container exits at once","Password variable or volume problem","`docker logs`; see the container lecture"]]},
+{h:"Collect a support bundle"},
+{code:`# run as postgres or with sudo; share the output, never passwords
+OUT=/tmp/pg-support-$(hostname)-$(date +%F).txt
+{
+  echo "== OS";           cat /etc/os-release; uname -a
+  echo "== packages";     rpm -qa | grep -i postgres || dpkg -l | grep -i postgres
+  echo "== service";      systemctl status postgresql-18 --no-pager -l
+  echo "== journal";      journalctl -u postgresql-18 -n 80 --no-pager
+  echo "== listeners";    ss -ltnp | grep -E 'postgres|5432'
+  echo "== data dir";     ls -ld /var/lib/pgsql/18/data; ls -la /var/lib/pgsql/18/data | head -40
+  echo "== controldata";  /usr/pgsql-18/bin/pg_controldata /var/lib/pgsql/18/data
+  echo "== selinux";      getenforce; ausearch -m avc -ts recent 2>/dev/null | tail -20
+  echo "== disk";         df -h
+  echo "== memory";       free -h
+} > "$OUT" 2>&1
+echo "wrote $OUT"`},
+{note:"When you ask for help in a forum or mailing list, include the exact version, how it was installed, the full first error from the log, and what you already tried. The documentation lecture in Section 1 explains how to ask well."}
+],[["Server Start-up Failures",D+"server-start.html#SERVER-START-FAILURES"],["Client Connection Problems",D+"server-start.html#CLIENT-CONNECTION-PROBLEMS"],["Error Reporting and Logging",D+"runtime-config-logging.html"],["Client Authentication Problems",D+"client-authentication-problems.html"],["The pg_file_settings view",D+"view-pg-file-settings.html"],["pg_isready",D+"app-pg-isready.html"]]);
+
+/* ---------- register the 8 new lectures with the course outline ---------- */
+window.EXTRA_LECTURES=window.EXTRA_LECTURES||{};
+window.EXTRA_LECTURES[1]=(window.EXTRA_LECTURES[1]||[]).concat([
+['Pre-Installation Planning, OS Preparation and Kernel Tuning','0:00','Sizing, the postgres OS user, file systems and mounts, overcommit, swappiness, huge pages, service limits, time and locale, with sysctl settings and a verification script.'],
+['initdb in Depth: Creating a Database Cluster','0:00','What initdb creates, every option explained, locale, encoding and providers, data checksums (default in 18), WAL size and location, authentication, reversible and permanent choices.'],
+['Debian and Ubuntu: apt Installation and the pg_wrapper Tools','0:00','PGDG apt repository, the automatic main cluster, the Debian file layout, pg_lsclusters and pg_createcluster, multiple clusters, options, updates, removal and troubleshooting.'],
+['Containers: Running PostgreSQL with Docker and Podman','0:00','The official image, volumes and the version 18 data-path change, environment variables, init scripts, configuration, Compose, rootless Podman, operations, upgrades and pitfalls.'],
+['Managing PostgreSQL with systemd','0:00','The unit file line by line, signals and shutdown modes, drop-in overrides, limits and OOM protection, restart policy, hardening options and how to verify the running service.'],
+['Installing Extensions and Contrib Modules','0:00','Extension files, contrib by installation method, PGXS builds, shared_preload_libraries, CREATE EXTENSION and updates, trusted extensions and common errors.'],
+['Post-Installation Hardening and the Production Baseline','0:00','The first hour: roles and passwords, pg_hba.conf, TLS, logging and memory starting points, OS and file hardening, privilege hygiene, first backup and a sign-off record.'],
+['Troubleshooting Installation and First Start','0:00','A method for diagnosing problems, where logs live, server start failures, client connection errors, installation-time problems and a support-bundle script.']]);
+})();
