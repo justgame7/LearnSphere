@@ -107,6 +107,12 @@ h2{font-size:14px;font:600 12px var(--mono);letter-spacing:.8px;text-transform:u
 .srcs a{color:var(--accent);display:block;margin-top:6px;word-break:break-all}
 .tag{font:600 10px var(--mono);color:var(--accent);border:1px solid var(--accent);border-radius:99px;padding:2px 7px}
 .ld .btn{margin-right:8px}
+.auto{display:flex;align-items:center;gap:9px;margin-top:14px;font-size:13px;color:var(--mut);cursor:pointer;width:fit-content}
+.auto input{accent-color:var(--accent);width:17px;height:17px;margin:0;cursor:pointer}
+.auto.big{margin:12px 0 0;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);color:var(--tx)}
+.apn{font:600 12px var(--mono);color:var(--mut);margin-top:14px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--panel);color:var(--tx);border:1px solid var(--accent);padding:10px 16px;border-radius:12px;font-size:13px;opacity:0;pointer-events:none;transition:.25s;z-index:50;max-width:90vw}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 </style></head>
 <body>
 <header><div class="bar"><div class="logo" onclick="location.hash='#/'"><i>L</i>LearnSphere</div><div class="sp"></div>
@@ -195,6 +201,27 @@ if(window.EXTRA_LECTURES)Object.entries(window.EXTRA_LECTURES).forEach(([i,a])=>
 const $=s=>document.querySelector(s),app=$('#app');
 let P={};try{P=JSON.parse(localStorage.getItem('ls_prog')||'{}')}catch(e){}
 const save=()=>{try{localStorage.setItem('ls_prog',JSON.stringify(P))}catch(e){}};
+/* ---------- AUTO-PROGRESS (per course, off by default) ---------- */
+const AUTO_SECS=60;
+let AUTO={};try{AUTO=JSON.parse(localStorage.getItem('ls_auto')||'{}')}catch(e){}
+const autoOn=cid=>!!AUTO[cid];
+function setAuto(cid,on){if(on)AUTO[cid]=1;else delete AUTO[cid];try{localStorage.setItem('ls_auto',JSON.stringify(AUTO))}catch(e){}}
+const autoBox=(cid,big)=>`<label class="auto${big?' big':''}" onclick="event.stopPropagation()"><input type="checkbox" ${autoOn(cid)?'checked':''} onclick="event.stopPropagation()" onchange="setAuto('${cid}',this.checked)"><span>Auto-progress</span></label>`;
+let TRK=null;
+function stopTrack(){if(TRK){clearInterval(TRK.id);TRK=null}}
+function toast(m){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';document.body.appendChild(t)}t.textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2600)}
+function startTrack(c,si,li){
+ stopTrack();if(!autoOn(c.id)||done(c,si,li))return;
+ let sec=0;
+ TRK={id:setInterval(()=>{
+  if(document.hidden)return;                 /* only count time while the page is visible */
+  sec++;
+  if(sec>=AUTO_SECS){stopTrack();
+   P[c.id]=P[c.id]||{};P[c.id][key(si,li)]=1;save();
+   const b=document.getElementById('dnb');if(b){b.className='btn ghost';b.textContent='✓ Completed (undo)'}
+   toast('✓ Lesson marked complete')}
+ },1000)};
+}
 const sec2=t=>{const[m,s]=t.split(':').map(Number);return m*60+s};
 const fmt=s=>{const h=Math.floor(s/3600),m=Math.round(s%3600/60);return h?`${h}h ${m}m`:`${m}m`};
 const key=(si,li)=>si+'-'+li,done=(c,si,li)=>!!(P[c.id]||{})[key(si,li)];
@@ -215,14 +242,13 @@ function vCourses(){
  h+=`<h2>Courses</h2><div class="grid">`+COURSES.map((c,i)=>{const on=c.sections.length;
   return `<div class="card ${on?'':'off'}" style="--c:${c.color};animation-delay:${i*70}ms" ${on?`onclick="go('#/c/${c.id}')"`:''}><div class="ico">${c.tag}</div><h3>${c.name}</h3><p>${c.blurb}</p>
   <div class="meta">${on?`<span class="chip">${c.sections.length} sections</span><span class="chip">${cnt(c)} lectures</span>`:`<span class="chip">Curriculum coming soon</span>`}</div>
-  ${on?`<div class="bt"><b style="width:${pct(c)}%"></b></div><div class="pct"><span>${dn(c)}/${cnt(c)} done</span><span>${pct(c)}%</span></div>`:''}</div>`}).join('')+`</div>`;
+  ${on?`<div class="bt"><b style="width:${pct(c)}%"></b></div><div class="pct"><span>${dn(c)}/${cnt(c)} done</span><span>${pct(c)}%</span></div>`:''}${autoBox(c.id)}</div>`}).join('')+`</div>`;
  return h}
 function vTopics(c){
  const n=nextUp(c),tot=c.sections.reduce((a,s)=>a+dur(s.l),0);
  let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›<span>${c.name}</span></div>
- <div class="hero" style="--c:${c.color}"><div class="tx"><span class="chip">${c.level}</span><h1 style="margin:10px 0 6px">${c.name}</h1><p class="sub" style="margin:0 0 6px">${c.blurb}</p>
- <div class="stats"><div><b>${c.sections.length}</b>sections</div><div><b>${cnt(c)}</b>lectures</div></div>
- <div class="row">${n?`<button class="btn" onclick="go('#/c/${c.id}/${n[0]}')">${dn(c)?'Resume':'Start course'} ▸</button>`:`<span class="chip live">✓ Course complete</span>`}</div></div>
+ <div class="hero" style="--c:${c.color}"><div class="tx"><span class="chip">${c.level}</span><h1 style="margin:10px 0 6px">${c.name}</h1> <div class="stats"><div><b>${c.sections.length}</b>sections</div><div><b>${cnt(c)}</b>lectures</div></div>
+ <div class="row">${n?`<button class="btn" onclick="go('#/c/${c.id}/${n[0]}')">${dn(c)?'Resume':'Start course'} ▸</button>`:`<span class="chip live">✓ Course complete</span>`}</div>${autoBox(c.id,1)}</div>
  <div class="ring" style="--p:${pct(c)}"><span>${pct(c)}%</span></div></div>
  <div class="row" style="margin:-8px 0 6px">${c.outcomes.map(o=>`<span class="chip">✓ ${o}</span>`).join('')}</div><h2>Topics</h2><div class="grid">`;
  h+=c.sections.map((s,si)=>{const d=secDone(c,si),p=Math.round(d/s.l.length*100);
@@ -259,15 +285,17 @@ function vLesson(c,si,li){
  const L=LS()[c.id+':'+si+':'+li],pv=adj(c,si,li,-1),nx=adj(c,si,li,1),d=done(c,si,li);
  let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›<a onclick="go('#/c/${c.id}')">${c.name}</a>›<a onclick="go('#/c/${c.id}/${si}')">${esc(s.t)}</a></div><div class="ls" style="--c:${c.color}"><h1>${esc(x[0])}</h1><div class="meta" style="margin:0 0 22px"><span class="chip">Section ${si+1} · Lecture ${li+1}</span>${x[1]==='0:00'?`<span class="chip live">★ Bonus lesson</span>`:''}</div>`;
  h+=L?L.blocks.map(blk).join('')+(L.src&&L.src.length?`<div class="srcs">SOURCES${L.src.map(r=>`<a href="${r[1]}" target="_blank" rel="noopener">${esc(r[0])} ↗</a>`).join('')}</div>`:''):`<p>${x[2]?esc(x[2]):'Lesson not available yet.'}</p>`;
- h+=`<div class="row" style="margin-top:26px"><button class="btn ${d?'ghost':''}" onclick="tog('${c.id}',${si},${li})">${d?'✓ Completed (undo)':'Mark as done'}</button></div>
+ h+=`<div class="row" style="margin-top:26px"><button id="dnb" class="btn ${d?'ghost':''}" onclick="tog('${c.id}',${si},${li})">${d?'✓ Completed (undo)':'Mark as done'}</button></div>
  <div class="pn">${pv?`<button class="btn ghost" onclick="go('#/c/${c.id}/${pv[0]}/${pv[1]}')">◂ ${esc(c.sections[pv[0]].l[pv[1]][0])}</button>`:'<span></span>'}${nx?`<button class="btn" onclick="go('#/c/${c.id}/${nx[0]}/${nx[1]}')">${esc(c.sections[nx[0]].l[nx[1]][0])} ▸</button>`:''}</div></div>`;
  return h}
-function tog(cid,si,li){const k=key(si,li);P[cid]=P[cid]||{};if(P[cid][k])delete P[cid][k];else P[cid][k]=1;save();
- const open=[...document.querySelectorAll('.lec.open')].map(e=>e.id);render(true);open.forEach(i=>{const e=document.getElementById(i);e&&e.classList.add('open')})}
-function render(keep){
+function tog(cid,si,li){stopTrack();const k=key(si,li);P[cid]=P[cid]||{};if(P[cid][k])delete P[cid][k];else P[cid][k]=1;save();
+ const open=[...document.querySelectorAll('.lec.open')].map(e=>e.id);render(true,true);open.forEach(i=>{const e=document.getElementById(i);e&&e.classList.add('open')})}
+function render(keep,noTrack){
+ stopTrack();
  const[,r,id,si,li]=location.hash.split('/');let c=COURSES.find(x=>x.id===id&&x.sections.length);
  app.innerHTML=r==='c'&&c?(li!==undefined?vLesson(c,+si,+li):si!==undefined?vSub(c,+si):vTopics(c)):vCourses();
- if(!keep)window.scrollTo(0,0)}
+ if(!keep)window.scrollTo(0,0);
+ if(!noTrack&&r==='c'&&c&&li!==undefined&&c.sections[+si]&&c.sections[+si].l[+li])startTrack(c,+si,+li)}
 addEventListener('hashchange',()=>render());
 $('#th').onclick=()=>{const r=document.documentElement,t=r.dataset.theme==='light'?'dark':'light';r.dataset.theme=t;try{localStorage.setItem('ls_theme',t)}catch(e){}const m=document.querySelector('meta[name=theme-color]');if(m)m.content=t==='light'?'#F4F6FA':'#0A0C10'};
 render();
