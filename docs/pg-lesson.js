@@ -8650,3 +8650,227 @@ window.EXTRA_LECTURES[3]=(window.EXTRA_LECTURES[3]||[]).concat([
 ['Transactions, Locking and Deadlocks','0:00','Transaction IDs and savepoints, table and row lock modes with conflict matrices, lock queues and safe DDL, deadlock detection, advisory and predicate locks, retry rules and a root-blocker troubleshooting method.'],
 ['Crash Recovery, Checkpoints and Timelines in Depth','0:00','Crash, archive and standby recovery compared, the startup-process redo steps, the REDO point and checkpoint internals, recovery time versus checkpoint settings, timelines and history files, recovery log messages and failures.']]);
 })();
+
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - helpers + Section 1 (Introduction)
+   Load LAST in pg-lesson.js (after every depth update). Runs at load time on the final window.LESSONS.
+   How it works:
+   - A lecture is "additional content" when window.LS_ADDL_FLAGS[originalSectionIndex][lectureTitle] = order (a number).
+     index.html writes that number into the lecture entry (4th element) and shows the lecture in the section's
+     optional "Additional content" group. Lecture indexes never change, so saved progress and lesson keys stay valid.
+   - Overloaded lectures are split: H.take() cuts named heading-sections out of the core lecture and H.add()
+     publishes them as a new additional lecture. H.noteBefore()/H.note() leave a pointer in the core lecture.
+   - H.rep() fixes wording in other lectures that pointed at content which moved.
+   Later sections: add another self-contained block below this one that reuses window.LS_ADDL.
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL=window.LS_ADDL||{};
+window.LS_ADDL_FLAGS=window.LS_ADDL_FLAGS||{};
+/* number of lectures defined statically in index.html per ORIGINAL section index (before the Architecture/Basic-Configuration swap) */
+H.base=H.base||{0:3,1:6,2:3,3:5,4:8,5:9,6:7,7:4,8:8,9:3};
+const warn=(...a)=>{try{console.warn('LS_ADDL:',...a)}catch(e){}};
+H.flag=H.flag||function(sec,title,order){(window.LS_ADDL_FLAGS[sec]=window.LS_ADDL_FLAGS[sec]||{})[title]=order};
+/* cut each named heading-section (heading + following blocks up to the next heading) out of lecture `key`; returns the blocks in the order of `heads` */
+H.take=H.take||function(key,heads){const lec=L[key],out=[];if(!lec){warn('no lecture',key);return out}
+ heads.forEach(h=>{const i=lec.blocks.findIndex(b=>b.h===h);if(i<0){warn('heading not found',key,h);return}
+  let j=i+1;while(j<lec.blocks.length&&!lec.blocks[j].h)j++;out.push(...lec.blocks.splice(i,j-i))});return out};
+/* insert a pointer note before the heading `before`, else before the first "(Section NN)" cross-reference heading, else at the end */
+H.noteBefore=H.noteBefore||function(key,before,text){const lec=L[key];if(!lec){warn('no lecture',key);return}
+ let i=before?lec.blocks.findIndex(b=>b.h===before):-1;
+ if(i<0)i=lec.blocks.findIndex(b=>b.h&&/\(Section \d+\)/.test(b.h));
+ if(i<0)i=lec.blocks.length;lec.blocks.splice(i,0,{note:text})};
+/* replace text inside paragraphs, headings, notes, list items and table cells; warns if nothing matched */
+H.rep=H.rep||function(key,from,to){const lec=L[key];let n=0;if(!lec){warn('no lecture',key);return 0}
+ const f=s=>{if(typeof s!=='string'||s.indexOf(from)<0)return s;n+=s.split(from).length-1;return s.split(from).join(to)};
+ lec.blocks.forEach(b=>{['p','h','note'].forEach(k=>{if(b[k])b[k]=f(b[k])});if(b.ul)b.ul=b.ul.map(f);if(b.t)b.t=b.t.map(r=>r.map(f))});
+ if(!n)warn('text not found',key,from);return n};
+const dedupe=a=>{const s=new Set();return (a||[]).filter(r=>!s.has(r[1])&&s.add(r[1]))};
+/* remove (or copy, with keep) source links whose URL matches `re` from lecture `key` */
+H.srcFor=H.srcFor||function(key,re,keep){const lec=L[key];if(!lec||!lec.src)return[];const hit=dedupe(lec.src.filter(r=>re.test(r[1])));if(!keep)lec.src=lec.src.filter(r=>!re.test(r[1]));return hit};
+/* register a new additional lecture at the end of original section `sec`; returns its lesson key */
+H.add=H.add||function(sec,o){const ex=window.EXTRA_LECTURES=window.EXTRA_LECTURES||{};ex[sec]=ex[sec]||[];
+ const idx=H.base[sec]+ex[sec].length;ex[sec].push([o.title,'0:00',o.desc]);
+ const key='pg:'+sec+':'+idx;L[key]={blocks:o.blocks,src:dedupe(o.src||[])};H.flag(sec,o.title,o.order);return key};
+const tidy=k=>{if(L[k]&&L[k].src)L[k].src=dedupe(L[k].src)};
+
+/* ---------------- Section 1: Introduction ---------------- */
+const S=0;
+const T_PLAN='Study Plan, Capstone Project and How the Lessons Are Built';
+const T_DEPTH='PostgreSQL in More Depth: History, License, Feature Tour and Fit';
+const T_ROLE='The DBA Role Extended: Managed Services, MySQL and Terminology Map';
+const T_REL='Release Calendar, Support Lifecycle and Reading Release Notes';
+const T_VM='Optional Multi-VM Lab for Sections 9 and 10';
+
+/* 1) whole lectures that move to Additional content (their indexes stay the same) */
+H.flag(S,'Linux and SQL Prerequisites Refresher',6);
+H.flag(S,'Using the PostgreSQL Documentation and Community',7);
+H.flag(S,'The PostgreSQL Ecosystem: Extensions, Tools and Managed Services',8);
+H.flag(S,'A DBA Routine: Checklists, Runbooks and Change Management',9);
+
+/* 2) split the overloaded core lectures into new additional lectures */
+/* 1.1 Introduction */
+H.add(S,{title:T_PLAN,order:1,
+ desc:'An eight-week study plan, the capstone project, how every lesson is built, the notation used in the lessons and the break-fix learning loop.',
+ blocks:[{p:'This lesson collects the course-management material from the introduction: a study plan, a final project, and a description of how each lesson is written. Use it when you want to plan your weeks or set up a routine for practising.'}].concat(
+  H.take('pg:0:0',['Suggested eight-week study plan','Capstone project','How every lecture is built','Conventions used in the lessons','The break-fix learning loop']))});
+H.noteBefore('pg:0:0',null,'**Reading the lessons:** examples use PostgreSQL 18 and the PGDG RPM paths, `postgres=#` is a `psql` prompt as superuser, and a heading ending in (Section NN) points to the lecture where that topic is taught in full. The eight-week study plan, the capstone project, how every lecture is built and the break-fix learning loop are in the **Additional content** of this section: "'+T_PLAN+'".');
+
+/* 1.2 What is PostgreSQL */
+const srcDepth=H.srcFor('pg:0:1',/history\.html|features\.html|limits\.html|transaction-iso\.html/);
+H.add(S,{title:T_DEPTH,order:2,
+ desc:'Project history and milestone timeline, the license and community model, a feature tour with SQL examples, isolation levels, standards and limits, and when PostgreSQL is or is not the right choice.',
+ blocks:[{p:'This lesson holds the background and reference material that goes beyond the core ideas of "What is PostgreSQL" (ACID, MVCC, extensibility and the client/server model). Read it when you want the history, the licence, a wider feature list or help deciding whether PostgreSQL fits a project.'}].concat(
+  H.take('pg:0:1',['Where PostgreSQL came from','Timeline of major milestones','The PostgreSQL License and the community model','Feature tour','A short tour in SQL','Isolation levels in one table','Standards and limits','When PostgreSQL is a good fit, and when to look elsewhere'])),
+ src:srcDepth});
+H.noteBefore('pg:0:1',null,'The project history and timeline, the licence and community model, the feature tour, isolation levels, standards and limits, and when PostgreSQL is a good fit are in the **Additional content** of this section: "'+T_DEPTH+'".');
+
+/* 1.3 DBA Role and Responsibilities */
+H.add(S,{title:T_ROLE,order:3,
+ desc:'Self-managed versus managed PostgreSQL, a PostgreSQL versus MySQL comparison, and a vocabulary map across Oracle, SQL Server and PostgreSQL.',
+ blocks:[{p:'This lesson extends "DBA Role and Responsibilities" with three reference topics: who does what on a managed service, how PostgreSQL differs from MySQL, and how common terms map between Oracle, SQL Server and PostgreSQL.'}].concat(
+  H.take('pg:0:2',['Self-managed versus managed PostgreSQL','PostgreSQL compared with MySQL','Terminology across Oracle, SQL Server and PostgreSQL']))});
+H.noteBefore('pg:0:2',null,'Self-managed versus managed PostgreSQL, the comparison with MySQL and the Oracle / SQL Server / PostgreSQL terminology map are in the **Additional content** of this section: "'+T_ROLE+'".');
+
+/* 1.4 PostgreSQL Versions and Release Cycle */
+const srcRel=H.srcFor('pg:0:3',/versioning|release/,true);
+H.add(S,{title:T_REL,order:4,
+ desc:'The support lifecycle of recent major versions, the yearly and quarterly release calendar, what a major release can change, how to read release notes and a routine for minor updates.',
+ blocks:[{p:'This lesson goes deeper into the release process than the core lecture on version numbers. Use it when you plan a version choice, read release notes before an upgrade, or set up a routine for minor updates.'}].concat(
+  H.take('pg:0:3',['Support lifecycle of recent major versions','The yearly and quarterly calendar','What a major release can change','How to read the release notes','A minor update routine'])),
+ src:srcRel});
+H.noteBefore('pg:0:3',null,'The support lifecycle table, the yearly and quarterly release calendar, what a major release can change, how to read release notes and a minor-update routine are in the **Additional content** of this section: "'+T_REL+'".');
+
+/* 1.5 Lab Setup */
+H.add(S,{title:T_VM,order:5,
+ desc:'Clone the base VM into a three-server lab (primary, standby and a logical-replication or backup target) for the backup, replication and upgrade exercises.',
+ blocks:[{p:'The backup, replication and upgrade lectures of Sections 9 and 10 are easier to practise with more than one server. Build this lab after your single-VM lab from "Lab Setup" works.'}].concat(
+  H.take('pg:0:4',['Optional multi-VM lab for Sections 9 and 10']))});
+H.noteBefore('pg:0:4','Lab safety rules','An optional three-server lab for Sections 9 and 10 is described in the **Additional content** of this section: "'+T_VM+'". You only need it from Section 9 onward.');
+
+/* 3) update pointers in lectures that referred to content which moved */
+H.rep('pg:0:0','Every lecture in order, plus the prerequisites refresher','Every lecture in order, plus the prerequisites refresher (in the Additional content of this section)');
+H.rep('pg:0:0','Lecture "Linux and SQL Prerequisites Refresher" in this section','Lecture "Linux and SQL Prerequisites Refresher" in the Additional content of this section');
+H.rep('pg:0:0','Explain the product, the role and the support calendar','Explain the product, the role and how versions are numbered');
+H.rep('pg:0:2','Section 2 and the prerequisites refresher','Section 2 and the prerequisites refresher (Section 1, Additional content)');
+H.rep('pg:0:2','Section 5 and the documentation','Section 5 and the documentation lecture (Section 1, Additional content)');
+H.rep('pg:0:2','Lecture "A DBA Routine: Checklists, Runbooks and Change Management"','Lecture "A DBA Routine: Checklists, Runbooks and Change Management" (Section 1, Additional content)');
+H.rep('pg:1:12','covered in the ecosystem lecture of Section 1','covered in the ecosystem lecture in the Additional content of Section 1');
+H.rep('pg:1:14','The documentation lecture in Section 1 explains','The documentation lecture in the Additional content of Section 1 explains');
+['pg:0:0','pg:0:1','pg:0:2','pg:0:3','pg:0:4'].forEach(tidy);
+
+/* 4) refresh outline descriptions of the trimmed lectures */
+(function(){const ex=window.EXTRA_LECTURES&&window.EXTRA_LECTURES[0]||[];
+ const d=(t,s)=>{const e=ex.find(x=>x[0]===t);if(e)e[2]=s;else warn('outline entry not found',t)};
+ d('PostgreSQL Versions and Release Cycle','Major and minor version numbers, which upgrade type applies, how to check versions everywhere and how to choose a version for a new system.');
+ d('Lab Setup: Building Your Practice Environment','Choose and build a safe lab: virtualisation options, VM sizing, NAT and host-only networking, SSH access, snapshots and sample data.');
+})();
+})();
+
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - Section 2 (Installation Methods)
+   Load LAST in pg-lesson.js, after the Section 1 block (uses window.LS_ADDL from it).
+   Core stays: 2.1 to 2.7, the basics of initdb (2.9) and troubleshooting (2.15).
+   Moves out: OS preparation, Debian/Ubuntu, containers, systemd, extensions and hardening (whole lectures) plus the
+   reference parts of the source, yum, RPM, Windows, initdb and troubleshooting lectures. Lecture indexes never change.
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL;
+if(!H){try{console.warn('LS_ADDL: helpers missing, Section 2 restructure skipped')}catch(e){}return}
+const warn=(...a)=>{try{console.warn('LS_ADDL:',...a)}catch(e){}};
+const dedupe=a=>{const s=new Set();return (a||[]).filter(r=>!s.has(r[1])&&s.add(r[1]))};
+const tidy=k=>{if(L[k]&&L[k].src)L[k].src=dedupe(L[k].src)};
+const S=1;
+const T_SRC='Source Builds in Depth: Meson, Full Option Reference, Build Errors and a Service Unit';
+const T_PKG='Package Installs Extended: EL8, EL9 and EL10 Differences and Air-Gapped Repositories';
+const T_WIN='Windows Installs Extended: Silent Installation, Zip Archive and File Permissions';
+const T_INIT='initdb Reference: Every Option, Locale and Encoding, WAL Volume and Errors';
+const T_TRB='Troubleshooting Extended: Yum Installation Failures and the Support Bundle';
+
+/* 1) pointer fixes first, so the changed wording travels with any block that moves later */
+H.rep('pg:1:0','New lectures at the end of the section cover operating-system preparation, `initdb`, Debian and Ubuntu, containers, systemd, extensions, hardening and troubleshooting.','The later lectures cover the post-installation checklist, `initdb` and troubleshooting. Operating-system preparation, Debian and Ubuntu, containers, systemd, extensions and hardening are in the **Additional content** of this section; read them when you need them.');
+H.rep('pg:1:2','The lecture *initdb in Depth* explains each option.','The lecture *initdb in Depth* explains the main choices; the full option reference is in the Additional content of this section.');
+H.rep('pg:1:6','is ready for the *Production Baseline* lecture and','is ready for the *Production Baseline* lecture (Additional content of this section) and');
+H.rep('pg:1:6','and *Post-Installation Hardening and the Production Baseline*. Do them','and *Post-Installation Hardening and the Production Baseline*, all three in the Additional content of this section. Do them');
+H.rep('pg:1:14','see the container lecture','see the container lecture (Additional content of this section)');
+H.rep('pg:1:14','See the yum lecture','See the yum lecture and, for more, the Additional content of this section');
+H.rep('pg:0:3','*Containers: Docker and Podman* (Section 02)','*Containers: Docker and Podman* (Section 02, Additional content)');
+H.rep('pg:0:3','*Source Method Installation* (Section 02)','*Source Builds in Depth* (Section 02, Additional content)');
+H.rep('pg:0:4','The *OS Preparation* lecture lists','The *OS Preparation* lecture (Section 2, Additional content) lists');
+H.rep('pg:3:0','(Section 02: OS Preparation)','(Section 02, Additional content: OS Preparation)');
+H.rep('pg:3:2','Check the storage layer and write cache (Section 02)','Check the storage layer and write cache (Section 02, Additional content: OS Preparation)');
+H.rep('pg:3:3','Section 02: Installing Extensions','Section 02, Additional content: Installing Extensions');
+H.rep('pg:3:3','the OS preparation lecture in Section 02 recommends','the OS preparation lecture in the Additional content of Section 02 recommends');
+H.rep('pg:6:10','Installation section','Section 2, Additional content: OS Preparation and Hardening');
+
+/* 2) whole lectures that move to Additional content (their indexes stay the same) */
+H.flag(S,'Pre-Installation Planning, OS Preparation and Kernel Tuning',4);
+H.flag(S,'Debian and Ubuntu: apt Installation and the pg_wrapper Tools',6);
+H.flag(S,'Containers: Running PostgreSQL with Docker and Podman',7);
+H.flag(S,'Managing PostgreSQL with systemd',8);
+H.flag(S,'Installing Extensions and Contrib Modules',9);
+H.flag(S,'Post-Installation Hardening and the Production Baseline',10);
+
+/* 3) split the overloaded core lectures into new additional lectures */
+/* 2.2 Source Method Installation */
+const srcSrc=H.srcFor('pg:1:1',/install-meson|install-make|server-start/,true);
+H.add(S,{title:T_SRC,order:1,
+ desc:'Meson in full, the full configure option reference with Meson equivalents, build errors and fixes, a systemd unit for a source build and how to uninstall one.',
+ blocks:[{p:'This lesson holds the reference material for building PostgreSQL from source that goes beyond the core steps (prerequisites, download check, configure, make, install and post-install). Use it when you need a specific configure option, a Meson build, a fix for a build error, a service unit or a clean removal.'}].concat(
+  H.take('pg:1:1',['Meson in full','Full configure option reference (most used)','Common build errors','A systemd unit for a source build','Uninstall a source build'])),
+ src:srcSrc});
+
+/* 2.3 Yum and 2.4 RPM */
+const pkgSrc=H.srcFor('pg:1:2',/yum\.postgresql|binaries/,true).concat(H.srcFor('pg:1:3',/yum\.postgresql/,true));
+H.add(S,{title:T_PKG,order:2,
+ desc:'How the PGDG repository and module handling differ on EL8, EL9 and EL10, and how to build a local repository for servers without internet access.',
+ blocks:[{p:'This lesson extends the yum and RPM lectures with two topics you need only in some environments: operating-system differences between EL8, EL9 and EL10, and installing on servers that cannot reach the internet.'}].concat(
+  H.take('pg:1:2',['Differences between EL8, EL9 and EL10']),
+  H.take('pg:1:3',['Build a local repository for air-gapped servers'])),
+ src:pkgSrc});
+
+/* 2.5 GUI Installation (Windows) */
+const winSrc=H.srcFor('pg:1:4',/install-binaries|windows/,true);
+H.add(S,{title:T_WIN,order:3,
+ desc:'Windows file permissions for the data directory, unattended installation with the installer command line, and the binary zip archive without an installer.',
+ blocks:[{p:'This lesson covers Windows installation options beyond the wizard: setting file permissions, installing without a wizard for scripted rollouts, and using the binary zip archive when you do not want an installer.'}].concat(
+  H.take('pg:1:4',['Windows file permissions','Unattended (silent) installation','Binary zip archive (no installer)'])),
+ src:winSrc});
+
+/* 2.9 initdb in Depth */
+const initSrc=H.srcFor('pg:1:8',/locale\.html|multibyte\.html/);
+H.add(S,{title:T_INIT,order:5,
+ desc:'The full initdb option reference, locale, encoding and collation in practice, putting WAL on its own volume, and common initdb errors with fixes.',
+ blocks:[{p:'This lesson is the reference part of the initdb material. The core lecture shows what initdb does, the basic command, which choices can be changed later, data checksums and the authentication initdb writes. Come here for the full option list, locale and encoding details, a separate WAL volume and the error messages.'}].concat(
+  H.take('pg:1:8',['Option reference','Locale, encoding and collation in practice','Putting WAL on its own volume','Errors and what they mean'])),
+ src:initSrc.concat(H.srcFor('pg:1:8',/app-initdb/,true))});
+
+/* 2.15 Troubleshooting Installation and First Start */
+const trbSrc=H.srcFor('pg:1:14',/logging|file-settings/,true).concat(H.srcFor('pg:1:2',/yum\.postgresql/,true));
+H.add(S,{title:T_TRB,order:11,
+ desc:'Fixes for common yum installation failures and a script that collects the logs, settings and system facts a support engineer needs.',
+ blocks:[{p:'This lesson holds two troubleshooting extras: failures specific to yum and dnf installs, and a support bundle you can collect and share when you ask someone else for help.'}].concat(
+  H.take('pg:1:2',['Troubleshooting yum installs']),
+  H.take('pg:1:14',['Collect a support bundle'])),
+ src:trbSrc});
+
+/* pointer notes go in after ALL cuts, so a note placed just before a heading is never swallowed by the cut of the section above it */
+H.noteBefore('pg:1:1',null,'Meson in full, the full configure option reference (including the Meson equivalents), common build errors, a systemd unit for a source build and the uninstall steps are in the **Additional content** of this section: "'+T_SRC+'". The short list of common configure options above is enough for a first build.');
+H.noteBefore('pg:1:2',null,'The differences between EL8, EL9 and EL10 and yum troubleshooting are in the **Additional content** of this section: "'+T_PKG+'" and "'+T_TRB+'".');
+H.noteBefore('pg:1:3',null,'Building a local repository for air-gapped servers is in the **Additional content** of this section: "'+T_PKG+'".');
+H.noteBefore('pg:1:4',null,'Windows file permissions, unattended (silent) installation and the binary zip archive are in the **Additional content** of this section: "'+T_WIN+'".');
+H.noteBefore('pg:1:8',null,'The full option reference, locale, encoding and collation in practice, putting WAL on its own volume and the list of initdb errors are in the **Additional content** of this section: "'+T_INIT+'".');
+H.noteBefore('pg:1:14',null,'A script that collects a support bundle, and the yum installation failures, are in the **Additional content** of this section: "'+T_TRB+'".');
+
+['pg:1:0','pg:1:1','pg:1:2','pg:1:3','pg:1:4','pg:1:5','pg:1:6','pg:1:8','pg:1:14'].forEach(tidy);
+
+/* 4) refresh outline descriptions of the trimmed lectures */
+(function(){const ex=window.EXTRA_LECTURES&&window.EXTRA_LECTURES[1]||[];
+ const d=(t,s)=>{const e=ex.find(x=>x[0]===t);if(e)e[2]=s;else warn('outline entry not found',t)};
+ d('initdb in Depth: Creating a Database Cluster','What initdb creates, the basic command, which choices can be changed later, data checksums (default in 18), the authentication initdb writes, package tools and a repeatable initdb record.');
+ d('Troubleshooting Installation and First Start','A method for diagnosing problems, where logs live, server start failures, client connection errors and installation-time problems.');
+})();
+})();

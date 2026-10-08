@@ -124,6 +124,14 @@ h2{font-size:14px;font:600 12px var(--mono);letter-spacing:.8px;text-transform:u
 .apn{font:600 12px var(--mono);color:var(--mut);margin-top:14px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--panel);color:var(--tx);border:1px solid var(--accent);padding:10px 16px;border-radius:12px;font-size:13px;opacity:0;pointer-events:none;transition:.25s;z-index:50;max-width:90vw}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.addl{margin:26px 0 6px;border:1px dashed var(--line);border-radius:16px;background:color-mix(in srgb,var(--panel) 55%,transparent);overflow:hidden}
+.addl-h{width:100%;display:flex;align-items:center;gap:12px;padding:14px 16px;text-align:left}
+.addl-h:hover{background:color-mix(in srgb,var(--panel2) 60%,transparent)}
+.addl-i{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:var(--panel2);border:1px solid var(--line);color:var(--accent);font:700 15px var(--mono);flex:none}
+.addl-t{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0}.addl-t b{font-size:15px}.addl-t small{font:12px/1.4 var(--mono);color:var(--mut)}
+.addl-c{color:var(--mut);transition:transform .2s;flex:none}.addl.addl-open .addl-c{transform:rotate(180deg)}
+.addl-b{display:none;padding:4px 12px 6px}.addl.addl-open .addl-b{display:block}
 </style></head>
 <body>
 <header><div class="bar"><div class="logo" onclick="location.hash='#/'"><i>L</i>LearnSphere</div><div class="sp"></div>
@@ -139,7 +147,7 @@ const COURSES=[
 outcomes:['Installation & configuration','Architecture & WAL','Backup & recovery','Replication & HA','Performance tuning','Security & roles'],
 sections:[
 {t:'Introduction',q:'Introduction Quiz',l:[
-['Introduction to PostgreSQL DBA','3:01','Course overview: who it is for, the ten sections, prerequisites, how lectures are built, a study plan and a capstone project.'],
+['Introduction to PostgreSQL DBA','3:01','Course overview: who it is for, what you will be able to do, the ten sections at a glance and a prerequisites self-check. The study plan and capstone project are in Additional content.'],
 ['What is PostgreSQL','7:46','What PostgreSQL is and why it stays a reliable open-source relational database: ACID, MVCC, security, scalability and extensibility.'],
 ['DBA Role and Responsibilities','4:01','The DBA role and real-world tasks. Compares PostgreSQL with Oracle and SQL Server: open-source features, ACID, indexing and high availability.']]},
 {t:'Installation Methods',q:'Installation Methods Quiz',l:[
@@ -208,6 +216,8 @@ sections:[
 {id:'rs',name:'Amazon Redshift',tag:'RS',color:'var(--rs)',level:'Coming soon',blurb:'Cloud data warehousing on AWS: cluster design, distribution, loading and tuning.',sections:[]}
 ];
 if(window.EXTRA_LECTURES)Object.entries(window.EXTRA_LECTURES).forEach(([i,a])=>COURSES[0].sections[i].l.push(...a));
+/* Additional content: window.LS_ADDL_FLAGS[originalSectionIndex][lectureTitle]=order (set in pg-lesson.js). A numeric 4th element marks a lecture as optional additional content. Applied before the reorder below so flags follow their section. */
+if(window.LS_ADDL_FLAGS)Object.entries(window.LS_ADDL_FLAGS).forEach(([i,m])=>{const sc=COURSES[0].sections[i];if(sc)sc.l.forEach(l=>{if(m[l[0]]!=null)l[3]=m[l[0]]})});
 /* Reorder: PostgreSQL Architecture now comes before Basic Configuration (done after EXTRA_LECTURES so those still attach by original index) */
 (function(){const S=COURSES[0].sections,a=S.findIndex(x=>x.t==='Basic Configuration and Connectivity'),b=S.findIndex(x=>x.t==='PostgreSQL Architecture');
  if(a>-1&&b===a+1){S.splice(a,2,S[b],S[a]);
@@ -245,12 +255,21 @@ function startTrack(c,si,li){
 const sec2=t=>{const[m,s]=t.split(':').map(Number);return m*60+s};
 const fmt=s=>{const h=Math.floor(s/3600),m=Math.round(s%3600/60);return h?`${h}h ${m}m`:`${m}m`};
 const key=(si,li)=>si+'-'+li,done=(c,si,li)=>!!(P[c.id]||{})[key(si,li)];
+/* Additional content = lectures whose 4th element is a number (their display order). They keep their original index, so saved progress and lesson keys are unchanged, but they are listed in their own optional group and never count toward progress. */
+const isX=x=>typeof x[3]==='number';
+const coreIdx=s=>s.l.map((_,i)=>i).filter(i=>!isX(s.l[i]));
+const xIdx=s=>s.l.map((_,i)=>i).filter(i=>isX(s.l[i])).sort((a,b)=>s.l[a][3]-s.l[b][3]||a-b);
 const dur=l=>l.reduce((a,x)=>a+sec2(x[1]),0);
-const cnt=c=>c.sections.reduce((a,s)=>a+s.l.length,0);
-const dn=c=>Object.keys(P[c.id]||{}).length;
+const cnt=c=>c.sections.reduce((a,s)=>a+coreIdx(s).length,0);
+const cntX=c=>c.sections.reduce((a,s)=>a+xIdx(s).length,0);
+const dn=c=>c.sections.reduce((a,s,si)=>a+coreIdx(s).filter(li=>done(c,si,li)).length,0);
 const pct=c=>cnt(c)?Math.round(dn(c)/cnt(c)*100):0;
-const secDone=(c,si)=>c.sections[si].l.filter((_,li)=>done(c,si,li)).length;
-const nextUp=c=>{for(let si=0;si<c.sections.length;si++)for(let li=0;li<c.sections[si].l.length;li++)if(!done(c,si,li))return[si,li];return null};
+const secDone=(c,si)=>coreIdx(c.sections[si]).filter(li=>done(c,si,li)).length;
+const secDoneX=(c,si)=>xIdx(c.sections[si]).filter(li=>done(c,si,li)).length;
+const nextUp=c=>{for(let si=0;si<c.sections.length;si++)for(const li of coreIdx(c.sections[si]))if(!done(c,si,li))return[si,li];return null};
+let ADDL_OPEN={};
+function toggleAddl(si){ADDL_OPEN[si]=!ADDL_OPEN[si];const e=document.getElementById('addl');if(e)e.classList.toggle('addl-open',!!ADDL_OPEN[si])}
+function openAddl(si,cid){ADDL_OPEN[si]=true;go('#/c/'+cid+'/'+si);setTimeout(()=>{const e=document.getElementById('addl');if(e)e.scrollIntoView({behavior:'smooth',block:'start'})},160)}
 const esc=s=>s.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
 const go=h=>location.hash=h;
 /* ---------- VIEWS ---------- */
@@ -267,22 +286,25 @@ function vCourses(){
 function vTopics(c){
  const n=nextUp(c),tot=c.sections.reduce((a,s)=>a+dur(s.l),0);
  let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›<span>${c.name}</span></div>
- <div class="hero course" style="--c:${c.color}"><div class="tx"><span class="chip">${c.level}</span><h1 style="margin:10px 0 6px">${c.name}</h1> <div class="stats"><div><b>${c.sections.length}</b>sections</div><div><b>${cnt(c)}</b>lectures</div></div>
+ <div class="hero course" style="--c:${c.color}"><div class="tx"><span class="chip">${c.level}</span><h1 style="margin:10px 0 6px">${c.name}</h1> <div class="stats"><div><b>${c.sections.length}</b>sections</div><div><b>${cnt(c)}</b>lectures</div>${cntX(c)?`<div><b>${cntX(c)}</b>additional (optional)</div>`:''}</div>
  <div class="row">${n?`<button class="btn" onclick="go('#/c/${c.id}/${n[0]}')">${dn(c)?'Resume':'Start course'} ▸</button>`:`<span class="chip live">✓ Course complete</span>`}</div>${autoBox(c.id,1)}</div>
  <div class="ring" style="--p:${pct(c)}"><span>${pct(c)}%</span></div></div>
  <div class="row" style="margin:-8px 0 6px">${c.outcomes.map(o=>`<span class="chip">✓ ${o}</span>`).join('')}</div><h2>Topics</h2><div class="grid">`;
- h+=c.sections.map((s,si)=>{const d=secDone(c,si),p=Math.round(d/s.l.length*100);
-  return `<div class="card" style="--c:${c.color};animation-delay:${si*45}ms" onclick="go('#/c/${c.id}/${si}')"><div class="sec"><span class="num">${String(si+1).padStart(2,'0')}</span><div style="flex:1"><h3>${esc(s.t)}</h3><p>${s.l.length} lectures</p></div>${p==100?'<span style="color:var(--accent)">✓</span>':''}</div>
-  <div class="bt"><b style="width:${p}%"></b></div><div class="pct"><span>${d}/${s.l.length}</span><span>${p}%</span></div></div>`}).join('')+`</div>`;
+ h+=c.sections.map((s,si)=>{const d=secDone(c,si),n=coreIdx(s).length,m=xIdx(s).length,p=n?Math.round(d/n*100):0;
+  return `<div class="card" style="--c:${c.color};animation-delay:${si*45}ms" onclick="go('#/c/${c.id}/${si}')"><div class="sec"><span class="num">${String(si+1).padStart(2,'0')}</span><div style="flex:1"><h3>${esc(s.t)}</h3><p>${n} lectures${m?` · +${m} additional`:''}</p></div>${p==100?'<span style="color:var(--accent)">✓</span>':''}</div>
+  <div class="bt"><b style="width:${p}%"></b></div><div class="pct"><span>${d}/${n}</span><span>${p}%</span></div></div>`}).join('')+`</div>`;
  return h}
 function vSub(c,si){
  const s=c.sections[si];if(!s)return vTopics(c);
- const d=secDone(c,si),p=Math.round(d/s.l.length*100);
+ const ci=coreIdx(s),xi=xIdx(s),d=secDone(c,si),p=ci.length?Math.round(d/ci.length*100):0;
+ const row=li=>{const x=s.l[li];return `<div class="lec ${done(c,si,li)?'done':''}" id="l${li}"><div class="lh" onclick="${hasL(c,si,li)?`go('#/c/${c.id}/${si}/${li}')`:`this.parentNode.classList.toggle('open')`}"><span class="chk" onclick="event.stopPropagation();tog('${c.id}',${si},${li})">✓</span><span class="t">${esc(x[0])}</span>${hasL(c,si,li)?'<span class="tag">LESSON</span>':''}</div>
+  <div class="ld">${x[2]?esc(x[2]):'Overview not available.'}<br>${hasL(c,si,li)?`<button class="btn mk" onclick="go('#/c/${c.id}/${si}/${li}')">Open lesson ▸</button>`:''}<button class="btn ghost mk" onclick="tog('${c.id}',${si},${li})">${done(c,si,li)?'Mark as not done':'Mark as done'}</button></div></div>`};
  let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›<a onclick="go('#/c/${c.id}')">${c.name}</a>›<span>Section ${si+1}</span></div>
- <h1>${esc(s.t)}</h1><p class="sub">${s.l.length} lectures · ${d} completed</p><div class="bt" style="--c:${c.color};margin:-6px 0 22px"><b style="width:${p}%"></b></div>`;
- h+=s.l.map((x,li)=>`<div class="lec ${done(c,si,li)?'done':''}" id="l${li}"><div class="lh" onclick="${hasL(c,si,li)?`go('#/c/${c.id}/${si}/${li}')`:`this.parentNode.classList.toggle('open')`}"><span class="chk" onclick="event.stopPropagation();tog('${c.id}',${si},${li})">✓</span><span class="t">${esc(x[0])}</span>${hasL(c,si,li)?'<span class="tag">LESSON</span>':''}</div>
-  <div class="ld">${x[2]?esc(x[2]):'Overview not available.'}<br>${hasL(c,si,li)?`<button class="btn mk" onclick="go('#/c/${c.id}/${si}/${li}')">Open lesson ▸</button>`:''}<button class="btn ghost mk" onclick="tog('${c.id}',${si},${li})">${done(c,si,li)?'Mark as not done':'Mark as done'}</button></div></div>`).join('');
+ <h1>${esc(s.t)}</h1><p class="sub">${ci.length} lectures · ${d} completed${xi.length?` · ${xi.length} additional (optional)`:''}</p><div class="bt" style="--c:${c.color};margin:-6px 0 22px"><b style="width:${p}%"></b></div>`;
+ h+=ci.map(row).join('');
  h+=`<div class="lec quiz"><div class="lh"><span class="chk" style="color:var(--mut)">?</span><span class="t">${esc(s.q)}</span><small>QUIZ</small></div></div>`;
+ if(xi.length){const op=!!ADDL_OPEN[si];
+  h+=`<div class="addl ${op?'addl-open':''}" id="addl"><button class="addl-h" onclick="toggleAddl(${si})" aria-expanded="${op}"><span class="addl-i">+</span><span class="addl-t"><b>Additional content</b><small>Optional deep dives and reference material · ${xi.length} lectures · ${secDoneX(c,si)} read · not needed for the quiz or your progress</small></span><span class="addl-c">▾</span></button><div class="addl-b">${xi.map(row).join('')}</div></div>`}
  h+=`<div class="pn">${si>0?`<button class="btn ghost" onclick="go('#/c/${c.id}/${si-1}')">◂ ${esc(c.sections[si-1].t)}</button>`:'<span></span>'}${si<c.sections.length-1?`<button class="btn" onclick="go('#/c/${c.id}/${si+1}')">${esc(c.sections[si+1].t)} ▸</button>`:`<button class="btn" onclick="go('#/c/${c.id}')">Back to topics</button>`}</div>`;
  return h}
 const LS=()=>window.LESSONS||{};
@@ -299,14 +321,21 @@ function blk(b){
  if(b.note)return `<div class="nt">${fx(b.note)}</div>`;
  return ''}
 function cpy(b){const t=b.nextElementSibling.textContent;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{b.textContent='Copied'},()=>{b.textContent='Select & copy'});setTimeout(()=>b.textContent='Copy',1500)}
-function adj(c,si,li,d){let a=si,b=li+d;if(b<0){a--;if(a<0)return null;b=c.sections[a].l.length-1}else if(b>=c.sections[a].l.length){a++;if(a>=c.sections.length)return null;b=0}return[a,b]}
+function adj(c,si,li,d){
+ const S=c.sections;
+ const firstCore=a=>{for(;a<S.length;a++){const k=coreIdx(S[a]);if(k.length)return[a,k[0]]}return null};
+ const lastCore=a=>{for(;a>=0;a--){const k=coreIdx(S[a]);if(k.length)return[a,k[k.length-1]]}return null};
+ const x=isX(S[si].l[li]),list=x?xIdx(S[si]):coreIdx(S[si]),np=list.indexOf(li)+d;
+ if(np>=0&&np<list.length)return[si,list[np]];
+ if(x)return d>0?firstCore(si+1):null; /* before the first / after the last additional lecture: back to the section page, or on to the next section */
+ return d>0?firstCore(si+1):lastCore(si-1)}
 function vLesson(c,si,li){
  const s=c.sections[si],x=s&&s.l[li];if(!x)return vSub(c,si);
  const L=LS()[c.id+':'+si+':'+li],pv=adj(c,si,li,-1),nx=adj(c,si,li,1),d=done(c,si,li);
- let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›<a onclick="go('#/c/${c.id}')">${c.name}</a>›<a onclick="go('#/c/${c.id}/${si}')">${esc(s.t)}</a></div><div class="ls" style="--c:${c.color}"><h1>${esc(x[0])}</h1><div class="meta" style="margin:0 0 22px"><span class="chip">Section ${si+1} · Lecture ${li+1}</span>${x[1]==='0:00'?`<span class="chip live">★ Bonus lesson</span>`:''}</div>`;
+ let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›<a onclick="go('#/c/${c.id}')">${c.name}</a>›<a onclick="go('#/c/${c.id}/${si}')">${esc(s.t)}</a></div><div class="ls" style="--c:${c.color}"><h1>${esc(x[0])}</h1><div class="meta" style="margin:0 0 22px">${isX(x)?`<span class="chip">Section ${si+1} · Additional ${xIdx(s).indexOf(li)+1}</span><span class="chip live">+ Optional</span>`:`<span class="chip">Section ${si+1} · Lecture ${coreIdx(s).indexOf(li)+1}</span>${x[1]==='0:00'?`<span class="chip live">★ Bonus lesson</span>`:''}`}</div>`;
  h+=L?L.blocks.map(blk).join('')+(L.src&&L.src.length?`<div class="srcs">SOURCES${L.src.map(r=>`<a href="${r[1]}" target="_blank" rel="noopener">${esc(r[0])} ↗</a>`).join('')}</div>`:''):`<p>${x[2]?esc(x[2]):'Lesson not available yet.'}</p>`;
- h+=`<div class="row" style="margin-top:26px"><button id="dnb" class="btn ${d?'ghost':''}" onclick="tog('${c.id}',${si},${li})">${d?'✓ Completed (undo)':'Mark as done'}</button></div>
- <div class="pn">${pv?`<button class="btn ghost" onclick="go('#/c/${c.id}/${pv[0]}/${pv[1]}')">◂ ${esc(c.sections[pv[0]].l[pv[1]][0])}</button>`:'<span></span>'}${nx?`<button class="btn" onclick="go('#/c/${c.id}/${nx[0]}/${nx[1]}')">${esc(c.sections[nx[0]].l[nx[1]][0])} ▸</button>`:''}</div></div>`;
+ h+=`<div class="row" style="margin-top:26px"><button id="dnb" class="btn ${d?'ghost':''}" onclick="tog('${c.id}',${si},${li})">${d?'✓ Completed (undo)':'Mark as done'}</button>${!isX(x)&&xIdx(s).length&&coreIdx(s).slice(-1)[0]===li?`<button class="btn ghost" onclick="openAddl(${si},'${c.id}')">+ Additional content for this section ▸</button>`:''}</div>
+ <div class="pn">${pv?`<button class="btn ghost" onclick="go('#/c/${c.id}/${pv[0]}/${pv[1]}')">◂ ${esc(c.sections[pv[0]].l[pv[1]][0])}</button>`:(isX(x)?`<button class="btn ghost" onclick="go('#/c/${c.id}/${si}')">◂ Back to section</button>`:'<span></span>')}${nx?`<button class="btn" onclick="go('#/c/${c.id}/${nx[0]}/${nx[1]}')">${esc(c.sections[nx[0]].l[nx[1]][0])} ▸</button>`:''}</div></div>`;
  return h}
 function tog(cid,si,li){stopTrack();const k=key(si,li);P[cid]=P[cid]||{};if(P[cid][k])delete P[cid][k];else P[cid][k]=1;save();
  const open=[...document.querySelectorAll('.lec.open')].map(e=>e.id);render(true,true);open.forEach(i=>{const e=document.getElementById(i);e&&e.classList.add('open')})}
