@@ -5674,3 +5674,528 @@ X('pg:8:13',[
 [["High Availability",D+"high-availability.html"]]);
 
 })();
+
+
+/* LearnSphere: Section 1 (Introduction) depth update.
+   Load AFTER pg-lesson.js and BEFORE the inline script in index.html (it appends to window.EXTRA_LECTURES[0]).
+   - Enriches the 4 existing lectures (pg:0:0 .. pg:0:3) by inserting new blocks.
+   - Adds 6 new lectures: pg:0:4 .. pg:0:9. Docs links target PostgreSQL 18. */
+(function(){
+const D='https://www.postgresql.org/docs/18/';
+const dg=window.LS_DG;
+/* insert new blocks before the first "(Section NN)" cross-reference heading, else append */
+const X=(k,blocks,src)=>{const L=window.LESSONS[k];if(!L)return;
+ let i=L.blocks.findIndex(b=>b.h&&/\(Section/.test(b.h));if(i<0)i=L.blocks.length;
+ L.blocks.splice(i,0,...blocks);if(src)L.src=(L.src||[]).concat(src)};
+
+/* ---------- diagrams ---------- */
+const mapSvg=dg(700,210,[
+[10,15,128,55,'1 Introduction|what and why',2],[146,15,128,55,'2 Installation|four methods',0],[282,15,128,55,'3 Architecture|processes, WAL',0],[418,15,128,55,'4 Basic Config|connect, psql',0],[554,15,136,55,'5 DB and Storage|catalogs, schemas',0],
+[10,115,128,55,'6 Logging and|Parameters',0],[146,115,128,55,'7 Users and|Security',0],[282,115,128,55,'8 Tablespaces|and WAL files',0],[418,115,128,55,'9 Backup and|Recovery',0],[554,115,136,55,'10 Upgrade and|Replication',2]],
+[[138,42,146,42],[274,42,282,42],[410,42,418,42],[546,42,554,42],[620,70,620,115],[138,142,146,142],[274,142,282,142],[410,142,418,142],[546,142,554,142]]);
+const histSvg=dg(700,200,[
+[10,70,85,55,'1986|POSTGRES|Berkeley',2],[110,70,85,55,'1994|Postgres95|SQL added',0],[210,70,85,55,'1996|PostgreSQL|renamed',2],[310,70,85,55,'2005|8.0|PITR',0],[410,70,85,55,'2010|9.0|streaming',0],[510,70,85,55,'2017|10|logical',0],[610,70,80,55,'2025|18|async I/O',2],
+[10,15,680,30,'Four decades of continuous, community-driven development',1]],
+[[95,97,110,97],[195,97,210,97],[295,97,310,97],[395,97,410,97],[495,97,510,97],[595,97,610,97]]);
+const logicalSvg=dg(700,270,[
+[10,10,680,250,'Cluster = one PGDATA directory = one postmaster = one port',1],
+[25,45,300,200,'Database sales',1],[40,75,270,70,'Schema public|tables, views, indexes',0],[40,160,270,70,'Schema reporting|tables, views, functions',0],
+[345,45,160,95,'Database hr|schemas and objects',0],
+[345,155,160,90,'Database postgres|default maintenance DB',0],
+[525,45,150,95,'Roles|users and groups',2],[525,155,150,90,'Tablespaces|data locations',2]],[]);
+const labSvg=dg(700,230,[
+[10,15,200,200,'Your computer (host)',1],[25,50,170,45,'Browser, pgAdmin|PuTTY or ssh, WinSCP',0],[25,115,170,45,'VirtualBox or|VMware or WSL2',0],
+[270,15,230,200,'Linux VM (lab server)',1],[285,50,200,45,'sshd on port 22',0],[285,110,200,45,'PostgreSQL on port 5432|postgres OS user',2],[285,165,200,35,'firewalld, systemd, SELinux',0],
+[560,15,130,200,'Network mode',1],[570,50,110,45,'NAT + port|forwarding',0],[570,110,110,45,'Host-only|adapter',0],[570,165,110,35,'Bridged',0]],
+[[195,72,285,72],[195,137,285,132]]);
+
+/* ---------------------------------------------------------------- enrich 0:0 */
+X('pg:0:0',[
+{h:'Who this course is for'},
+{t:[['Learner','Starting point','Where to spend extra time'],['Developer moving towards operations','Strong SQL, little Linux or server knowledge','Installation, Architecture, Basic Configuration, Backup'],['Linux or systems administrator','Strong OS skills, little database knowledge','What is PostgreSQL, Database and Storage, Users and Security'],['Oracle or SQL Server DBA','Strong DBA concepts, new tools and vocabulary','Architecture (processes and WAL), Tablespaces, Replication'],['Student or career changer','No prior experience','Every lecture in order, plus the prerequisites refresher']]},
+{h:'The ten sections at a glance'},
+{svg:mapSvg},
+{t:[['Section','Theme','After it you can'],['1 Introduction','What PostgreSQL is, what a DBA does, how releases work','Explain the product, the role and the support calendar'],['2 Installation Methods','Source, yum, RPM, Windows GUI, uninstall, checklist','Install and verify a server by any method'],['3 Architecture','Postmaster, backends, background processes, memory, WAL, query path, PGDATA','Describe what happens from connect to commit'],['4 Basic Configuration','Remote access, multiple clusters, shutdown modes, config files, psql','Connect from anywhere and run several clusters safely'],['5 Database and Storage','Catalogs, templates, schemas, sizes, extensions, storage, statistics','Inspect and manage objects and space'],['6 Logging and Parameters','Server log, parameter types, reload and restart, memory, WAL, autovacuum','Tune and change settings with confidence'],['7 Users and Security','Roles, authentication, privileges, row-level security, SCRAM, TLS','Build a least-privilege model'],['8 Tablespaces and Storage','Tablespaces, WAL format and lifecycle','Place data and manage pg_wal'],['9 Backup and Recovery','pg_dump, pg_basebackup, archiving, PITR, verification','Design and test a recovery plan'],['10 Upgrade and Replication','pg_upgrade, streaming and logical replication, failover, HA','Upgrade and scale with minimal downtime']]},
+{h:'Prerequisites self-check'},
+{t:[['Skill','You should be able to','If not, read'],['Linux shell','Move around directories, edit a file with `vi` or `nano`, use `sudo`, read `ls -l` permissions','Lecture "Linux and SQL Prerequisites Refresher" in this section'],['Services','Start, stop and read the status of a service with `systemctl`','Same lecture'],['SQL basics','Write `SELECT` with `WHERE` and `JOIN`, `INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`','Same lecture'],['Networking basics','Explain an IP address, a port and a firewall rule','Same lecture'],['A virtual machine','Create a VM, give it a network and take a snapshot','Lecture "Lab Setup: Building Your Practice Environment"']]},
+{h:'How every lecture is built'},
+{t:[['Part','Purpose'],['Definition paragraph','Plain-language meaning, taken from the official documentation where possible'],['Diagram or flowchart','The process or architecture in one picture'],['Tables','Compare options, parameters, defaults, error messages and fixes'],['Commands and examples','Run on your lab VM; every command is safe in a throwaway environment'],['Notes','Warnings, version differences and production advice'],['Sources','Links to the exact official documentation pages used']]},
+{h:'Conventions used in the lessons'},
+{t:[['Notation','Meaning'],['`18`','Examples use PostgreSQL 18. Paths use the PGDG RPM layout (`/usr/pgsql-18`, `/var/lib/pgsql/18/data`); Debian and Ubuntu paths differ and are noted where it matters'],['`postgres=#`','A prompt in `psql` as a superuser; `postgres=>` is an ordinary user'],['`$` and `#`','Shell prompts: `$` is an ordinary shell, `#` is root. In the lessons commands start with `sudo` instead'],['`<name>` or `appdb`','Placeholder you replace with your own value'],['`context` words','`postmaster`, `sighup`, `user` describe when a parameter can change (Section 06)'],['(Section NN)','A cross-reference to the lecture where the topic is taught in full']]},
+{h:'The break-fix learning loop'},
+{flow:['Read the concept','Run the commands','Break it on purpose','Read the server log','Fix it and write down the cause']},
+{p:'A DBA learns most from failures caused in a safe place. After each lecture, repeat the loop once: stop the server badly, fill a disk, remove a `pg_hba.conf` rule, drop a table and then restore it. Keep a notebook of what you did and what the log said; it becomes your own runbook.'},
+{h:'Suggested eight-week study plan'},
+{t:[['Week','Sections','Lab goal'],['1','1 and 2','Lab VM ready; PostgreSQL installed by two different methods'],['2','3 and 4','Draw the architecture from memory; connect remotely; run a second cluster'],['3','5','Create databases and schemas; measure sizes; install two extensions'],['4','6 and 7','Enable logging, tune memory and checkpoints; create a least-privilege role set'],['5','8','Move a table to a new tablespace; inspect WAL files'],['6','9','Take logical and physical backups; perform a point-in-time recovery'],['7','10','Upgrade 17 to 18 with `pg_upgrade`; build a streaming standby and promote it'],['8','All','Capstone project below']]},
+{h:'Capstone project'},
+{ul:['Install PostgreSQL 18 and apply the post-installation checklist.','Create an application database with owner, read and write group roles, and a login role per user.','Restrict `pg_hba.conf`, require SCRAM and enable logging with a useful `log_line_prefix`.','Schedule a nightly `pg_dump` and a weekly base backup with WAL archiving.','Destroy the database and recover it to a point just before the mistake.','Add a streaming standby, rehearse a switchover and write the runbook.']}
+],[['Overview of the PostgreSQL documentation',D+'preface.html'],['PostgreSQL release schedule and support policy','https://www.postgresql.org/support/versioning/']]);
+
+/* ---------------------------------------------------------------- enrich 0:1 */
+X('pg:0:1',[
+{h:'Timeline of major milestones'},
+{svg:histSvg},
+{t:[['Year','Release','Milestone'],['1986','POSTGRES at Berkeley','Project begins under Michael Stonebraker, successor to Ingres'],['1989','POSTGRES version 1','First release to external users'],['1994','Postgres95','SQL language interpreter replaces the original query language'],['1996 / 1997','PostgreSQL 6.0','Renamed PostgreSQL to show SQL support; community-run project'],['2005','8.0','Native Windows support, tablespaces, point-in-time recovery'],['2010','9.0','Built-in streaming replication and hot standby'],['2012 / 2014','9.2 / 9.4','`json` type, then `jsonb`; logical decoding foundations'],['2016','9.6','Parallel query'],['2017','10','Declarative partitioning and logical replication; two-part version numbers'],['2018','11','Stored procedures with `CALL`; JIT compilation'],['2022','15','`MERGE` command; public schema no longer writable by everyone'],['2023','16','Logical decoding on standbys; `pg_stat_io`'],['2024','17','Incremental backup in `pg_basebackup`; logical replication improvements'],['2025','18','Asynchronous I/O (`io_method`), OAuth authentication, skip scan for B-tree indexes, `uuidv7()`']]},
+{note:'Milestones are summarised from the release notes. Always read the notes of the exact versions you are moving between: the list above shows headlines, not every incompatibility.'},
+{h:'The PostgreSQL License and the community model'},
+{t:[['Aspect','Detail'],['License','The PostgreSQL License, a permissive licence similar to BSD or MIT. You may use, modify and distribute the software, including commercially, without fees or copyleft obligations'],['Ownership','No single company owns PostgreSQL. It is developed by the **PostgreSQL Global Development Group (PGDG)**'],['Contributors','Volunteers and employees of many companies write code, documentation and tests; a small group of **committers** may commit to the source tree'],['Review process','Patches are discussed on the `pgsql-hackers` mailing list and reviewed in periodic **commitfests** before being committed'],['Releases','One major release a year, with beta and release candidates in the summer, and minor releases about every three months'],['Security','Vulnerabilities are reported privately to the security team and fixed in all supported branches at once']]},
+{h:'Feature tour'},
+{t:[['Area','What is built in','Example'],['Data types','Numeric, text, date and time with time zones, boolean, UUID, arrays, ranges, `jsonb`, network addresses, geometric types, enums, composite types','`tstzrange`, `inet`, `uuid`'],['SQL features','Joins, subqueries, CTEs (`WITH`), window functions, `MERGE`, generated columns, `RETURNING`, upserts','`INSERT ... ON CONFLICT DO UPDATE`'],['Indexing','B-tree, Hash, GiST, SP-GiST, GIN, BRIN; partial and expression indexes','`CREATE INDEX ... USING gin (attrs)`'],['Procedural languages','PL/pgSQL built in; PL/Python, PL/Perl and others as extensions','`CREATE FUNCTION ... LANGUAGE plpgsql`'],['Text search','Full-text search with dictionaries and ranking','`to_tsvector`, `@@`'],['Partitioning','Declarative range, list and hash partitioning','`PARTITION BY RANGE (created_at)`'],['Concurrency','MVCC, row-level locks, advisory locks, four isolation levels','`SELECT ... FOR UPDATE`'],['Replication','Physical streaming and logical replication, synchronous options','Section 10'],['Integration','Foreign data wrappers to query other systems','`postgres_fdw`'],['Security','Roles, privileges, row-level security, SCRAM, TLS','Section 07']]},
+{h:'A short tour in SQL'},
+{code:`CREATE TABLE product (
+  id     int GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name   text NOT NULL,
+  attrs  jsonb,                 -- schemaless document column
+  tags   text[],                -- array column
+  valid  tstzrange              -- range type
+);
+INSERT INTO product (name, attrs, tags, valid) VALUES
+ ('Desk lamp', '{"color":"red","watts":9}',  ARRAY['sale','home'], '[2026-01-01,2026-12-31)'),
+ ('Monitor',   '{"color":"black","inch":27}', ARRAY['office'],      '[2026-03-01,)');
+
+CREATE INDEX product_attrs_gin ON product USING gin (attrs);
+
+SELECT name FROM product WHERE attrs @> '{"color":"red"}';       -- inside the JSON
+SELECT name FROM product WHERE 'sale' = ANY (tags);              -- array search
+SELECT name FROM product WHERE valid @> now();                   -- range contains a time`},
+{h:'See ACID in action'},
+{code:`CREATE TABLE account (id int PRIMARY KEY, balance numeric CHECK (balance >= 0));
+INSERT INTO account VALUES (1, 500), (2, 100);
+
+BEGIN;
+UPDATE account SET balance = balance - 100 WHERE id = 1;
+UPDATE account SET balance = balance + 100 WHERE id = 2;
+COMMIT;                                   -- both changes become durable together
+
+BEGIN;
+UPDATE account SET balance = balance - 900 WHERE id = 1;   -- violates the CHECK rule
+-- ERROR: new row violates check constraint; the transaction is now aborted
+ROLLBACK;                                 -- nothing was changed: atomicity and consistency`},
+{h:'Isolation levels in one table'},
+{t:[['Level','Behaviour','Notes'],['Read Committed (default)','Each statement sees data committed before that statement started','Same row can look different between two statements in one transaction'],['Repeatable Read','The whole transaction sees one snapshot taken at its first statement','May fail with a serialization error on conflicting updates; retry'],['Serializable','Behaves as if transactions ran one at a time','Uses predicate tracking; applications must retry on `40001` errors'],['Read Uncommitted','Accepted but treated exactly like Read Committed','PostgreSQL never shows uncommitted data']]},
+{code:`SHOW default_transaction_isolation;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SELECT count(*) FROM account;
+COMMIT;`},
+{h:'Standards and limits'},
+{p:'The documentation appendix on SQL conformance states that PostgreSQL supports most of the major features of the current SQL standard and conforms to a large majority of the mandatory Core features. Where PostgreSQL differs from the standard, the documentation marks it. The appendix "PostgreSQL Limits" lists the hard limits:'},
+{t:[['Item','Limit'],['Maximum database size','Unlimited'],['Maximum table size','32 TB (with the default 8 kB page size)'],['Maximum row size','1.6 TB'],['Maximum field size','1 GB'],['Maximum rows per table','Limited by the number of tuples that fit in 4,294,967,295 pages'],['Maximum columns per table','1,600 (fewer in practice for wide types)'],['Maximum indexes per table','Unlimited (constrained by storage)'],['Identifier length','63 bytes (longer names are truncated)']]},
+{h:'When PostgreSQL is a good fit, and when to look elsewhere'},
+{t:[['Good fit','Think twice'],['Transactional systems (OLTP) needing correctness and strong SQL','A single huge write-intensive dataset needing automatic sharding across hundreds of nodes without extra tooling'],['Mixed workloads with JSON, geospatial or full-text search in one database','A tiny embedded database inside a mobile app (a file-based engine is simpler)'],['Analytics on moderate data sizes with partitioning and parallel query','Petabyte-scale columnar analytics (use a warehouse, possibly with PostgreSQL as the source)'],['Teams that want no licence fees and a large tool ecosystem','Cases where a vendor must supply a certified, supported appliance']]}
+],[['A Brief History of PostgreSQL',D+'history.html'],['SQL Conformance',D+'features.html'],['PostgreSQL Limits',D+'limits.html'],['Transaction Isolation',D+'transaction-iso.html']]);
+
+/* ---------------------------------------------------------------- enrich 0:2 */
+X('pg:0:2',[
+{h:'The skills behind the role'},
+{t:[['Skill area','Examples','Where it is taught'],['PostgreSQL internals','Processes, memory, WAL, MVCC, VACUUM','Sections 3, 5 and 6'],['Operating system','Users and permissions, systemd, disks, memory, firewall, SELinux','Section 2 and the prerequisites refresher'],['SQL and data modelling','Joins, indexes, constraints, reading query plans','Section 5 and the documentation'],['Security','Roles, authentication, TLS, auditing, least privilege','Section 7'],['Resilience','Backups, restore tests, replication, failover','Sections 9 and 10'],['Automation','Shell scripts, cron or systemd timers, configuration management','Backup and upgrade lectures'],['Communication','Runbooks, change requests, incident reports, explaining risk to non-DBAs','Lecture "A DBA Routine: Checklists, Runbooks and Change Management"']]},
+{h:'Self-managed versus managed PostgreSQL'},
+{p:'PostgreSQL can run on your own servers or virtual machines (**self-managed**) or as a **managed service** from a cloud provider such as Amazon RDS and Aurora, Google Cloud SQL or Azure Database for PostgreSQL. The provider takes over part of the work, but never all of it.'},
+{t:[['Responsibility','Self-managed','Managed service'],['Hardware, OS patching, disks','You','Provider'],['PostgreSQL minor updates','You schedule and run them','Provider applies them in a maintenance window you configure'],['Major upgrades','You plan and execute (`pg_upgrade`, logical replication)','Provider tooling, but you test the application and choose the date'],['Backups','You design, run and test them','Automated snapshots and archiving; **you still verify restores and retention**'],['High availability','You build streaming replication and failover','Often one setting; failover behaviour differs per provider'],['Superuser access','Full','Restricted; some parameters and extensions are not allowed'],['Configuration parameters','Edit files or `ALTER SYSTEM`','Provider parameter groups'],['Monitoring','You build it','Provider metrics, plus your own query-level monitoring'],['Schema, indexes, query tuning','You','**You**'],['Access control and data security','You','**You** (shared-responsibility model)']]},
+{note:'A managed service removes some tasks but not the need to understand them. Query tuning, indexing, privilege design, retention rules and restore testing stay with you, and so does knowing what the provider is doing behind the scenes.'},
+{h:'PostgreSQL compared with MySQL'},
+{t:[['Area','PostgreSQL','MySQL (InnoDB)'],['License','PostgreSQL License (permissive)','GPL with a commercial option'],['Process model','One process per connection','One thread per connection'],['MVCC storage','Old row versions stay in the table; VACUUM removes them','Old versions kept in undo logs and purged'],['Transactional DDL','Yes: `CREATE`, `ALTER` and `DROP` can be rolled back','DDL statements cause an implicit commit'],['Data types','Arrays, ranges, `jsonb`, network types, user-defined types','Fewer built-in types; JSON supported'],['Indexes','B-tree, Hash, GiST, SP-GiST, GIN, BRIN, partial and expression indexes','B-tree, full-text and spatial; fewer index kinds'],['Replication','Physical streaming and logical replication built in','Binary-log based replication and group replication'],['Extensibility','Extensions can add types, operators, indexes and languages','Plugins and storage engines'],['SQL conformance','Very close to the standard','Closer than in the past, still with notable differences']]},
+{h:'Terminology across Oracle, SQL Server and PostgreSQL'},
+{t:[['Concept','PostgreSQL','Oracle','SQL Server'],['Write-ahead record of changes','WAL (`pg_wal`)','Redo log','Transaction log'],['Row-version cleanup','`VACUUM` and autovacuum','Undo management','Version store and ghost cleanup'],['Configuration file','`postgresql.conf`, `ALTER SYSTEM`','spfile / init.ora','`sp_configure`'],['Client access rules','`pg_hba.conf`','Listener and network rules, roles','Logins, firewall, endpoints'],['Storage location','Tablespace','Tablespace','Filegroup'],['Command-line client','`psql`','SQL*Plus / SQLcl','`sqlcmd`'],['Logical export','`pg_dump`','Data Pump','`bcp`, BACPAC'],['Physical standby','Streaming replication','Data Guard','Always On availability groups, log shipping'],['Active sessions view','`pg_stat_activity`','`V$SESSION`','`sys.dm_exec_sessions`'],['Execution plan','`EXPLAIN (ANALYZE)`','`EXPLAIN PLAN`, `DBMS_XPLAN`','Showplan']]},
+{h:'The DBA toolbox'},
+{t:[['Category','Built into PostgreSQL','Common community or third-party tools'],['Administration','`psql`, `pg_ctl`, `initdb`','pgAdmin, DBeaver'],['Backup','`pg_dump`, `pg_dumpall`, `pg_basebackup`','pgBackRest, Barman'],['High availability','Streaming replication, `pg_rewind`','Patroni, repmgr'],['Connection pooling','None (use a pooler)','PgBouncer, pgpool-II'],['Monitoring','Statistics views, `pg_stat_statements`','Prometheus with `postgres_exporter`, pgBadger, pgwatch'],['Maintenance','`VACUUM`, `REINDEX`, `CLUSTER`','pg_repack, pg_squeeze'],['Auditing','Server log, `log_statement`','pgAudit'],['Migration','`pg_upgrade`, logical replication','pgloader, ora2pg'],['Benchmarking','`pgbench`','Sysbench, HammerDB']]},
+{h:'Duties beyond commands'},
+{ul:['**Documentation:** keep an inventory of clusters, versions, owners, sizes, backup locations and end-of-support dates.','**Change management:** every parameter or schema change has a reason, a test, a rollback plan and a record.','**On-call and incidents:** respond using a runbook, communicate status, then write a short post-incident review.','**Capacity reporting:** track growth of data, WAL, connections and cache hit ratio so purchases and migrations are planned, not rushed.','**Compliance:** retention rules, access reviews and audit evidence for regulated data.']}
+],[['Server Administration',D+'admin.html'],['Additional Supplied Modules and Extensions',D+'contrib.html']]);
+
+/* ---------------------------------------------------------------- enrich 0:3 */
+X('pg:0:3',[
+{h:'Support lifecycle of recent major versions'},
+{t:[['Major version','First release','End of community support','Status in October 2026'],['13','24 Sep 2020','13 Nov 2025','**Unsupported**: no more fixes, upgrade now'],['14','30 Sep 2021','12 Nov 2026','Supported, but its **final release is about five weeks away**'],['15','13 Oct 2022','11 Nov 2027','Supported'],['16','14 Sep 2023','9 Nov 2028','Supported'],['17','26 Sep 2024','8 Nov 2029','Supported'],['18','25 Sep 2025','14 Nov 2030','Current major version']]},
+{note:'Dates follow the PostgreSQL versioning policy page, which is the authority and is updated when a version is announced. The minor-release number of each branch moves four times a year, so read the current number from the download page rather than from a course.'},
+{h:'The yearly and quarterly calendar'},
+{t:[['When','What happens'],['Second Thursday of February, May, August and November','Scheduled **minor (update) releases** for every supported branch. The November release is the **last** one for the branch reaching end of life'],['Spring to summer','Development freezes; **beta** releases of the next major version are published for testing'],['September','**Release candidate** and then the **final major release**'],['Any time','**Out-of-cycle** minor release if a serious security or data-loss bug is found']]},
+{p:'Beta and release-candidate builds are for testing only. Never put them into production, and never run `pg_upgrade` on live data with a pre-release.'},
+{h:'What a major release can change'},
+{t:[['Category','Examples to look for in the release notes'],['On-disk or catalog format','Always changes between majors, so `pg_upgrade` or dump and restore is required'],['Removed features','Old file names or parameters that no longer exist (for example `recovery.conf` was replaced in version 12)'],['Changed defaults','`password_encryption` became `scram-sha-256` in 14; the public schema stopped being writable by everyone in 15; `md5` passwords are deprecated in 18; new `initdb` defaults'],['New parameters','New tuning knobs, such as `io_method` in 18'],['Statistics and monitoring views','Views renamed or moved (for example checkpoint counters moved to `pg_stat_checkpointer` in 17)'],['Extensions and drivers','Extensions must be rebuilt or upgraded for the new major version'],['Client tools','`psql`, `pg_dump` and others change output or options']]},
+{h:'How to read the release notes'},
+{flow:['Open Migration to Version N','Check Overview and Highlights','Read Server and Utility changes','Scan Data Types, Functions, psql','Check Additional Modules for the extensions you use']},
+{t:[['Section of the notes','Why it matters to a DBA'],['**Migration to Version N**','Lists incompatibilities that can break applications or scripts: always read first'],['**Overview**','The headline features'],['**Changes: Server**','Parameters, replication, backup and vacuum changes'],['**Changes: Utility commands**','`CREATE`, `ALTER`, `VACUUM`, `COPY` behaviour'],['**Changes: Client applications**','`psql`, `pg_dump`, `pg_basebackup`, `pg_upgrade` options'],['**Changes: Additional modules**','Contrib extensions you may have installed']]},
+{h:'Check the version everywhere'},
+{code:`SHOW server_version;              -- 18.4
+SHOW server_version_num;          -- 180004  (major x 10000 + minor)
+SELECT version();                 -- full build string
+
+-- shell
+psql --version
+/usr/pgsql-18/bin/postgres --version
+pg_config --version
+rpm -qa | grep -i postgresql
+
+-- version of the data directory (it must match the binaries' major version)
+cat $PGDATA/PG_VERSION
+SELECT * FROM pg_control_system();`},
+{t:[['Check','Tells you'],['`SHOW server_version`','The running server'],['`psql --version`','The client you are using, which may differ from the server'],['`$PGDATA/PG_VERSION`','The major version that created the data directory'],['`rpm -qa` / `dpkg -l`','Which package versions are installed']]},
+{note:'A client or `pg_dump` older than the server can fail or silently omit features. Use a `pg_dump` of the same major version as the server, or newer.'},
+{h:'Choosing a version for a new system'},
+{t:[['Situation','Guidance'],['New project, free choice','Use the latest major version, ideally after its first one or two minor releases'],['Application vendor certifies only some versions','Follow the vendor list, but note the end-of-support date and plan the next move'],['Key extension not yet released for the newest major','Choose the newest major that the extension supports'],['Managed cloud service','Use a version the provider offers; check the provider own deprecation schedule'],['Any new system','Avoid a major that reaches end of life within about two years']]},
+{h:'A minor update routine'},
+{flow:['Read the minor release notes','Test in staging','Update standbys first','Restart the primary in a window','Verify version and logs']},
+{ul:['A minor release never changes the data format, so there is no data migration and rollback is simply reinstalling the previous minor.','Occasionally the notes ask for an extra step after the update, such as rebuilding a type of index. Read them every time.','Keep all nodes of a replication group within one minor release of each other during the update, and finish the change quickly.']}
+],[['Versioning Policy','https://www.postgresql.org/support/versioning/'],['Release Notes',D+'release.html'],['Preface: PostgreSQL release schedule',D+'preface.html']]);
+
+/* ================================================================ NEW LECTURES 0:4 .. 0:9 */
+Object.assign(window.LESSONS,{
+
+/* ---------------------------------------------------------------- 0:4 */
+'pg:0:4':{blocks:[
+{p:'A **lab** is a private environment where you can install, configure, break and rebuild PostgreSQL without risk. Every lecture in this course assumes you have one. A good lab is **disposable** (you can return to a clean state in minutes), **realistic** (a real Linux server with a real service manager, firewall and file system) and **isolated** (nothing in it is reachable by other people or holds real data). This lecture builds that environment step by step.'},
+{h:'What the lab must give you'},
+{t:[['Requirement','Why it matters','Used in'],['A real Linux server','Installation, `systemctl`, permissions, firewall and SELinux behave as in production','Sections 2, 4 and 6'],['Root or `sudo` access','You install packages and edit system files','Section 2'],['Network access from your computer','Practise remote connection, `pg_hba.conf`, pgAdmin','Section 4'],['Snapshots','Undo any experiment; rehearse upgrades','Sections 9 and 10'],['Spare disk space','Tablespace, backup and WAL archive exercises','Sections 8 and 9'],['Several machines (optional)','Streaming and logical replication need a primary and a standby','Section 10']]},
+{h:'Choose a virtualisation option'},
+{t:[['Option','Best for','Strengths','Limits'],['VirtualBox','Windows, Linux and Intel macOS hosts','Free, snapshots, host-only networks, used throughout this course','Slower than native; Apple-silicon support is limited'],['VMware Workstation or Fusion','Users who already have it','Good performance and snapshots','Licence terms vary'],['Hyper-V','Windows Pro hosts','Built into Windows','Can conflict with VirtualBox on the same host'],['WSL2','Quick PostgreSQL practice on Windows','Starts in seconds','Not a full server: networking, services and disks differ from production'],['Cloud VM','A machine that is always on','Realistic and quick to rebuild','Costs money; **must not expose port 5432 to the internet**'],['Containers (Docker or Podman)','Disposable test instances and trying other versions','Fast, reproducible','Hides the operating system, so it teaches little about services, `systemctl` and file permissions']]},
+{note:'On a Mac with Apple silicon use an ARM64 Linux image with a tool that supports it (such as UTM or VMware Fusion) or a cloud VM. All commands in this course are identical on ARM64.'},
+{h:'Recommended VM specification'},
+{t:[['Resource','Minimum','Comfortable'],['Virtual CPUs','2','4'],['Memory','4 GB','8 GB'],['System disk','40 GB','60 GB'],['Extra disk','20 GB (tablespace and backup labs)','40 GB'],['Operating system','AlmaLinux 9 or Rocky Linux 9 (RHEL family)','Same; Ubuntu LTS if you prefer `apt`'],['Network adapters','1 (NAT)','2 (NAT plus host-only)']]},
+{h:'Networking modes'},
+{svg:labSvg},
+{t:[['Mode','VM reaches internet','Host reaches VM','Typical use'],['NAT','Yes','No, unless you add port forwarding','Downloading packages'],['NAT with port forwarding','Yes','Only the forwarded ports (for example 2222 to 22)','SSH and pgAdmin with a single adapter'],['Host-only','No','Yes, on a private network such as `192.168.56.0/24`','Private lab, and traffic between several VMs'],['Bridged','Yes','Yes, with an address on your real network','Realistic but exposes the lab to everyone on the LAN']]},
+{p:'The most convenient setup is **two adapters**: a NAT adapter for internet access and a host-only adapter that gives the VM a fixed private address you can use from your computer and from other lab VMs.'},
+{h:'Build procedure'},
+{flow:['Download the OS ISO','Create the VM and disks','Install a minimal OS','Configure network, time, hostname','Create an admin user and SSH access','Update and snapshot "clean-os"','Install PostgreSQL (Section 2)','Snapshot "pg-installed"']},
+{code:`# as root on the new VM (RHEL family)
+dnf -y update
+dnf -y install vim wget curl tar rsync lsof net-tools bind-utils chrony
+timedatectl set-timezone UTC                  # or your own zone
+systemctl enable --now chronyd                # keep the clock correct
+
+hostnamectl set-hostname pg1.lab.local
+echo "192.168.56.10  pg1.lab.local pg1" >> /etc/hosts
+
+useradd -m -G wheel dba && passwd dba         # an administrator who is not root
+
+firewall-cmd --permanent --add-service=ssh
+firewall-cmd --reload
+getenforce                                    # Enforcing: leave SELinux on
+ip -br addr                                   # confirm both adapters have addresses`},
+{h:'Connect from your computer'},
+{code:`# host-only address
+ssh dba@192.168.56.10
+
+# NAT with port forwarding (host port 2222 -> guest port 22)
+ssh -p 2222 dba@127.0.0.1
+
+# key-based login (recommended)
+ssh-keygen -t ed25519
+ssh-copy-id dba@192.168.56.10`},
+{ul:['On Windows, **PuTTY** (terminal) and **WinSCP** (file transfer) do the same job as `ssh` and `scp`.','Use the same connection details later when registering the server in pgAdmin (Section 4).','Give the VM a fixed address so that your saved connections keep working.']},
+{h:'Snapshots: your undo button'},
+{t:[['Snapshot name','Take it','Return to it when'],['`clean-os`','After the OS is installed and updated','You want to repeat an installation method'],['`pg-installed`','After a successful install and the post-installation checklist','A configuration experiment goes wrong'],['`before-upgrade`','Before a `pg_upgrade` rehearsal','You want to repeat the upgrade'],['`replica-ready`','After building a standby','You want to rehearse failover again']]},
+{ul:['A snapshot is **not a backup**: it lives next to the VM and is lost with it.','Take snapshots with the VM **powered off** when possible, so the file system is consistent.','Do not revert one VM of a replication pair and leave the other running; their histories no longer match.','Delete old snapshots; long chains slow the disk and fill the host.']},
+{h:'Sample data for practice'},
+{t:[['Source','How','Size'],['`pgbench` (built in)','`pgbench -i -s 10 labdb` creates tables with about 1 million account rows','About 150 MB'],['Generated data','`generate_series()` in SQL (example below)','You choose'],['Public sample databases','Well-known sample databases such as Pagila or the DVD rental sample are published as SQL or archive files; load them with `psql` or `pg_restore`','Small']]},
+{code:`CREATE DATABASE labdb;
+\\c labdb
+
+CREATE TABLE orders AS
+SELECT g                                         AS id,
+       (random() * 10000)::int                   AS customer_id,
+       now() - random() * 365 * interval '1 day' AS created_at,
+       round((random() * 500)::numeric, 2)       AS amount
+FROM generate_series(1, 2000000) AS g;
+ANALYZE orders;
+SELECT pg_size_pretty(pg_total_relation_size('orders'));
+
+-- a built-in benchmark for load and measurements
+-- shell: pgbench -i -s 10 labdb  &&  pgbench -c 8 -j 2 -T 60 labdb`},
+{h:'Optional multi-VM lab for Sections 9 and 10'},
+{t:[['Host name','Address','Role'],['`pg1`','`192.168.56.10`','Primary and main practice server'],['`pg2`','`192.168.56.11`','Streaming standby and restore target'],['`pg3`','`192.168.56.12`','Logical replication target or backup host']]},
+{p:'Clone the base VM for the others, then give each clone a **new host name**, a **new address** and a new machine ID (`rm /etc/machine-id && systemd-machine-id-setup`). Remember that a clone of a started cluster has the same system identifier as the original, which is what a physical standby needs; for an independent cluster run `initdb` again.'},
+{h:'Lab safety rules'},
+{ul:['Never expose the lab PostgreSQL port to the internet or an untrusted network.','Never use real passwords or real data in the lab.','Write down the addresses, users and passwords of the lab in one note.','Keep the lab on a version of the OS that still receives updates.']},
+{h:'Lab verification checklist'},
+{t:[['Check','Command','Expected result'],['OS and kernel','`cat /etc/os-release; uname -r`','The distribution you intended'],['Time','`timedatectl`','Clock synchronised: yes'],['Disk space','`df -h`','At least 20 GB free on the data file system'],['Memory','`free -h`','At least 4 GB total'],['Network','`ip -br addr; ping -c2 8.8.8.8`','Addresses present; internet reachable'],['SSH from host','`ssh dba@192.168.56.10`','Login succeeds'],['Package tools','`dnf --version`','Works']]},
+{h:'Common problems'},
+{t:[['Symptom','Likely cause','Fix'],['VM has no network','Adapter disabled or NetworkManager not started','Enable the adapter; `nmcli device status`; `systemctl restart NetworkManager`'],['SSH connection refused','`sshd` stopped or firewall closed','`systemctl status sshd`; `firewall-cmd --list-all`'],['Clock wrong after restoring a snapshot','VM clock was frozen','`chronyc makestep`'],['VirtualBox will not start a VM on Windows','Hyper-V or another hypervisor holds virtualisation','Enable the Windows Hypervisor Platform setting or disable Hyper-V'],['Disk full during labs','Too small a disk','Add a disk and extend, or recreate with 60 GB'],['Very slow VM','Too many vCPUs or too little RAM given to guest','Give the VM no more than half of host CPUs and memory']]}
+],src:[['pgbench',D+'pgbench.html'],['Server Setup and Operation',D+'runtime.html'],['Managing Kernel Resources',D+'kernel-resources.html']]},
+
+/* ---------------------------------------------------------------- 0:5 */
+'pg:0:5':{blocks:[
+{p:'Many beginner mistakes come from confusing words: "cluster" does not mean a group of servers, "database" is not the same as "instance", and a "schema" is not a file. The PostgreSQL documentation uses its own precise vocabulary, and the glossary appendix defines it. This lecture fixes the vocabulary and shows how the logical objects you create are arranged and where they live.'},
+{h:'The hierarchy'},
+{svg:logicalSvg},
+{h:'Core terms'},
+{t:[['Term','Meaning in PostgreSQL','Scope','See it with'],['**Cluster** (database cluster)','A collection of databases managed by one running server. On disk it is **one data directory** (`PGDATA`). It has one port, one set of roles and one WAL stream','Whole server','`SHOW data_directory;`'],['**Instance**','The running processes and shared memory serving one cluster (postmaster, backends, background processes)','Running server','`ps -ef | grep postgres`'],['**Database**','A named container of schemas. A connection is made to **one** database; databases are isolated from each other','Cluster','`\\l`, `pg_database`'],['**Schema**','A namespace inside a database that groups tables, views, functions and other objects','Database','`\\dn`, `pg_namespace`'],['**Table**','Rows and columns, stored as a **heap** of 8 kB pages','Schema','`\\dt`'],['**View**','A stored query that looks like a table','Schema','`\\dv`'],['**Materialized view**','A stored query **and** its result, refreshed on demand','Schema','`\\dm`'],['**Index**','A structure that speeds up lookups on one or more columns','Schema','`\\di`'],['**Sequence**','A counter that produces unique numbers (used by identity and `serial` columns)','Schema','`\\ds`'],['**Function / procedure**','Reusable code stored in the database (SQL, PL/pgSQL and other languages)','Schema','`\\df`'],['**Extension**','A packaged set of objects installed with `CREATE EXTENSION`','Database','`\\dx`'],['**Role**','A user, a group, or both; owns objects and holds privileges','**Cluster**','`\\du`, `pg_roles`'],['**Tablespace**','A named directory where data files may be placed','**Cluster**','`\\db`']]},
+{note:'"Cluster" in PostgreSQL always means a **database cluster** (one data directory). A group of servers working together is called a **replication group** or an **HA cluster**. Tools such as Patroni use "cluster" in that second sense.'},
+{h:'Cluster-wide versus per-database objects'},
+{t:[['Cluster-wide (shared by all databases)','Inside one database'],['Roles and their passwords','Schemas'],['Tablespaces','Tables, views, indexes, sequences'],['The list of databases','Functions, procedures, types'],['Replication slots and subscriptions','Extensions and publications'],['Server parameters in `postgresql.conf`','Per-database parameter defaults (`ALTER DATABASE ... SET`)'],['The write-ahead log','Event triggers, large objects']]},
+{p:'This split drives practical decisions. A role you create is visible in every database, so `pg_dump` of one database does not contain it (Section 09 shows `pg_dumpall --globals-only`). Dropping a database never drops roles.'},
+{h:'From logical object to physical files'},
+{t:[['Logical object','Physical representation'],['Cluster','The `PGDATA` directory'],['Database','A directory `base/<database oid>`'],['Table or index','One or more files named by the `relfilenode` number, split into 1 GB segments, with extra "forks" (`_fsm`, `_vm`)'],['Large values in a table','Separate TOAST table and its files'],['Tablespace','A symbolic link in `pg_tblspc` pointing to another directory'],['Schema, role, view, function','No files of their own: rows in the system catalogs']]},
+{code:`SELECT oid, datname FROM pg_database;
+SELECT pg_relation_filepath('pg_class');        -- e.g. base/5/1259
+SELECT current_database(), current_schema(), current_user;`},
+{h:'Names and identifiers'},
+{t:[['Rule','Example and effect'],['Names start with a letter or underscore, then letters, digits, underscores or `$`','`order_item`'],['Maximum length is **63 bytes**; longer names are cut','Keep names short'],['Unquoted names are folded to **lower case**','`Orders` is stored as `orders`'],['Quoted names keep their case and may contain spaces','`"Orders"` is a **different** object'],['Reserved words need quotes','`"user"`, `"order"`'],['Qualified names: `schema.object`','`sales.orders`']]},
+{code:`CREATE TABLE Orders (id int);        -- stored as orders
+CREATE TABLE "Orders" (id int);      -- a separate table; case is preserved
+SELECT * FROM orders;                -- finds orders, not "Orders"
+SELECT * FROM sales.orders;          -- schema-qualified`},
+{note:'Avoid quoted mixed-case names. Every query must then quote them exactly, and mistakes are easy to make.'},
+{h:'What a relation is, and the relkind letters'},
+{p:'Inside the catalogs the word **relation** covers every object that behaves like a table: tables, indexes, sequences, views and more. They all appear in `pg_class`, and the column `relkind` says which kind.'},
+{t:[['relkind','Object'],['`r`','Ordinary table'],['`p`','Partitioned table'],['`i`','Index'],['`I`','Partitioned index'],['`S`','Sequence'],['`v`','View'],['`m`','Materialized view'],['`t`','TOAST table'],['`f`','Foreign table'],['`c`','Composite type']]},
+{code:`SELECT n.nspname AS schema, c.relname, c.relkind
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public'
+ORDER BY c.relkind, c.relname;
+
+SELECT nspname FROM pg_namespace
+WHERE nspname !~ '^pg_' AND nspname <> 'information_schema';`},
+{h:'Database or schema? A design decision'},
+{t:[['Choose separate databases when','Choose schemas in one database when'],['Applications must be strongly isolated, with different owners and backup schedules','Several modules share data and need joins between them'],['You need different encodings, locales or extensions','Applications use the same extensions and settings'],['You want `pg_dump` or restore of one application alone','You can still dump a single schema with `pg_dump -n`']]},
+{p:'PostgreSQL cannot query another database directly; a connection belongs to one database. To combine data across databases use a foreign data wrapper such as `postgres_fdw`, or move the data into one database with separate schemas.'},
+{h:'Words you will meet in every lecture'},
+{t:[['Word','Meaning'],['**Backend**','The server process that serves one client connection'],['**Tuple**','One version of a row'],['**Page / block**','The 8 kB unit of table and index storage'],['**Heap**','The table storage itself, as opposed to indexes'],['**OID**','Object identifier used inside the catalogs'],['**XID**','Transaction identifier'],['**LSN**','Log sequence number: a position in the WAL'],['**WAL segment**','A file of the write-ahead log (16 MB by default)'],['**Timeline**','A numbered branch of WAL history, created by recovery or promotion'],['**Primary / standby**','The writable server and a replica that follows it (older material says master and slave)'],['**Slot**','A server-side bookmark that keeps WAL or changes for a consumer']]}
+],src:[['Glossary',D+'glossary.html'],['Database Roles and Privileges overview',D+'user-manag.html'],['Managing Databases',D+'managing-databases.html'],['Schemas',D+'ddl-schemas.html'],['System Catalogs',D+'catalogs.html'],['Lexical Structure: Identifiers',D+'sql-syntax-lexical.html']]},
+
+/* ---------------------------------------------------------------- 0:6 */
+'pg:0:6':{blocks:[
+{p:'This lecture is a compact refresher of the Linux, networking and SQL skills used in every other lecture. It is not a full course: it lists exactly the commands and concepts a DBA needs on day one, with the PostgreSQL context for each. If you already work comfortably with them, skim the tables and try the self-test at the end.'},
+{h:'Part 1: Linux for DBAs'},
+{h:'Users, groups and permissions'},
+{p:'PostgreSQL runs as an ordinary operating-system user, normally `postgres`, never as root. Its data directory belongs to that user and must not be readable by others: the server **refuses to start** if the permissions are too open.'},
+{t:[['Command','Purpose'],['`whoami`, `id`','Show the current user and groups'],['`sudo command`','Run one command as root'],['`sudo -u postgres command`','Run one command as the `postgres` user'],['`su - postgres`','Open a shell as `postgres`'],['`useradd`, `passwd`','Create a user and set a password'],['`ls -l`, `ls -ld dir`','List files with owner, group and permissions'],['`chmod`, `chown`','Change permissions and ownership']]},
+{t:[['Mode','Shown as','Meaning'],['`0700`','`drwx------`','Only the owner can read, write and enter. Standard for `PGDATA`'],['`0750`','`drwxr-x---`','Owner full access, group may read. Also accepted for `PGDATA`'],['`0644`','`-rw-r--r--`','Owner writes, everyone reads (ordinary file)'],['`0600`','`-rw-------`','Owner only: private keys, `.pgpass`, log files']]},
+{code:`id
+ls -ld /var/lib/pgsql/18/data                       # drwx------ postgres postgres
+sudo -u postgres psql -c "SELECT current_user;"
+sudo chown -R postgres:postgres /pgdata/cluster2
+sudo chmod 700 /pgdata/cluster2
+chmod 600 ~/.pgpass`},
+{h:'Files, text and archives'},
+{t:[['Command','Use in PostgreSQL work'],['`pwd`, `cd`, `ls`','Navigate to `PGDATA` and the log directory'],['`cp`, `mv`, `rm`, `mkdir`','Manage files; double-check `rm -r` targets'],['`cat`, `less`, `head`, `tail -f`','Read files; follow a log live'],['`grep`, `grep -c`, `grep -B2 -A5`','Search logs for errors with context'],['`find`','Locate files by name, size or age'],['`du -sh`, `df -h`','Directory size and free space'],['`tar -czf` / `tar -xzf`','Create and unpack archives'],['`rsync -a`','Copy trees efficiently, keeping permissions'],['`scp`, `sftp`','Copy files between servers']]},
+{code:`tail -f /var/lib/pgsql/18/data/log/postgresql-Thu.log
+grep -c ERROR /var/lib/pgsql/18/data/log/*.log
+du -sh /var/lib/pgsql/18/data/*  | sort -h | tail
+df -h /var/lib/pgsql
+tar -czf /backup/conf-$(date +%F).tgz /var/lib/pgsql/18/data/postgresql*.conf`},
+{h:'Editing with vi'},
+{t:[['Keys','Action'],['`i`','Enter insert mode to type text'],['`Esc`','Return to command mode'],['`:w` then `Enter`','Save'],['`:q!`','Quit without saving'],['`:wq`','Save and quit'],['`/text` then `n`','Search forward, next match'],['`dd`, `u`','Delete the current line, undo']]},
+{p:'`nano` is a simpler alternative: the shortcuts are listed at the bottom of the screen.'},
+{h:'Processes and services'},
+{t:[['Command','Purpose'],['`ps -ef | grep postgres`','List PostgreSQL processes'],['`top`, `htop`','Live CPU and memory by process'],['`kill PID` (SIGTERM)','Ask a process to stop cleanly'],['`kill -9 PID` (SIGKILL)','Force-kill; **never use on the postmaster**, because it can force crash recovery'],['`systemctl status|start|stop|restart|reload NAME`','Control a service'],['`systemctl enable --now NAME`','Start now and at every boot'],['`journalctl -u NAME --since "1 hour ago"`','Service messages from the journal']]},
+{h:'Disk, memory and CPU'},
+{t:[['Command','Shows','Why a DBA cares'],['`df -h`','Free space per file system','A full disk stops PostgreSQL'],['`du -sh path`','Size of a directory','Find what is growing'],['`free -h`','Memory and swap use','Swapping hurts performance badly'],['`uptime`','Load average','Quick CPU pressure check'],['`vmstat 1`, `iostat -x 1`','CPU, memory and disk activity over time','Find an I/O bottleneck'],['`lsblk`, `mount`','Disks and mount points','Plan data, WAL and backup volumes']]},
+{h:'Networking, ports and firewalls'},
+{t:[['Command','Purpose'],['`ip -br addr`','Addresses of this machine'],['`ss -ltnp`','Listening TCP ports and the process that owns them'],['`ping host`','Is the host reachable?'],['`nc -vz host 5432`','Is the PostgreSQL port reachable?'],['`dig name`, `nslookup name`','Name resolution'],['`firewall-cmd --list-all`','Active firewall rules'],['`firewall-cmd --permanent --add-service=postgresql` then `--reload`','Open the PostgreSQL port']]},
+{t:[['CIDR','Meaning','Example use in `pg_hba.conf`'],['`/32`','Exactly one address','`10.0.1.7/32` one application server'],['`/24`','256 addresses (`10.0.1.0` to `10.0.1.255`)','`10.0.1.0/24` an application subnet'],['`/16`','65,536 addresses','A whole site network'],['`0.0.0.0/0`','Every IPv4 address','**Only** with `reject`, or never']]},
+{h:'Environment variables, scripts and SELinux'},
+{code:`# environment for a DBA session (add to ~/.bash_profile)
+export PATH=/usr/pgsql-18/bin:$PATH
+export PGDATA=/var/lib/pgsql/18/data
+
+# a safe skeleton for a maintenance script
+#!/bin/bash
+set -euo pipefail                      # stop on errors and unset variables
+LOG=/var/log/pg_check.log
+pg_isready -q || { echo "$(date) server down" >> "$LOG"; exit 1; }
+echo "$(date) ok" >> "$LOG"
+
+# SELinux basics
+getenforce                             # Enforcing
+ls -Z /var/lib/pgsql                   # file contexts
+sudo semanage port -a -t postgresql_port_t -p tcp 5433    # allow a non-default port`},
+{h:'Part 2: SQL refresher'},
+{t:[['Family','Purpose','Examples'],['DDL (definition)','Create and change structure','`CREATE TABLE`, `ALTER TABLE`, `DROP INDEX`'],['DML (manipulation)','Change data','`INSERT`, `UPDATE`, `DELETE`, `MERGE`'],['DQL (query)','Read data','`SELECT`'],['DCL (control)','Permissions','`GRANT`, `REVOKE`'],['TCL (transaction control)','Group statements','`BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`']]},
+{code:`CREATE TABLE customer (
+  id    int GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name  text NOT NULL,
+  email text UNIQUE
+);
+CREATE TABLE purchase (
+  id          int GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  customer_id int NOT NULL REFERENCES customer(id),
+  amount      numeric(10,2) CHECK (amount > 0),
+  created_at  timestamptz DEFAULT now()
+);
+INSERT INTO customer (name, email) VALUES ('Asha','asha@example.com'), ('Ravi','ravi@example.com');
+INSERT INTO purchase (customer_id, amount) VALUES (1, 120.50), (1, 80), (2, 45.25);
+
+-- join, group, filter groups, sort, limit
+SELECT c.name, count(*) AS orders, sum(p.amount) AS total
+FROM customer c JOIN purchase p ON p.customer_id = c.id
+GROUP BY c.name
+HAVING sum(p.amount) > 50
+ORDER BY total DESC
+LIMIT 10;
+
+-- common table expression and window function
+WITH ranked AS (
+  SELECT customer_id, amount,
+         row_number() OVER (PARTITION BY customer_id ORDER BY amount DESC) AS rn
+  FROM purchase)
+SELECT * FROM ranked WHERE rn = 1;
+
+UPDATE customer SET email = 'asha@corp.example' WHERE name = 'Asha';
+DELETE FROM purchase WHERE amount < 50;`},
+{h:'Constraints and keys'},
+{t:[['Constraint','Rule it enforces','Violation error'],['`PRIMARY KEY`','Unique and not null; identifies a row','duplicate key value'],['`FOREIGN KEY`','Value must exist in the referenced table','violates foreign key constraint'],['`UNIQUE`','No two rows share the value','duplicate key value'],['`CHECK`','A condition must hold','violates check constraint'],['`NOT NULL`','Value required','null value in column'],['`DEFAULT`','Value used when none is given','(no error)']]},
+{h:'Common data types'},
+{t:[['Type','Use'],['`integer`, `bigint`','Whole numbers (4 and 8 bytes)'],['`numeric(p,s)`','Exact decimals, such as money'],['`text`, `varchar(n)`','Strings; `text` has no length limit'],['`boolean`','true or false'],['`date`, `timestamp`, `timestamptz`','Dates and times; prefer `timestamptz` for events'],['`uuid`','Globally unique identifiers'],['`jsonb`','Binary JSON documents, indexable']]},
+{h:'NULL, the unknown value'},
+{t:[['Expression','Result','Lesson'],['`NULL = NULL`','NULL (not true)','Use `IS NULL`'],['`NULL <> 5`','NULL','Rows with NULL vanish from `WHERE col <> 5`'],['`5 + NULL`','NULL','Any arithmetic with NULL gives NULL'],['`count(col)` vs `count(*)`','`count(col)` ignores NULLs','Know which one you need'],['`coalesce(col, 0)`','Replaces NULL by 0','Provide a default']]},
+{h:'Self-test'},
+{ul:['Create a table with a primary key and a foreign key to another table.','Insert, update and delete rows, and roll one change back inside a transaction.','Write a join with `GROUP BY` and `HAVING`.','Explain the difference between `WHERE` and `HAVING`.','Use `systemctl` to stop, start and check a service.','Read the last 50 lines of a log and search it for the word ERROR.','Explain what `chmod 700` does and why `PGDATA` needs it.','Check which process listens on port 5432.','Explain what `10.0.1.0/24` means.','Write a script that stops when a command fails.']},
+{note:'If you can do eight of the ten comfortably, you are ready for Section 2. Otherwise repeat the commands above on your lab VM until they feel natural.'}
+],src:[['The SQL Language',D+'sql.html'],['Data Definition (constraints)',D+'ddl-constraints.html'],['File System Permissions of the data directory',D+'creating-cluster.html'],['Managing Kernel Resources',D+'kernel-resources.html']]},
+
+/* ---------------------------------------------------------------- 0:7 */
+'pg:0:7':{blocks:[
+{p:'The PostgreSQL documentation is among the best of any open-source project: complete, precise and version-specific. A skilled DBA does not memorise parameters; they know how to find the authoritative answer quickly and how to read it correctly. This lecture teaches the structure of the documentation, how to read command and parameter pages, where release notes and community resources are, and how to ask for help effectively.'},
+{h:'How the documentation is organised'},
+{t:[['Part','Contents','How a DBA uses it'],['Preface','What PostgreSQL is, history, conventions, how to report bugs','Start here once'],['I. Tutorial','SQL basics and advanced features','Refresh SQL concepts'],['II. The SQL Language','Syntax, data types, queries, indexes, concurrency control, performance tips, partitioning','Design and tuning questions'],['III. Server Administration','Installation, setup, configuration, authentication, roles, databases, localization, routine maintenance, backup, high availability, monitoring, WAL','**Your main reference**'],['IV. Client Interfaces','`libpq` and drivers','Connection strings and environment variables'],['V. Server Programming','Functions, triggers, extensions','Reading developer code and packaging extensions'],['VI. Reference','One page per SQL command, client application and server application','Exact syntax and options'],['VII. Internals','Catalogs, planner, WAL format, storage layout, protocols','Deep diagnosis'],['VIII. Appendixes','Error codes, limits, release notes, glossary','Quick lookups']]},
+{h:'Pick the right version of the page'},
+{ul:['Every page exists for each supported major version. The address contains the version: `.../docs/18/...`; `.../docs/current/` always points at the latest release.','Use the version selector at the top of a page to see how a feature differs in another release.','Always read the page for **your own** server version. A parameter or default may not exist in an older one.','Check yours with `SHOW server_version;`.']},
+{h:'Reading a command page'},
+{p:'Each page under "Reference" follows the same layout: **Synopsis** (syntax), **Description**, **Parameters**, **Notes**, **Examples**, **Compatibility** (how it relates to the SQL standard) and **See Also**. The synopsis uses a small notation.'},
+{t:[['Symbol','Meaning','Example'],['UPPERCASE words','Keywords, typed as shown','`CREATE ROLE`'],['lowercase words','A value you supply','`role_name`'],['`[ ... ]`','Optional part','`[ IF NOT EXISTS ]`'],['`{ a | b }`','Choose exactly one','`{ LOGIN | NOLOGIN }`'],['`|`','Alternatives','`SUPERUSER | NOSUPERUSER`'],['`...`','The previous item may be repeated','`column_name [, ...]`'],['Indented lists','Grammar for a placeholder, defined below the synopsis','`where option can be:`']]},
+{h:'Reading a parameter entry'},
+{p:'Each parameter in "Server Configuration" shows its name and type, a description, its default and a sentence about **when it can be changed**. That sentence maps directly to the `context` column of `pg_settings` (Section 06).'},
+{t:[['Phrase in the documentation','`pg_settings.context`','Action'],['This parameter can only be set at server start.','`postmaster`','Restart'],['This parameter can only be set in the `postgresql.conf` file or on the server command line.','`sighup`','Reload'],['This parameter can be changed at any time by superusers (or roles granted the privilege)','`superuser`','Reload or `SET` in a session'],['This parameter can be set by any user in a session','`user`','`SET`, role or database default, or file'],['This parameter can only be set at connection start','`backend` / `superuser-backend`','New sessions only']]},
+{h:'Help without leaving the terminal'},
+{t:[['Tool','Use'],['`\\?`','List of `psql` meta-commands'],['`\\h`','List SQL commands with help'],['`\\h CREATE INDEX`','Synopsis of one SQL command'],['`psql --help`, `pg_dump --help`','Options of a client program'],['`man pg_dump`','Manual page for installed programs'],['`pg_settings`','Short description, unit, range and context of a parameter']]},
+{code:`\\h ALTER ROLE
+SELECT name, setting, unit, context, short_desc, min_val, max_val
+FROM pg_settings WHERE name = 'checkpoint_timeout';`},
+{h:'Official pages beyond the manual'},
+{t:[['Resource','What you find there'],['Release notes','Everything that changed in each version, with migration notes'],['Versioning policy','Supported versions and end-of-life dates'],['Download pages','Packages and installers for every platform'],['Security information','Published vulnerabilities, affected versions and fixes'],['Wiki','Community-maintained how-tos, tuning pages, FAQ'],['Mailing list archives','Searchable discussions going back many years'],['Planet PostgreSQL','Aggregated community blog posts'],['Commitfest','Patches under review for future versions']]},
+{h:'Mailing lists'},
+{t:[['List','Topic'],['`pgsql-general`','General questions about using PostgreSQL'],['`pgsql-admin`','Administration questions'],['`pgsql-performance`','Query and server performance'],['`pgsql-bugs`','Bug reports (usually via the web form)'],['`pgsql-hackers`','Development of PostgreSQL itself'],['`pgsql-announce`','Low-traffic announcements of releases and events']]},
+{h:'Asking a good question'},
+{flow:['Search docs and archives','Reproduce on a small case','Collect the facts','Write a precise question','Say what you already tried']},
+{t:[['Include','Example'],['Version and platform','`PostgreSQL 18.4 on AlmaLinux 9`'],['What you did','The exact command or query'],['What you expected and what happened','Error text copied from the log, not retyped'],['Relevant settings','Output of `SELECT name, setting FROM pg_settings WHERE source <> \'default\';`'],['For performance','`EXPLAIN (ANALYZE, BUFFERS)` output and table definitions']]},
+{h:'Reporting bugs and security issues'},
+{ul:['Bugs: use the official bug-report form, and first confirm the problem on the **latest minor release**.','Security vulnerabilities: report **privately** to the PostgreSQL security team (the address is on the security information page). Do not post them on public lists.','Check the security page after each minor release to see which CVEs it fixes and whether your configuration is affected.']},
+{h:'Events and learning'},
+{p:'The community holds conferences and local events (PGConf and PGDay events in many regions, and user-group meetings). The talks are a good way to learn how production systems are run and to meet other DBAs.'},
+{h:'Judging the quality of a source'},
+{t:[['Source','Trust','Check before using'],['Official documentation for your version','Highest','Make sure the page is for your major version'],['Release notes','Highest','Applies to the exact versions you move between'],['Posts from core contributors on the lists','High','Date and version'],['Vendor and community blog posts','Medium','Which version? Was it tested?'],['Q&A sites','Medium to low','Age of the answer, and whether it matches the docs'],['AI assistants','Variable','**Always verify** in the documentation and test in the lab']]},
+{note:'Habit worth building: every time you copy a command from anywhere, run `SHOW server_version;`, read the matching documentation page, and try it on the lab VM first.'}
+],src:[['Preface',D+'preface.html'],['Server Configuration',D+'runtime-config.html'],['SQL Commands (Reference)',D+'sql-commands.html'],['How to Report Bugs',D+'bug-reporting.html'],['Release Notes',D+'release.html'],['PostgreSQL Glossary',D+'glossary.html']]},
+
+/* ---------------------------------------------------------------- 0:8 */
+'pg:0:8':{blocks:[
+{p:'PostgreSQL is a core database surrounded by a very large ecosystem: **extensions** that add capabilities, **tools** that handle backup, high availability, pooling and monitoring, and **services** that run PostgreSQL for you. A DBA is rarely asked to run "plain" PostgreSQL; the real job is choosing and operating the right combination. This lecture maps the landscape so that you recognise each name when it appears later in the course.'},
+{h:'Extensions: what they are'},
+{p:'The documentation describes an **extension** as a packaged set of related SQL objects (types, functions, operators, index methods, views) that is installed and removed as one unit. Extensions are how PostgreSQL stays small at the core and grows features without forking the code. Each one has a control file and SQL scripts in the server\'s `extension` directory, and some include a shared library.'},
+{code:`SELECT name, default_version, installed_version, comment
+FROM pg_available_extensions WHERE name LIKE 'pg\\_%' ORDER BY name;   -- what can be installed
+
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;   -- install into the current database
+SELECT extname, extversion FROM pg_extension;        -- what is installed here
+ALTER EXTENSION pg_stat_statements UPDATE;            -- after a package update
+DROP EXTENSION pg_stat_statements;`},
+{ul:['An extension is installed **per database**, not per cluster.','Installing normally needs superuser rights, although extensions marked **trusted** can be installed by a user with `CREATE` privilege on the database.','Some need `shared_preload_libraries` and a **restart** (see the Contrib Module lecture in Section 5).','Extension files must exist for the **exact major version** of the server, which matters for upgrades (Section 10).']},
+{h:'Modules that ship with PostgreSQL (contrib)'},
+{t:[['Module','Purpose'],['`pg_stat_statements`','Execution statistics for every normalised query'],['`auto_explain`','Log execution plans of slow statements'],['`pg_buffercache`','Look inside `shared_buffers`'],['`pg_prewarm`','Load tables into cache after a restart'],['`pgstattuple`, `pageinspect`','Measure bloat and inspect pages'],['`amcheck`','Verify index and heap integrity'],['`pg_walinspect`','Read WAL records with SQL'],['`pgcrypto`','Cryptographic functions'],['`pg_trgm`','Fuzzy text matching and `LIKE` acceleration'],['`citext`, `hstore`, `ltree`','Case-insensitive text, key-value and tree types'],['`postgres_fdw`, `file_fdw`','Query other PostgreSQL servers or files'],['`btree_gin`, `btree_gist`','Index support for combined index types'],['`sslinfo`, `pg_visibility`, `pg_freespacemap`','Diagnostics']]},
+{h:'Widely used third-party extensions'},
+{t:[['Extension','What it adds','Notes'],['PostGIS','Geospatial types, indexes and functions','The standard for GIS workloads'],['pgvector','Vector similarity search for embeddings','Used for AI and search features'],['TimescaleDB','Time-series storage and compression','Check its licence terms'],['Citus','Distributed tables across several nodes','Scale-out for large datasets'],['pg_partman','Automatic partition creation and retention','Complements declarative partitioning'],['pg_cron','Run SQL on a schedule inside the database','Needs preloading and restart'],['pgAudit','Detailed session and object audit logging','Section 07 uses it for auditing'],['pg_repack','Rebuild bloated tables and indexes online','Section 5 mentions it for bloat'],['pg_hint_plan, HypoPG','Plan hints and hypothetical indexes','Tuning aids']]},
+{h:'Vetting an extension before you adopt it'},
+{t:[['Question','Why'],['Is it maintained, and does it support **your** major version and the next one?','An unmaintained extension blocks upgrades'],['Is it available as a package from the PGDG repository or your vendor?','Packages are patched and tested; source builds are yours to maintain'],['What is its licence?','Some are not permissive'],['Does it need `shared_preload_libraries` and a restart?','Affects maintenance windows'],['Does it need superuser to install or use?','Affects the privilege model'],['Does your managed service allow it?','Providers allow only an approved list'],['How do you upgrade it?','`ALTER EXTENSION ... UPDATE` and `pg_upgrade` both need a plan']]},
+{h:'Tools by function'},
+{t:[['Function','Common tools','What they do'],['Backup and recovery','pgBackRest, Barman, WAL-G','Full, incremental and differential backups, WAL archiving, point-in-time recovery, retention'],['High availability','Patroni, repmgr, pg_auto_failover','Automatic failover and cluster management'],['Connection pooling','PgBouncer, pgpool-II','Share a few server connections among many clients'],['Load balancing and routing','HAProxy, keepalived, pgpool-II','Route to the primary or to replicas, floating addresses'],['Monitoring and alerting','Prometheus with `postgres_exporter`, Grafana, pgwatch, Nagios checks','Metrics, dashboards and alerts'],['Log analysis','pgBadger','Report on slow queries, errors, locks'],['Administration GUI','pgAdmin, DBeaver, DataGrip','Browse objects and run SQL'],['Schema migration','Flyway, Liquibase, Alembic, Sqitch','Version-controlled changes to the schema'],['Data migration','pgloader, ora2pg','Move data from other databases'],['Online maintenance','pg_repack, pg_squeeze','Rebuild tables and indexes without long locks']]},
+{h:'Managed services and distributions'},
+{t:[['Offering type','Examples','Points to know'],['Hyperscaler managed PostgreSQL','Amazon RDS, Google Cloud SQL, Azure Database for PostgreSQL','Community PostgreSQL run for you; limited superuser access'],['PostgreSQL-compatible engines','Amazon Aurora PostgreSQL, Google AlloyDB','Different storage layer; behaviour and tools can differ from community PostgreSQL'],['Commercial distributions and support','EDB, Percona, Crunchy Data and others','Packaged builds, extra tools and support contracts'],['PostgreSQL-protocol databases','CockroachDB, YugabyteDB and others','They speak the PostgreSQL protocol but are **different systems** with their own limits']]},
+{note:'"PostgreSQL-compatible" is not the same as PostgreSQL. Before relying on a feature (a parameter, an extension, a backup method, `pg_upgrade`), check the provider documentation, because the tools in this course may not apply as written.'},
+{h:'A typical production stack'},
+{t:[['Need','Common answer'],['Backups and PITR','pgBackRest or Barman'],['High availability','Patroni with a distributed configuration store, plus HAProxy'],['Connection pooling','PgBouncer'],['Monitoring','Prometheus, `postgres_exporter`, Grafana, alerts, plus `pg_stat_statements`'],['Log reports','pgBadger'],['Schema changes','A migration tool in the application pipeline'],['Auditing','pgAudit']]},
+{p:'Sections 9 and 10 teach the **built-in** mechanisms these tools automate (`pg_basebackup`, WAL archiving, streaming replication, promotion). Learn the mechanisms first: when a tool fails at 3 a.m., you will be debugging the mechanism underneath.'}
+],src:[['Additional Supplied Modules and Extensions',D+'contrib.html'],['Packaging Related Objects into an Extension',D+'extend-extensions.html'],['CREATE EXTENSION',D+'sql-createextension.html'],['pg_available_extensions',D+'view-pg-available-extensions.html'],['High Availability, Load Balancing, and Replication',D+'high-availability.html']]},
+
+/* ---------------------------------------------------------------- 0:9 */
+'pg:0:9':{blocks:[
+{p:'Reliable databases are not the result of heroic rescues; they come from routine. A **routine** turns surprises into scheduled checks, a **runbook** turns panic into steps, and **change management** turns risky edits into reviewed, reversible work. This lecture gives you the daily, weekly, monthly and yearly checklists, the queries that support them, and templates for incidents, changes and documentation.'},
+{h:'Vocabulary'},
+{t:[['Term','Meaning','Example'],['**SLA**','A promise to the business, often with penalties','99.9 percent availability per month'],['**SLO**','An internal target that supports the SLA','Replica lag under 5 seconds'],['**RPO**','Recovery Point Objective: how much data you may lose','At most 5 minutes of transactions'],['**RTO**','Recovery Time Objective: how long recovery may take','Back online in 30 minutes'],['**MTTR**','Mean time to repair','Average of recent incident durations'],['**Runbook**','Step-by-step procedure for a task or incident','"Replace a failed standby"'],['**Change window**','Agreed time for risky work','Sunday 02:00 to 04:00']]},
+{h:'The cadence'},
+{flow:['Daily: health and backups','Weekly: performance and growth','Monthly: restore test and review','Quarterly: failover drill','Yearly: version roadmap and audit']},
+{h:'Daily checks (about 15 minutes)'},
+{t:[['Check','How','Healthy'],['Server and connections','`pg_isready`; sessions by state versus `max_connections`','Ready; under 80 percent of the limit'],['Last backup','Backup tool report or log','Completed within the RPO window'],['Errors in the log','`grep -c -E "ERROR|FATAL|PANIC"` for yesterday','No new patterns or spikes'],['Disk space','`df -h` for `PGDATA`, `pg_wal`, log and backup volumes','More than 20 percent free'],['Replication lag','`pg_stat_replication` on the primary','Standbys streaming, lag within the SLO'],['Long or blocked transactions','`pg_stat_activity`, `pg_blocking_pids()`','No transaction older than the agreed limit; no idle-in-transaction pile-up'],['Autovacuum','Dead tuples and last autovacuum on large tables','Recent runs, no table far behind'],['Alerts','Monitoring dashboard','No unacknowledged alerts']]},
+{h:'Weekly checks'},
+{ul:['Review the **slowest and most frequent** statements from `pg_stat_statements`; investigate new entries.','Look at **growth**: database sizes, largest tables, `pg_wal` size, backup size.','Find **unused indexes** and **bloated** tables; plan maintenance for them.','Check **transaction ID age** (`age(datfrozenxid)`) is far below the autovacuum freeze limit.','Review **peak connection count** and idle sessions.','Check whether a **minor release or security fix** has been published.','Restore **one small backup** to a scratch server to prove it works.','Review **new roles** and changed privileges.']},
+{h:'Monthly checks'},
+{ul:['Perform a **full restore test** and measure the time; compare with the RTO.','Update the **capacity forecast** (data, WAL, connections, memory).','Run an **access review**: `pg_roles`, memberships, `pg_hba.conf`.','Check **configuration drift** against the approved baseline (`source <> \'default\'`).','Apply the monthly or quarterly **patch cycle** (minor releases, OS updates) to test, then production.','Compare **installed extension versions** with those available.','Update the **inventory** and contact lists.']},
+{h:'Quarterly and yearly'},
+{t:[['Frequency','Task'],['Quarterly','Disaster-recovery drill: switchover, restore into a clean environment, time every step'],['Quarterly','Review certificates and their expiry dates; rotate secrets as per policy'],['Yearly','Major-version roadmap: list each cluster, its version and **end-of-support date**. In this course the calendar shows that PostgreSQL 14 reaches end of life in November 2026'],['Yearly','Hardware and capacity plan; licence and cost review'],['Yearly','Review and update every runbook; audit evidence for compliance']]},
+{h:'Queries to keep handy'},
+{code:`-- sessions by state
+SELECT state, count(*) FROM pg_stat_activity
+WHERE backend_type = 'client backend' GROUP BY 1 ORDER BY 2 DESC;
+
+-- oldest open transactions
+SELECT pid, usename, state, now() - xact_start AS xact_age, left(query, 60) AS query
+FROM pg_stat_activity WHERE xact_start IS NOT NULL ORDER BY xact_start LIMIT 10;
+
+-- who is blocked, and by whom
+SELECT pid, pg_blocking_pids(pid) AS blocked_by, wait_event_type, wait_event, left(query, 60) AS query
+FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid)) > 0;
+
+-- replication lag (run on the primary)
+SELECT application_name, state, sync_state, write_lag, flush_lag, replay_lag
+FROM pg_stat_replication;
+
+-- biggest databases
+SELECT datname, pg_size_pretty(pg_database_size(datname)) AS size
+FROM pg_database ORDER BY pg_database_size(datname) DESC;
+
+-- transaction ID age (watch for wraparound)
+SELECT datname, age(datfrozenxid) AS xid_age FROM pg_database ORDER BY 2 DESC;
+
+-- indexes never scanned since statistics were reset
+SELECT schemaname, relname, indexrelname, idx_scan,
+       pg_size_pretty(pg_relation_size(indexrelid)) AS size
+FROM pg_stat_user_indexes WHERE idx_scan = 0
+ORDER BY pg_relation_size(indexrelid) DESC LIMIT 10;
+
+-- top statements by total time (needs the pg_stat_statements extension)
+SELECT calls, round(total_exec_time::numeric, 1) AS total_ms,
+       round(mean_exec_time::numeric, 2) AS mean_ms, left(query, 60) AS query
+FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 10;`},
+{note:'An unused index may still enforce a unique or primary-key constraint, or be needed only for monthly reports. Check before dropping anything.'},
+{h:'Incident response'},
+{flow:['Detect','Triage: impact and scope','Stabilise','Diagnose with logs and views','Fix','Verify','Communicate','Review']},
+{t:[['Incident','First checks','Where taught'],['Disk full','`df -h`; size of `pg_wal`; abandoned replication slots; archive failures','Sections 8, 9, 10'],['Too many connections','Sessions by state; idle in transaction; pooler','Section 6'],['Slow database','`pg_stat_activity`, locks, top statements, recent change','Sections 5 and 6'],['Replica behind','`pg_stat_replication`, network, long standby queries','Section 10'],['Server will not start','The last lines of the log; permissions; `postmaster.pid`; recent config change','Sections 3, 4 and 6'],['Data deleted by mistake','Stop writes, locate backup and WAL, plan point-in-time recovery','Section 9']]},
+{ul:['**Stabilise before you diagnose:** stop the damage first (for example free space, cancel a runaway query), then investigate.','**Write down every action and its time** while working; it becomes the incident record.','**Never delete WAL files by hand** to free space, and never `kill -9` the postmaster.']},
+{h:'Change management'},
+{flow:['Request and reason','Risk assessment','Test on staging','Approval','Backup and rollback plan','Execute in window','Verify and record']},
+{code:`CHANGE REQUEST
+  What:        Raise shared_buffers from 4GB to 8GB on pg1
+  Why:         Cache hit ratio 93 percent; memory is available
+  Risk:        Needs a restart (about 1 minute downtime)
+  Tested on:   staging, 2026-10-05, no problems
+  Window:      Sunday 02:00-02:30
+  Rollback:    Restore previous value in postgresql.auto.conf, restart
+  Verification: SHOW shared_buffers; hit ratio after one day
+  Approved by: <name>`},
+{h:'Runbook skeleton'},
+{code:`RUNBOOK: <title>
+  Purpose:        what this procedure achieves
+  When to use:    symptoms or trigger
+  Prerequisites:  access, tools, backups that must exist
+  Steps:          numbered commands, each with expected output
+  Verification:   how to prove it worked
+  Rollback:       how to undo
+  Escalation:     who to call, and when
+  Last tested:    date, by whom`},
+{h:'Inventory: one record for every cluster'},
+{t:[['Field','Example'],['Name, environment, owner','`sales-prod`, production, Sales IT'],['Host, port, `PGDATA`','`pg1.lab.local`, 5432, `/var/lib/pgsql/18/data`'],['Version and end-of-support date','18.x, November 2030'],['Size and growth per month','800 GB, 20 GB'],['Backup tool, schedule, location, last tested restore','pgBackRest, nightly, offsite, 2026-09-28'],['RPO and RTO','5 minutes, 30 minutes'],['Standbys and failover method','`pg2` streaming; Patroni'],['Extensions and preload libraries','`pg_stat_statements`, `pgaudit`'],['Contacts and escalation','On-call rota, application owner']]},
+{note:'Start simple. A shared document with the inventory and three runbooks (restore, failover, disk full) is worth more than an elaborate system nobody keeps up to date. Automate the daily checks afterwards.'}
+],src:[['Monitoring Database Activity',D+'monitoring.html'],['The Cumulative Statistics System',D+'monitoring-stats.html'],['Routine Database Maintenance Tasks',D+'maintenance.html'],['Backup and Restore',D+'backup.html'],['pg_stat_statements',D+'pgstatstatements.html']]}
+
+});
+
+/* ---------- register the 6 new lectures with the course outline ---------- */
+window.EXTRA_LECTURES=window.EXTRA_LECTURES||{};
+window.EXTRA_LECTURES[0]=(window.EXTRA_LECTURES[0]||[]).concat([
+['Lab Setup: Building Your Practice Environment','0:00','Choose and build a safe lab: virtualisation options, VM sizing, NAT and host-only networking, SSH access, snapshots, sample data and an optional multi-VM replication lab.'],
+['PostgreSQL Terminology and the Logical Object Hierarchy','0:00','Cluster, instance, database, schema, table and role defined precisely; cluster-wide versus per-database objects; how logical objects map to files; names, identifiers, relkind and a glossary.'],
+['Linux and SQL Prerequisites Refresher','0:00','The Linux commands, permissions, services, networking and SQL skills used throughout the course, with PostgreSQL examples and a self-test.'],
+['Using the PostgreSQL Documentation and Community','0:00','How the official manual is organised, how to read command and parameter pages, built-in help, release notes, mailing lists, asking good questions and judging sources.'],
+['The PostgreSQL Ecosystem: Extensions, Tools and Managed Services','0:00','Contrib and third-party extensions, tools for backup, HA, pooling and monitoring, managed services, PostgreSQL-compatible engines and how to vet them.'],
+['A DBA Routine: Checklists, Runbooks and Change Management','0:00','Daily, weekly, monthly and yearly checklists with queries, incident response, change requests, runbook and inventory templates.']]);
+})();

@@ -139,7 +139,7 @@ const COURSES=[
 outcomes:['Installation & configuration','Architecture & WAL','Backup & recovery','Replication & HA','Performance tuning','Security & roles'],
 sections:[
 {t:'Introduction',q:'Introduction Quiz',l:[
-['Introduction to PostgreSQL DBA','3:01',''],
+['Introduction to PostgreSQL DBA','3:01','Course overview: who it is for, the ten sections, prerequisites, how lectures are built, a study plan and a capstone project.'],
 ['What is PostgreSQL','7:46','What PostgreSQL is and why it stays a reliable open-source relational database: ACID, MVCC, security, scalability and extensibility.'],
 ['DBA Role and Responsibilities','4:01','The DBA role and real-world tasks. Compares PostgreSQL with Oracle and SQL Server: open-source features, ACID, indexing and high availability.']]},
 {t:'Installation Methods',q:'Installation Methods Quiz',l:[
@@ -208,6 +208,13 @@ sections:[
 {id:'rs',name:'Amazon Redshift',tag:'RS',color:'var(--rs)',level:'Coming soon',blurb:'Cloud data warehousing on AWS: cluster design, distribution, loading and tuning.',sections:[]}
 ];
 if(window.EXTRA_LECTURES)Object.entries(window.EXTRA_LECTURES).forEach(([i,a])=>COURSES[0].sections[i].l.push(...a));
+/* Reorder: PostgreSQL Architecture now comes before Basic Configuration (done after EXTRA_LECTURES so those still attach by original index) */
+(function(){const S=COURSES[0].sections,a=S.findIndex(x=>x.t==='Basic Configuration and Connectivity'),b=S.findIndex(x=>x.t==='PostgreSQL Architecture');
+ if(a>-1&&b===a+1){S.splice(a,2,S[b],S[a]);
+  /* one-time migration of saved progress so ticks stay with the right lectures */
+  try{if(!localStorage.getItem('ls_mig_arch')){const p=JSON.parse(localStorage.getItem('ls_prog')||'{}'),g=p.pg;
+   if(g){const n={};Object.keys(g).forEach(k=>{const[i,j]=k.split('-');n[(+i===a?a+1:+i===b?a:+i)+'-'+j]=g[k]});p.pg=n;localStorage.setItem('ls_prog',JSON.stringify(p))}
+   localStorage.setItem('ls_mig_arch','1')}}catch(e){}}})();
 /* ---------- HELPERS ---------- */
 const $=s=>document.querySelector(s),app=$('#app');
 let P={};try{P=JSON.parse(localStorage.getItem('ls_prog')||'{}')}catch(e){}
