@@ -1,0 +1,5676 @@
+/* LearnSphere - PostgreSQL DBA course lessons (merged from lessons.js ... lessons9.js).
+   Order matters: each part extends window.LESSONS / window.EXTRA_LECTURES created by the parts before it.
+   Add new PostgreSQL sections at the END of this file as another self-contained (function(){ ... })(); block. */
+
+/* ================================================================
+   PART: Sections 1-4 base lessons (Introduction, Installation, Configuration, Architecture)  (was lessons.js)
+   ================================================================ */
+/* LearnSphere lesson content. Key = courseId:sectionIndex:lectureIndex */
+(function(){
+const D='https://www.postgresql.org/docs/current/';
+window.LESSONS={
+'pg:0:0':{blocks:[
+{p:'This course takes you from zero to a working **PostgreSQL DBA**: installing the server, understanding how it runs, securing it, backing it up, tuning it and replicating it.'},
+{h:'Course roadmap'},
+{flow:['Install & connect','Architecture (processes, memory, WAL)','Storage & configuration','Users & security','Backup & recovery','Upgrade & replication']},
+{h:'What you will be able to do'},
+{ul:['Install PostgreSQL from source, yum, RPM or the Windows GUI installer.','Explain what the postmaster, backends, shared buffers and WAL do.','Create roles with least privilege and lock down `pg_hba.conf`.','Take logical (`pg_dump`) and physical (`pg_basebackup`) backups and restore them.','Upgrade with `pg_upgrade` and build a streaming-replication standby.']},
+{note:'Tip: practise on a throwaway VM (VirtualBox is fine). Every lesson has commands you should run yourself.'}],
+src:[['PostgreSQL documentation',D]]},
+
+'pg:0:1':{blocks:[
+{p:'PostgreSQL is an open-source **object-relational database management system** with more than 35 years of active development. It is known for correctness, standards compliance and extensibility.'},
+{h:'Core strengths'},
+{t:[['Feature','What it means'],['ACID','Transactions are atomic, consistent, isolated and durable (durability comes from WAL).'],['MVCC','Readers never block writers: each transaction sees a snapshot, old row versions are cleaned by VACUUM.'],['Extensibility','Custom types, operators, index methods, procedural languages and extensions (e.g. `pg_stat_statements`).'],['Security','Roles, GRANT/REVOKE, row-level security, SCRAM authentication, TLS.'],['Scalability','Partitioning, parallel query, streaming and logical replication.']]},
+{h:'How MVCC works in one picture'},
+{flow:['UPDATE creates a new row version','Old version stays visible to older snapshots','Snapshots end','VACUUM reclaims dead tuples']},
+{h:'Client / server model'},
+{p:'One server process (the postmaster) listens on a port (default `5432`). Each client connection gets its own backend process. All data lives in a single **cluster**, a data directory containing databases.'},
+{code:`psql -U postgres -c "SELECT version();"`}],
+src:[['About PostgreSQL',D+'intro-whatis.html'],['Concurrency control (MVCC)',D+'mvcc-intro.html']]},
+
+'pg:0:2':{blocks:[
+{p:'A **Database Administrator (DBA)** keeps databases available, fast, safe and recoverable. In PostgreSQL the work splits into a few recurring areas.'},
+{t:[['Area','Typical tasks'],['Installation & upgrades','Install, patch, run `pg_upgrade`, plan maintenance windows.'],['Security','Roles, `pg_hba.conf`, TLS, auditing, least privilege.'],['Backup & recovery','Schedule dumps and base backups, test restores, point-in-time recovery.'],['Performance','Memory tuning, indexing, autovacuum, query analysis.'],['Availability','Streaming replication, failover, monitoring and alerting.'],['Capacity','Disk growth, bloat, connection limits.']]},
+{h:'PostgreSQL vs Oracle vs SQL Server'},
+{t:[['','PostgreSQL','Oracle','SQL Server'],['License','Open source (PostgreSQL License)','Commercial','Commercial (free Express tier)'],['Platforms','Linux, Windows, macOS, BSD','Linux, Windows, Unix','Windows, Linux'],['Concurrency','MVCC','MVCC (undo segments)','Locking + optional row versioning'],['HA','Built-in streaming replication','Data Guard / RAC (extra cost)','Always On (edition-dependent)']]},
+{note:'The golden rule of DBA work: a backup you have never restored is not a backup.'}],
+src:[['Server Administration',D+'admin.html']]},
+
+'pg:1:0':{blocks:[
+{p:'There are four routes to a running server. Choose by environment, not preference.'},
+{t:[['Method','Best for','Pros','Cons'],['Windows GUI installer','Learning, dev machines','Wizard, bundles pgAdmin','Not for production Linux fleets'],['Package (yum/dnf, RPM)','Production Linux','Easy patching, service files, repos','Version tied to repo'],['Source build','Custom options, newest code','Full control (`--prefix`, `--with-*`)','You maintain everything'],['Containers','Disposable environments','Fast, reproducible','Needs volume/backup planning']]},
+{h:'Decision flow'},
+{flow:['Windows desktop? → GUI installer','Production Linux? → yum/dnf repo','Need a specific build option? → source','Pinned version & no repo? → RPM files']},
+{h:'Practice environment'},
+{ul:['Install Linux (e.g. AlmaLinux/Rocky) in VirtualBox.','Connect with PuTTY (SSH terminal) and WinSCP (file transfer).','Take a VM snapshot before each install experiment.']},
+{note:'The official docs: Chapter 16 covers binaries, Chapter 17 covers source builds.'}],
+src:[['Installation from Source Code',D+'installation.html'],['Download page','https://www.postgresql.org/download/']]},
+
+'pg:1:1':{blocks:[
+{p:'Building from source gives full control over install location and compile-time features. Use it when packages do not fit. PostgreSQL supports two build systems: **Autoconf + make** and **Meson**.'},
+{h:'Procedure (Autoconf)'},
+{flow:['Install build tools & libraries','Download & unpack source','configure','make','make install','Create postgres user & data dir','initdb','Start server']},
+{code:`# 1. dependencies (RHEL family)
+sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y readline-devel zlib-devel openssl-devel
+
+# 2. build
+tar xzf postgresql-18.x.tar.gz && cd postgresql-18.x
+./configure --prefix=/usr/local/pgsql --with-openssl
+make -j4
+sudo make install
+
+# 3. user and data directory
+sudo useradd postgres
+sudo mkdir -p /usr/local/pgsql/data
+sudo chown postgres /usr/local/pgsql/data
+
+# 4. initialise and start (as postgres)
+sudo -u postgres /usr/local/pgsql/bin/initdb -D /usr/local/pgsql/data
+sudo -u postgres /usr/local/pgsql/bin/pg_ctl -D /usr/local/pgsql/data -l logfile start`},
+{h:'Common configure options'},
+{t:[['Option','Effect'],['`--prefix=PATH`','Install location (default `/usr/local/pgsql`)'],['`--with-openssl`','Enable TLS connections'],['`--with-python` / `--with-perl`','Build PL/Python, PL/Perl'],['`--enable-debug`','Keep debug symbols'],['`--with-llvm`','JIT compilation']]},
+{h:'Meson alternative'},
+{code:`meson setup build --prefix=/usr/local/pgsql
+cd build && ninja && sudo ninja install`},
+{h:'Post-install'},
+{ul:['Add `/usr/local/pgsql/bin` to `PATH` and set `PGDATA`.','Register shared libraries (`ldconfig`) if installed outside standard paths.','Source builds have no service file: create a systemd unit yourself.']},
+{note:'Never run the server as root. PostgreSQL refuses to start as root by design.'}],
+src:[['Chapter 17: Installation from Source Code',D+'installation.html'],['Post-installation setup',D+'install-post.html']]},
+
+'pg:1:2':{blocks:[
+{p:'On RHEL-family systems the official **PGDG repository** supplies the newest major versions as packages named `postgresqlNN-*`, installed side by side under `/usr/pgsql-NN`.'},
+{flow:['Add PGDG repo','Disable distro postgresql module','Install server package','initdb','Enable & start service','Verify']},
+{code:`sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+sudo dnf -qy module disable postgresql
+sudo dnf install -y postgresql18-server
+
+sudo /usr/pgsql-18/bin/postgresql-18-setup initdb
+sudo systemctl enable --now postgresql-18
+
+sudo -u postgres psql -c "SELECT version();"
+sudo -u postgres psql -c "SHOW data_directory;"`},
+{h:'Where things live'},
+{t:[['Item','Path'],['Binaries','`/usr/pgsql-18/bin`'],['Data directory','`/var/lib/pgsql/18/data`'],['Config files','`postgresql.conf`, `pg_hba.conf` inside the data directory'],['Service','`postgresql-18.service`']]},
+{note:'Commands use the EL-9 repo URL; adjust `EL-9` and architecture to your OS. Check the PGDG page for the exact link.'}],
+src:[['PostgreSQL Yum Repository','https://yum.postgresql.org/'],['Installation from Binaries',D+'install-binaries.html']]},
+
+'pg:1:3':{blocks:[
+{p:'Installing from downloaded `.rpm` files suits air-gapped servers or tightly pinned versions. Unlike `dnf` with a repo, you must supply the packages and resolve dependencies yourself (or let `dnf localinstall` do it).'},
+{h:'Packages'},
+{t:[['Package','Provides'],['`postgresql18-libs`','Shared client libraries (needed first)'],['`postgresql18`','Client programs (`psql`, `pg_dump`)'],['`postgresql18-server`','Server binaries and service file'],['`postgresql18-contrib`','Extra modules and extensions']]},
+{code:`sudo rpm -ivh postgresql18-libs-*.rpm
+sudo rpm -ivh postgresql18-18.*.rpm
+sudo rpm -ivh postgresql18-server-*.rpm
+
+sudo /usr/pgsql-18/bin/postgresql-18-setup initdb
+sudo systemctl enable --now postgresql-18
+rpm -qa | grep postgresql      # verify`},
+{h:'Install order'},
+{flow:['libs','client','server','initdb','start & verify']},
+{note:'Use `rpm -Uvh` to upgrade minor versions of the same major release.'}],
+src:[['PostgreSQL Yum Repository','https://yum.postgresql.org/']]},
+
+'pg:1:4':{blocks:[
+{p:'The graphical installer for Windows is the officially recommended binary route. It installs the server as a Windows service, plus tools.'},
+{flow:['Download installer','Choose components','Install & data directories','Set postgres password','Port 5432','Locale','Install','Verify']},
+{h:'Components'},
+{t:[['Component','Purpose'],['PostgreSQL Server','The database service'],['pgAdmin 4','Graphical admin tool'],['Command Line Tools','`psql`, `pg_dump`, ...'],['Stack Builder','Optional add-ons and drivers']]},
+{h:'Production-minded choices'},
+{ul:['Keep the default port `5432` unless it is in use.','Choose a strong password for the `postgres` superuser and store it safely.','Put the data directory on a dedicated, backed-up disk if possible.','Allow only required firewall access.']},
+{h:'Verify'},
+{code:`psql -U postgres -h localhost -p 5432
+SELECT version();
+SHOW data_directory;`},
+{note:'Default data directory is under `C:\\Program Files\\PostgreSQL\\NN\\data`.'}],
+src:[['Download page','https://www.postgresql.org/download/windows/']]},
+
+'pg:1:5':{blocks:[
+{p:'Uninstalling safely means protecting the data first. Removing binaries does not always remove data, and removing data is irreversible.'},
+{flow:['Verify what is installed','pg_dumpall backup','Stop the server','Remove via original method','Clean leftovers (optional)']},
+{code:`# 1. know what you have
+psql -U postgres -c "SELECT version();"
+rpm -qa | grep -i postgres
+
+# 2. back up everything
+pg_dumpall -U postgres -f /backup/all.sql
+
+# 3. stop
+sudo systemctl stop postgresql-18`},
+{h:'Remove by installation method'},
+{t:[['Method','Command','Data directory'],['yum / dnf','`sudo dnf remove "postgresql18*"`','Kept (`/var/lib/pgsql/18`)'],['RPM','`sudo rpm -e postgresql18-server postgresql18 postgresql18-libs`','Kept'],['Source','`sudo make uninstall` in source tree','Kept'],['Windows','Apps & features uninstaller','Often kept, remove manually']]},
+{note:'Only delete the data directory after confirming your backup restores.'}],
+src:[['pg_dumpall',D+'app-pg-dumpall.html'],['Installation from Binaries',D+'install-binaries.html']]}
+};
+})();
+
+/* ================================================================
+   PART: Extended lessons and bonus lectures, sections 1-4  (was lessons2.js)
+   ================================================================ */
+/* LearnSphere: extended lessons for sections 1-4 (merged into window.LESSONS) + bonus lectures */
+(function(){
+const D='https://www.postgresql.org/docs/current/';
+const dg=(w,h,B,A)=>{const t=(x,y,l)=>l.split('|').map((s,i,a)=>`<text x="${x}" y="${y+(i-(a.length-1)/2)*14}" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="var(--tx)">${s}</text>`).join('');
+return `<svg viewBox="0 0 ${w} ${h}" font-family="Space Grotesk,sans-serif"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker></defs>`+
+B.map(([x,y,bw,bh,l,k])=>k==1?`<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="12" fill="none" stroke="var(--accent)" stroke-dasharray="5 4"/><text x="${x+10}" y="${y+16}" font-size="11" fill="var(--accent)">${l}</text>`:`<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="9" fill="${k==2?'color-mix(in srgb,var(--accent) 22%,var(--panel2))':'var(--panel2)'}" stroke="var(--line)"/>`+t(x+bw/2,y+bh/2,l)).join('')+
+A.map(([a,b,c,d])=>`<line x1="${a}" y1="${b}" x2="${c}" y2="${d}" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#ah)"/>`).join('')+'</svg>'};
+
+const archSvg=dg(700,400,[
+[400,70,290,170,'Shared memory',1],
+[10,125,110,50,'Client|(psql / app)',0],[180,15,170,40,'postmaster',2],[180,125,170,50,'Backend process|one per connection',2],
+[415,100,125,45,'shared_buffers',0],[550,100,125,45,'WAL buffers',0],[415,165,125,45,'CLOG / SLRU',0],[550,165,125,45,'Lock tables',0],
+[10,265,125,40,'checkpointer',0],[145,265,125,40,'bgwriter',0],[280,265,125,40,'WAL writer',0],[415,265,125,40,'autovacuum|launcher',0],[550,265,125,40,'archiver',0],
+[10,345,330,40,'Data files (base/, global/)',2],[360,345,330,40,'WAL files (pg_wal/)',2]],
+[[120,150,180,150],[265,55,265,125],[350,150,415,150],[545,240,545,265],[72,305,72,345],[207,305,150,345],[342,305,500,345],[477,305,520,345],[612,305,612,345]]);
+const memSvg=dg(700,210,[
+[10,10,340,190,'Shared memory (all processes)',1],[380,10,310,190,'Local memory (per backend)',1],
+[30,40,140,60,'shared_buffers|8 KB page cache',2],[190,40,140,60,'WAL buffers',0],[30,120,140,50,'CLOG / SLRU caches',0],[190,120,140,50,'Lock tables|proc array',0],
+[400,40,130,50,'work_mem|sort / hash',2],[550,40,125,50,'maintenance_|work_mem',0],[400,110,130,50,'temp_buffers',0],[550,110,125,50,'Catalog and|plan caches',0]],
+[[380,105,350,105]]);
+const walSvg=dg(700,210,[
+[10,70,110,50,'Backend|(COMMIT)',0],[160,70,110,50,'WAL buffers',2],[310,70,110,50,'WAL segment|pg_wal/',2],[460,140,110,50,'shared_buffers|dirty pages',0],[580,70,110,50,'Data files|base/',2]],
+[[120,95,160,95],[270,95,310,95],[65,120,460,165],[570,165,635,120]]);
+
+window.EXTRA_LECTURES={
+0:[['PostgreSQL Versions and Release Cycle','0:00','Major and minor versions, yearly releases, 5-year support window and upgrade paths.']],
+1:[['Post-Installation Checklist','0:00','What to verify and configure after any installation method.']],
+2:[['Configuration Files: postgresql.conf and pg_hba.conf','0:00','The files that control server behaviour and client authentication.'],['psql Essentials','0:00','Connection options and the meta-commands every DBA uses daily.']],
+3:[['Life of a Query: Read and Write Path','0:00','How a SELECT and an UPDATE travel through memory, WAL and disk.'],['PGDATA Directory Layout','0:00','What each folder and file in the data directory is for.']]
+};
+
+Object.assign(window.LESSONS,{
+'pg:0:3':{blocks:[
+{p:'PostgreSQL follows a predictable calendar. Knowing it tells you **which version to install, how long it is supported, and what an upgrade involves**.'},
+{h:'Version numbers'},
+{t:[['Format','Example','Meaning'],['Major.minor (v10 and later)','`18.1`','`18` = major release, `.1` = minor (bug and security fixes only)'],['Older scheme (before v10)','`9.6.24`','`9.6` was the major release, `.24` the minor']]},
+{ul:['A **major** release arrives about once a year (around September) and may change on-disk format.','**Minor** releases come roughly quarterly and are always safe in-place updates.','Each major version is supported for **5 years** after its first release, then reaches end of life (EOL).']},
+{h:'Which upgrade type?'},
+{flow:['Minor (18.1 → 18.2)','Install new binaries','Restart server','Done: same data directory']},
+{flow:['Major (17 → 18)','Install new binaries side by side','`pg_upgrade` or dump/restore','Test, then switch']},
+{code:`SHOW server_version;
+SELECT version();`},
+{note:'Always read the release notes of every version you skip when planning a major upgrade. Official policy: postgresql.org/support/versioning.'}],
+src:[['Versioning policy','https://www.postgresql.org/support/versioning/'],['Release notes',D+'release.html']]},
+
+'pg:1:6':{blocks:[
+{p:'Whatever method you used, finish with the same checklist. A server that merely starts is not yet a server ready for use.'},
+{t:[['Check','How','Why'],['Correct version','`SELECT version();`','Confirms the binaries you intended'],['Data directory','`SHOW data_directory;`','Know what to back up'],['Config files','`SHOW config_file;` `SHOW hba_file;`','Where to edit settings'],['Service starts at boot','`systemctl is-enabled postgresql-18`','Survives reboots'],['Superuser password','`ALTER ROLE postgres PASSWORD \'...\';`','No password means local-only trust'],['Listening address','`SHOW listen_addresses;`','Default is `localhost` only'],['Locale and encoding','`\\l`','Hard to change later'],['Logging enabled','`SHOW logging_collector;`','You need logs when things fail'],['First backup','`pg_dumpall -f all.sql`','Baseline before any real data']]},
+{flow:['Verify version','Set passwords','Review `pg_hba.conf`','Enable logging','Configure firewall','Take first backup']},
+{note:'Run PostgreSQL as the non-root `postgres` OS user and keep the data directory permissions at `0700` (`0750` is also accepted); the server refuses to start with looser permissions.'}],
+src:[['Post-installation setup',D+'install-post.html']]},
+
+'pg:2:0':{blocks:[
+{p:'By default PostgreSQL accepts connections only from the same machine. To use **pgAdmin on Windows** against a **Linux server**, three layers must all allow the connection: the network/firewall, the server listener, and client authentication.'},
+{flow:['Server listens on a network address','Firewall allows port 5432','`pg_hba.conf` allows the client','Role has a password','Register server in pgAdmin']},
+{h:'Step by step (on the Linux server)'},
+{code:`# 1. listen on the network (postgresql.conf), needs restart
+listen_addresses = '*'
+
+# 2. allow the client subnet (pg_hba.conf), needs reload
+host    all    all    192.168.1.0/24    scram-sha-256
+
+# 3. open the firewall
+sudo firewall-cmd --permanent --add-port=5432/tcp
+sudo firewall-cmd --reload
+
+# 4. apply and verify
+sudo systemctl restart postgresql-18
+ss -ltnp | grep 5432
+psql -h 192.168.1.50 -U postgres -c "SELECT 1"`},
+{h:'Register in pgAdmin 4'},
+{ul:['Right-click **Servers → Register → Server**.','General tab: any name. Connection tab: server IP, port `5432`, maintenance database `postgres`, username and password.','Save: the server tree appears if the connection works.']},
+{h:'Troubleshooting'},
+{t:[['Error','Likely cause','Fix'],['Connection refused','Service down, or `listen_addresses` is `localhost`','Start service, set `listen_addresses`, restart'],['Timeout','Firewall or network route','Open port 5432, test with `telnet`'],['no pg_hba.conf entry','No matching rule for client IP, user, database','Add a `host` line and reload'],['password authentication failed','Wrong password or no password set','`ALTER ROLE ... PASSWORD`']]},
+{note:'Never use `0.0.0.0/0` with `trust` on a reachable network. Restrict the CIDR to your admin subnet.'}],
+src:[['Connections and Authentication',D+'runtime-config-connection.html'],['The pg_hba.conf File',D+'auth-pg-hba-conf.html']]},
+
+'pg:2:1':{blocks:[
+{p:'A **cluster** is one data directory managed by one postmaster. You can run several clusters on one machine (different versions or isolated workloads) as long as each has its **own data directory and port**.'},
+{t:[['Must be unique per cluster','Example cluster 1','Example cluster 2'],['Data directory (`PGDATA`)','`/var/lib/pgsql/18/data`','`/pgdata/cluster2`'],['Port','`5432`','`5433`'],['Service name','`postgresql-18`','`postgresql-18-c2`'],['Log location','default','own `log_directory`']]},
+{flow:['Create directory','`initdb`','Set unique port','Create service','Start','Connect with `-p`']},
+{code:`sudo mkdir -p /pgdata/cluster2 && sudo chown postgres:postgres /pgdata/cluster2
+sudo chmod 700 /pgdata/cluster2
+sudo -u postgres /usr/pgsql-18/bin/initdb -D /pgdata/cluster2
+
+echo "port = 5433" | sudo -u postgres tee -a /pgdata/cluster2/postgresql.conf
+
+# systemd unit based on the packaged one
+sudo cp /usr/lib/systemd/system/postgresql-18.service /etc/systemd/system/postgresql-18-c2.service
+#   edit: Environment=PGDATA=/pgdata/cluster2
+sudo systemctl daemon-reload
+sudo systemctl enable --now postgresql-18-c2
+
+psql -p 5433 -U postgres -c "SHOW data_directory;"`},
+{ul:['Each cluster has its own users, databases, WAL and config. Nothing is shared.','Size `shared_buffers` per cluster so the total fits in RAM.','Debian/Ubuntu users have `pg_lsclusters` and `pg_createcluster` as wrappers around the same idea.']}],
+src:[['Creating a Database Cluster',D+'creating-cluster.html']]},
+
+'pg:2:2':{blocks:[
+{p:'Stopping the server cleanly matters: a clean stop writes a shutdown checkpoint, so the next start needs **no crash recovery**.'},
+{t:[['Mode','Signal','Behaviour','Next start'],['smart','SIGTERM','Blocks new connections, waits for all sessions to disconnect','Clean'],['fast','SIGINT','Rolls back active transactions, disconnects clients, then checkpoints','Clean'],['immediate','SIGQUIT','Aborts all processes with no checkpoint','Crash recovery (WAL replay)']]},
+{note:'`pg_ctl stop` defaults to **fast** (since PostgreSQL 9.5), not smart. Smart can hang forever on an idle but open session.'},
+{flow:['`CHECKPOINT;` (optional, shortens stop)','`pg_ctl stop -m fast`','Verify with `pg_ctl status`','Start again']},
+{code:`pg_ctl -D $PGDATA stop -m fast
+pg_ctl -D $PGDATA stop -m immediate   # last resort
+sudo systemctl stop postgresql-18      # service stop (fast)`},
+{h:'Restart vs reload'},
+{t:[['Action','Command','Applies'],['Reload','`pg_ctl reload` or `SELECT pg_reload_conf();`','Parameters with context `sighup`, and `pg_hba.conf`'],['Restart','`pg_ctl restart -m fast`','Parameters with context `postmaster` (e.g. `shared_buffers`)']]}],
+src:[['Server Shutdown',D+'server-shutdown.html'],['pg_ctl',D+'app-pg-ctl.html']]},
+
+'pg:2:3':{blocks:[
+{p:'Server behaviour is controlled by a few plain-text files, all inside `PGDATA` by default.'},
+{t:[['File','Purpose','Change takes effect'],['`postgresql.conf`','Main settings: memory, ports, logging, WAL','Reload or restart (per parameter)'],['`postgresql.auto.conf`','Written by `ALTER SYSTEM`; overrides the main file','Reload or restart'],['`pg_hba.conf`','Host-based authentication: who may connect from where','Reload'],['`pg_ident.conf`','Maps OS or external user names to database roles','Reload']]},
+{h:'pg_hba.conf format'},
+{p:'Each line has the form `TYPE DATABASE USER ADDRESS METHOD`. Rules are checked **top to bottom and the first match wins**.'},
+{code:`# TYPE  DATABASE  USER      ADDRESS          METHOD
+local   all       postgres                   peer
+host    all       all       127.0.0.1/32     scram-sha-256
+host    appdb     appuser   10.0.0.0/24      scram-sha-256
+host    all       all       0.0.0.0/0        reject`},
+{t:[['Method','Meaning'],['`trust`','Allow with no password. Unsafe outside a lab'],['`scram-sha-256`','Password check with SCRAM. Recommended'],['`md5`','Legacy password hashing, deprecated'],['`peer`','Local only: OS user name must match role'],['`reject`','Always refuse']]},
+{code:`SHOW config_file;
+SHOW hba_file;
+SELECT line_number, type, database, user_name, address, auth_method
+FROM pg_hba_file_rules;     -- also shows syntax errors`}],
+src:[['Configuration file',D+'config-setting.html'],['pg_hba.conf',D+'auth-pg-hba-conf.html']]},
+
+'pg:2:4':{blocks:[
+{p:'`psql` is the interactive terminal for PostgreSQL. Its **meta-commands** start with a backslash and are handled by psql itself, not the server.'},
+{h:'Connecting'},
+{code:`psql -h 192.168.1.50 -p 5432 -U appuser -d appdb
+psql "postgresql://appuser@192.168.1.50:5432/appdb"
+export PGHOST=192.168.1.50 PGPORT=5432 PGUSER=appuser PGDATABASE=appdb
+psql   # picks up the variables`},
+{p:'Store passwords in `~/.pgpass` (format `host:port:db:user:password`, mode `0600`) instead of typing them.'},
+{h:'Meta-commands'},
+{t:[['Command','Shows'],['`\\l`','Databases'],['`\\c dbname`','Connect to another database'],['`\\dn`','Schemas'],['`\\dt` / `\\dt+`','Tables (with sizes)'],['`\\d table`','Columns, indexes, constraints'],['`\\du`','Roles'],['`\\dx`','Installed extensions'],['`\\conninfo`','Current connection'],['`\\x`','Toggle expanded output'],['`\\timing`','Show query time'],['`\\i file.sql`','Run a script'],['`\\? / \\h CMD`','Help, SQL syntax help'],['`\\q`','Quit']]}],
+src:[['psql',D+'app-psql.html']]},
+
+'pg:3:0':{blocks:[
+{p:'PostgreSQL uses a **process-per-connection** model. Every running server is a tree of OS processes, all descended from one parent: the **postmaster**.'},
+{svg:archSvg},
+{h:'What the postmaster does'},
+{flow:['Read `postgresql.conf`, `pg_hba.conf`','Allocate shared memory','Start startup/recovery process','Start background processes','Listen on port 5432','Fork a backend per client']},
+{ul:['It does **not** run queries or touch shared data itself, which keeps it very unlikely to crash.','If any child crashes, the postmaster stops the others, resets shared memory and runs crash recovery.','It writes `postmaster.pid` in `PGDATA` (PID, data directory, port, start time) and removes it at clean shutdown.']},
+{code:`ps -ef | grep postgres
+head -1 $PGDATA/postmaster.pid     # postmaster PID`},
+{note:'Stale `postmaster.pid` after a crash can block startup; check no postgres process is running before removing it.'}],
+src:[['Architectural fundamentals',D+'tutorial-arch.html'],['Server setup and operation',D+'runtime.html']]},
+
+'pg:3:1':{blocks:[
+{p:'A **backend** (also called a server process) serves exactly one client connection. It is forked by the postmaster after the client connects and ends when the client disconnects.'},
+{flow:['Client connects (TCP / socket)','Postmaster forks backend','Authentication via `pg_hba.conf`','Attach to shared memory','Query loop until disconnect']},
+{h:'Inside the query loop'},
+{flow:['Parse (syntax)','Analyze (names, types)','Rewrite (rules, views)','Plan (cheapest path)','Execute']},
+{t:[['Stage','Output'],['Parser','Raw parse tree'],['Analyzer','Query tree with resolved tables and columns'],['Rewriter','Query tree after view/rule expansion'],['Planner/optimizer','Execution plan chosen using table statistics'],['Executor','Result rows, buffer reads and writes']]},
+{h:'Why connections cost something'},
+{ul:['Each backend uses memory (local caches, `work_mem` per operation) and an OS process slot.','`max_connections` (default 100) caps the total. Thousands of clients need a **pooler** such as PgBouncer.']},
+{code:`SELECT pid, usename, datname, state, left(query,40) AS query
+FROM pg_stat_activity
+WHERE backend_type = 'client backend';
+SHOW max_connections;`}],
+src:[['How connections are established',D+'connect-estab.html'],['Overview of PostgreSQL internals',D+'overview.html']]},
+
+'pg:3:2':{blocks:[
+{p:'Besides client backends, the postmaster starts **background processes** that keep the cluster durable, clean and healthy.'},
+{t:[['Process','Job'],['startup','Replays WAL during crash recovery or on a standby'],['checkpointer','Periodically flushes all dirty buffers and writes a checkpoint record'],['background writer','Writes some dirty buffers early so backends rarely wait'],['WAL writer','Flushes WAL buffers to disk in the background'],['autovacuum launcher / workers','Remove dead rows, refresh statistics, prevent transaction ID wraparound'],['archiver','Copies completed WAL segments to the archive (when `archive_mode` is on)'],['logger','Collects server logs when `logging_collector = on`'],['WAL sender / receiver','Stream WAL between primary and standby'],['io workers (v18)','Perform asynchronous reads when `io_method = worker`']]},
+{note:'Older material mentions a **stats collector** process. It was removed in PostgreSQL 15; statistics now live in shared memory.'},
+{code:`SELECT pid, backend_type FROM pg_stat_activity ORDER BY backend_type;
+SELECT * FROM pg_stat_bgwriter;
+SELECT * FROM pg_stat_checkpointer;   -- v17+`}],
+src:[['Monitoring: pg_stat_activity',D+'monitoring-stats.html'],['Resource consumption',D+'runtime-config-resource.html']]},
+
+'pg:3:3':{blocks:[
+{p:'PostgreSQL memory is split into **shared memory**, allocated once at startup and used by every process, and **local memory** that each backend allocates for itself.'},
+{svg:memSvg},
+{t:[['Area','Parameter','Default','Notes'],['Shared buffer cache','`shared_buffers`','128MB','Common starting point: about 25% of RAM. Needs restart'],['WAL buffers','`wal_buffers`','-1 (auto)','About 1/32 of `shared_buffers`'],['Sort / hash memory','`work_mem`','4MB','**Per operation, per query**, so many sessions multiply it'],['Maintenance memory','`maintenance_work_mem`','64MB','VACUUM, CREATE INDEX'],['Temp tables','`temp_buffers`','8MB','Per session'],['Planner hint','`effective_cache_size`','4GB','Not allocated; tells the planner how much OS cache to expect']]},
+{h:'How the buffer cache works'},
+{ul:['Data files are divided into **8 KB pages**; shared buffers hold copies of those pages.','A backend needing a page checks the buffer mapping: a **hit** returns it, a **miss** reads it from disk (usually via the OS cache).','Modified pages are marked **dirty** and written later by the background writer or checkpointer.','When full, buffers are reused with a **clock-sweep** algorithm that evicts rarely used pages.']},
+{code:`SHOW shared_buffers;
+SELECT name, setting, unit, context FROM pg_settings
+WHERE name IN ('shared_buffers','work_mem','maintenance_work_mem');`}],
+src:[['Resource consumption: memory',D+'runtime-config-resource.html#RUNTIME-CONFIG-RESOURCE-MEMORY'],['Reliability and the WAL',D+'wal.html']]},
+
+'pg:3:4':{blocks:[
+{p:'**Write-Ahead Logging (WAL)** is the rule that a change must be recorded in the log **before** the data page is written. It gives durability, crash recovery, point-in-time recovery and replication from one mechanism.'},
+{svg:walSvg},
+{flow:['Backend changes a page in `shared_buffers`','Writes a WAL record to WAL buffers','COMMIT flushes WAL to `pg_wal` (fsync)','Commit returns to client','Checkpointer later writes dirty pages to data files']},
+{ul:['Writing WAL is sequential and cheap; writing scattered data pages can wait. That is why commits are fast and still safe.','After a crash, recovery starts at the last checkpoint and **redoes** WAL, restoring every committed change.']},
+{t:[['Concept','Detail'],['LSN','Log Sequence Number: a byte position in the WAL stream'],['Segment file','16 MB by default, in `pg_wal/`'],['File name','24 hex characters: timeline (8) + log (8) + segment (8)'],['Checkpoint','Triggered by `checkpoint_timeout` (default 5 min) or `max_wal_size` (default 1GB)'],['`wal_level`','`minimal`, `replica` (default), `logical`'],['`synchronous_commit`','`on` waits for WAL flush; `off` risks losing last transactions but never corrupts']]},
+{code:`SELECT pg_current_wal_lsn();
+SELECT pg_walfile_name(pg_current_wal_lsn());
+CHECKPOINT;
+SHOW wal_level;`},
+{note:'Never delete files from `pg_wal` by hand. Use archiving settings and replication slots, and let PostgreSQL recycle segments.'}],
+src:[['Write-Ahead Logging',D+'wal-intro.html'],['WAL configuration',D+'wal-configuration.html']]},
+
+'pg:3:5':{blocks:[
+{p:'Putting the pieces together: this is what happens between pressing Enter and getting a result.'},
+{h:'Read path (SELECT)'},
+{flow:['Backend parses and plans','Executor asks for a page','Found in `shared_buffers`? → return','Else read 8 KB page from disk into a buffer','Return rows to client']},
+{h:'Write path (UPDATE / INSERT / DELETE)'},
+{flow:['Find or read the page','Create new row version (MVCC) in buffer, mark page dirty','Write WAL record','COMMIT: flush WAL, mark transaction committed','Checkpointer / bgwriter write page later']},
+{t:[['Component','Role in the path'],['Backend','Does the work for the client'],['`shared_buffers`','Caches pages; writes happen here first'],['WAL','Guarantees committed changes survive a crash'],['Checkpointer / bgwriter','Move dirty pages to data files'],['Autovacuum','Removes old row versions left by MVCC'],['Data files','Final home of table and index data']]},
+{code:`EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM pg_class LIMIT 10;
+-- "shared hit" = found in cache, "read" = fetched from disk`}],
+src:[['Concurrency control',D+'mvcc.html'],['Using EXPLAIN',D+'using-explain.html']]},
+
+'pg:3:6':{blocks:[
+{p:'`PGDATA` is the cluster directory. Knowing its layout is essential for backups, disk planning and troubleshooting.'},
+{t:[['Path','Contents'],['`base/`','One subdirectory per database (named by OID) holding table and index files'],['`global/`','Cluster-wide catalogs such as `pg_database`, `pg_authid`'],['`pg_wal/`','Write-ahead log segments'],['`pg_xact/`','Transaction commit status'],['`pg_tblspc/`','Symbolic links to tablespaces'],['`pg_stat/`','Persisted statistics'],['`pg_replslot/`','Replication slot data'],['`log/`','Server logs (if the log collector is on)'],['`PG_VERSION`','Major version of the cluster'],['`postmaster.pid`','Lock and PID file of the running server'],['`postgresql.conf` etc.','Configuration files']]},
+{code:`SELECT oid, datname FROM pg_database;
+SELECT pg_relation_filepath('pg_class');      -- e.g. base/5/1259
+SELECT pg_size_pretty(pg_database_size(current_database()));`},
+{note:'Treat `PGDATA` as a unit: copying individual files from a running cluster gives an inconsistent backup. Use `pg_basebackup` instead.'}],
+src:[['Database physical storage',D+'storage.html'],['File layout',D+'storage-file-layout.html']]}
+});
+})();
+
+/* ================================================================
+   PART: Explanatory text inserted into earlier lessons  (was lessons3.js)
+   ================================================================ */
+/* LearnSphere: explanatory text inserted after the first paragraph of existing lessons */
+(function(){
+const A=(k,b)=>{const L=window.LESSONS[k];if(L)L.blocks.splice(1,0,...b)};
+
+A('pg:0:0',[
+{h:'Key definitions'},
+{p:'A **database** is an organised collection of data stored so it can be searched and updated reliably. A **DBMS** (database management system) is the software that manages it: it stores the data, enforces rules, lets many users work at once and recovers after failures. An **RDBMS** is a DBMS that organises data into **tables** made of rows and columns, linked by keys, and queried with **SQL**. PostgreSQL is an RDBMS.'},
+{h:'What this course assumes and how to use it'},
+{p:'You need basic SQL (SELECT, INSERT, UPDATE) and comfort with a Linux shell. The course is ordered the way a real server is born: you install it, learn how it works inside, then secure, protect and scale it. Each lesson has a concept explanation, a table or diagram, and commands to practise. Read the explanation first, then run the commands on a throwaway VM, and break things on purpose. A DBA learns most from failures you caused in a safe place.'}]);
+
+A('pg:0:1',[
+{h:'Where PostgreSQL came from'},
+{p:'The project began at the University of California, Berkeley in 1986, led by Michael Stonebraker, as **POSTGRES**, a successor to the earlier Ingres system. In 1994-95 students added a SQL interpreter and it became **Postgres95**. In 1996 it was renamed **PostgreSQL** to show SQL support, and a global volunteer community has developed it ever since. It is released under the permissive PostgreSQL License, so it is free for commercial use with no vendor owning it.'},
+{h:'What object-relational means'},
+{p:'A pure relational database stores rows in tables with a fixed set of built-in types. PostgreSQL is also **object-relational**: you can define your own data types, operators, functions and index methods, tables can inherit from other tables, and it has rich built-in types such as `jsonb`, arrays, ranges, UUIDs and network addresses. Example: one table can hold ordinary columns plus a `jsonb` document column, and you can index inside the JSON.'},
+{h:'ACID, with an example'},
+{p:'ACID describes the guarantees of a **transaction**, a group of statements that succeed or fail together. Take a bank transfer of 100 from account A to B. **Atomicity**: either both the debit and the credit happen, or neither. **Consistency**: rules such as "balance cannot be negative" are never violated. **Isolation**: another session reading mid-transfer does not see a half-finished state. **Durability**: once COMMIT returns, the transfer survives a power cut, which PostgreSQL achieves by writing the Write-Ahead Log to disk first.'},
+{h:'MVCC, with an example'},
+{p:'**Multi-Version Concurrency Control** means an UPDATE does not overwrite a row; it creates a new version and keeps the old one. Session 1 starts a long report; Session 2 updates a customer row. Session 1 still sees the old version because its snapshot was taken earlier, and Session 2 is never blocked by the report. The price is that old versions pile up as **dead tuples**, which VACUUM must later clean. This is why autovacuum is a core DBA topic.'},
+{h:'Extensibility in practice'},
+{p:'Extensions add features without changing the core: **PostGIS** (geographic data), **pg_stat_statements** (query statistics), **pgcrypto** (encryption), **postgres_fdw** (query other databases). Install one with `CREATE EXTENSION name;`.'}]);
+
+A('pg:0:2',[
+{h:'What a DBA actually does'},
+{p:'A DBA is responsible for the data being **available** (the database is up when needed), **safe** (only the right people see it and it cannot be lost) and **fast enough** (queries meet expectations). Work is both **proactive** (capacity planning, tested backups, patching, monitoring) and **reactive** (a disk filling up, a runaway query, a failed server).'},
+{h:'A typical day, as an example'},
+{p:'Morning: check monitoring and overnight backup results. Midday: a developer asks for a new read-only account, so you create a role with only the needed GRANTs. Afternoon: a report is slow, so you look at `pg_stat_activity` and the query plan and add an index. Evening: you plan next month patch window. At 3 a.m. an alert fires because the WAL directory is growing; you find an abandoned replication slot holding WAL and drop it. Every lesson in this course maps to a moment like these.'},
+{h:'DBA versus developer'},
+{p:'A developer designs tables and writes queries for a feature. A DBA runs the platform they live on: the server, configuration, security, recovery and performance across all applications. Good DBAs know SQL well and good developers understand the basics of how the server works; this course gives you the DBA side.'}]);
+
+A('pg:0:3',[
+{h:'Why the numbering matters'},
+{p:'The major version tells you whether the **on-disk data format** and system catalogs may have changed. A cluster created by 17 cannot be opened by 18 binaries; that is why major upgrades need `pg_upgrade` or dump and restore. A minor release never changes the format, so you stop the server, replace the binaries and start it again. Example: moving from 18.1 to 18.3 takes minutes and needs no data migration.'},
+{h:'Why you must keep up'},
+{p:'Minor releases contain security and data-corruption fixes, so running the latest minor release is the cheapest protection you have. After a major version reaches **end of life** it no longer receives fixes at all, so plan a major upgrade well before year five.'}]);
+
+A('pg:3:0',[
+{h:'What a process is, and why PostgreSQL uses many'},
+{p:'A **process** is a running program with its own memory space managed by the operating system. PostgreSQL runs as a family of cooperating processes rather than one large program, so a fault in one client session cannot overwrite another session private memory. The **postmaster** (the executable is simply `postgres`) is the parent of the family. Think of it as a reception desk: it does not do the work itself, it welcomes each visitor, hands them to a dedicated assistant, and keeps the building running.'},
+{h:'What happens when the server starts'},
+{p:'On `pg_ctl start` the postmaster reads `postgresql.conf` and `pg_hba.conf`, creates the **shared memory** segment and semaphores, and writes `postmaster.pid`. It then starts the **startup process**, which checks whether the last shutdown was clean; if not it replays WAL (crash recovery). Once the database is consistent it starts the background processes and begins accepting connections. If you see "the database system is starting up" while connecting, recovery is still in progress.'},
+{h:'Why it is kept so simple'},
+{p:'The postmaster deliberately avoids touching shared memory or running SQL. If it did, a bug in one query could corrupt the process everyone depends on. When a child process dies abnormally, the postmaster assumes shared memory may be damaged, terminates all sessions, re-initialises memory and runs recovery. Clients see "terminating connection because of crash of another server process" and can reconnect moments later.'}]);
+
+A('pg:3:1',[
+{h:'Definition and analogy'},
+{p:'A **backend process** is the server-side partner of one client connection. If the postmaster is reception, the backend is your personal assistant for the whole visit: it checks your identity, takes your requests one at a time, does the work and reports back. It lives exactly as long as the connection.'},
+{h:'A connection, step by step'},
+{p:'(1) The client sends a connection request to port 5432. (2) The postmaster accepts it and **forks** a new process. (3) The backend reads the startup packet, finds the first matching `pg_hba.conf` rule and authenticates the user, for example with SCRAM. (4) It attaches to shared memory and sets up local memory. (5) It waits for SQL, runs each statement and returns results until the client disconnects or is terminated.'},
+{h:'The five query stages with an example'},
+{p:'Take `SELECT name FROM emp WHERE id = 5;`. The **parser** checks the syntax. The **analyzer** confirms that table `emp` and columns `name` and `id` exist and resolves their types. The **rewriter** expands views or rules (none here). The **planner** compares options, such as scanning the whole table or using an index on `id`, estimates the cost of each from table statistics and picks the cheapest. The **executor** carries out the plan, fetching pages through shared buffers, and sends the row back. `EXPLAIN` shows you the planner choice.'},
+{h:'The cost of many connections'},
+{p:'Each connection is an OS process with its own memory, so thousands of idle connections waste RAM and slow scheduling. Applications should use a **connection pool** (PgBouncer or the app framework pool) so a few dozen backends serve many clients. Keep `max_connections` modest and increase it only with a reason.'}]);
+
+A('pg:3:2',[
+{h:'Why background processes exist'},
+{p:'If backends had to do every housekeeping job themselves, user queries would stall. Background processes move slow work off the critical path. Each is started by the postmaster and restarted automatically if it exits.'},
+{h:'What each one does, in plain language'},
+{p:'The **checkpointer** works like pressing Save on a document: periodically it writes every changed page to the data files and marks a checkpoint in WAL, so crash recovery only has to replay from that point. The **background writer** trickles out dirty pages between checkpoints so backends find clean buffers to reuse. The **WAL writer** flushes the WAL buffer regularly so commits do not all wait for a single big write. **Autovacuum** launches workers that clear dead row versions left by MVCC and update planner statistics; without it tables bloat and eventually risk transaction ID wraparound. The **archiver** copies full WAL segments to a safe location, the basis of point-in-time recovery. **WAL sender** and **receiver** processes stream WAL between a primary and its standby servers.'},
+{h:'See them yourself'},
+{p:'Run `ps -ef | grep postgres` on the server, or query `pg_stat_activity` and look at the `backend_type` column. A healthy idle server shows a postmaster, checkpointer, background writer, WAL writer and autovacuum launcher.'}]);
+
+A('pg:3:3',[
+{h:'Shared versus local memory'},
+{p:'**Shared memory** is one region created at startup that every PostgreSQL process can read and write. Its main parts are the **buffer cache** (`shared_buffers`), the **WAL buffers**, and bookkeeping such as lock tables and transaction status caches. **Local memory** is private to one backend and is allocated as needed: `work_mem` for sorts and hash joins, `maintenance_work_mem` for VACUUM and index builds, `temp_buffers` for temporary tables.'},
+{h:'The 8 KB page and the buffer cache'},
+{p:'PostgreSQL stores tables and indexes in fixed **8 KB pages**. When a query needs a row, the backend asks the buffer manager for the page. If it is already in `shared_buffers` (a **cache hit**) no disk read is needed. If not, the page is read from the file, usually from the OS page cache, into a free buffer. Because PostgreSQL also relies on the operating system cache, `shared_buffers` is typically set to around a quarter of RAM rather than almost all of it; `effective_cache_size` simply tells the planner how much total caching to assume.'},
+{h:'Why work_mem needs care'},
+{p:'`work_mem` is granted **per sort or hash operation, per query**, not per server. A query with three such steps on 100 connections could use 100 x 3 x 4 MB = 1.2 GB at the default 4 MB, and far more if you raise it carelessly. Raise it per session for a heavy report (`SET work_mem = \'256MB\';`) rather than globally.'},
+{h:'Measuring cache efficiency'},
+{code:`SELECT datname,
+       round(100.0*blks_hit/nullif(blks_hit+blks_read,0),2) AS hit_pct
+FROM pg_stat_database;
+-- OLTP systems usually aim for above 99%`}]);
+
+A('pg:3:4',[
+{h:'What a write-ahead log is'},
+{p:'A **log** is an append-only record of changes. The write-ahead rule says: **the log record describing a change must reach disk before the changed data page does.** Think of an accountant who writes each transaction in a journal before updating the ledger. If the ledger is lost halfway, the journal can rebuild it.'},
+{h:'A crash example'},
+{p:'You UPDATE a row and COMMIT. The new page is still only in memory and the power fails. On restart the startup process finds the last checkpoint, reads WAL from there and **redoes** each logged change, so your committed update reappears. Transactions that never committed leave no durable effect. Without WAL you would have to flush every data page on every commit, which is very slow because the writes are scattered; WAL turns commit into one fast sequential write.'},
+{h:'Reading the key terms'},
+{p:'The **LSN** (Log Sequence Number) is a position in the WAL stream, like a page number in the journal. WAL is stored as **16 MB segment files** in `pg_wal`, named with the timeline, log and segment numbers. A **checkpoint** is the moment all changes before a given LSN are known to be in the data files; the checkpointer runs one every `checkpoint_timeout` or when WAL reaches `max_wal_size`. With `full_page_writes` on, the first change to a page after a checkpoint logs the whole page, protecting against partly written (torn) pages.'},
+{h:'What else WAL powers'},
+{p:'The same stream gives you **point-in-time recovery** (restore a base backup, replay archived WAL to a chosen moment), **streaming replication** (standbys replay the primary WAL) and **logical decoding**. That is why WAL appears again in the backup and replication sections.'}]);
+
+A('pg:3:5',[
+{h:'A worked example: UPDATE'},
+{p:'Run `UPDATE emp SET sal = 6000 WHERE id = 5;` and then COMMIT. (1) The backend plans the query and finds the page holding row 5, reading it into `shared_buffers` if it is not there. (2) It does not edit the old row: it writes a **new row version** with sal 6000 and marks the old one as expired by this transaction. The page is now **dirty**. (3) It writes a WAL record describing the change into the WAL buffers. (4) At COMMIT the backend forces WAL up to that point to disk with fsync and records the transaction as committed; only now does the client get "COMMIT". (5) Later the background writer or checkpointer writes the dirty page to the data file. (6) After no snapshot needs the old version, autovacuum removes it.'},
+{h:'Reading the same row'},
+{p:'For `SELECT sal FROM emp WHERE id = 5;` the backend only looks at the buffer cache and, on a miss, the disk. It uses the transaction snapshot to decide which row version is visible, so it never needs to wait for the writer.'},
+{h:'Takeaway'},
+{p:'Commit speed depends on the **WAL flush**, not on writing the data file, and cleanup happens afterwards. This one path explains tuning topics later in the course: `synchronous_commit`, checkpoint settings and autovacuum.'}]);
+
+A('pg:3:6',[
+{h:'What a cluster is'},
+{p:'In PostgreSQL a **database cluster** is the collection of databases managed by one server instance and stored in one directory, `PGDATA`. "Cluster" here does not mean several servers. `initdb` creates the directory, the template databases (`template0`, `template1`) and the default `postgres` database.'},
+{h:'How a table is stored'},
+{p:'Every database is a folder under `base/` named by its **OID** (object ID). Every table and index inside it is a file named by its **relfilenode**, for example `base/5/1259`. A file larger than 1 GB is split into numbered segments (`1259.1`). Alongside the main file there may be a **free space map** (`_fsm`) and **visibility map** (`_vm`) that VACUUM and index-only scans use. Very large column values are moved to a **TOAST** table, so one row can exceed the 8 KB page size.'},
+{h:'Practical rules'},
+{p:'Never edit or copy files inside a running `PGDATA`; use `pg_basebackup` or `pg_dump`. Put `pg_wal` on fast, separate storage if you can, because it is written constantly. Monitor free space on both the data and WAL volumes, since a full WAL disk stops the database.'}]);
+})();
+
+/* ================================================================
+   PART: Section 05 - Database and Storage Management  (was lessons4.js)
+   ================================================================ */
+/* LearnSphere: Section 05 - Database and Storage Management (lectures 1-8 + bonus lectures 9-11)
+   Load AFTER lessons2.js / lessons3.js. Docs links target PostgreSQL 18. */
+(function(){
+const D='https://www.postgresql.org/docs/18/';
+/* shared SVG helper (reused by lessons5-8.js) */
+if(!window.LS_DG){window.LS_DG=(w,h,B,A)=>{const t=(x,y,l)=>l.split('|').map((s,i,a)=>`<text x="${x}" y="${y+(i-(a.length-1)/2)*14}" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="var(--tx)">${s}</text>`).join('');
+return `<svg viewBox="0 0 ${w} ${h}" font-family="Space Grotesk,sans-serif"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker></defs>`+
+B.map(([x,y,bw,bh,l,k])=>k==1?`<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="12" fill="none" stroke="var(--accent)" stroke-dasharray="5 4"/><text x="${x+10}" y="${y+16}" font-size="11" fill="var(--accent)">${l}</text>`:`<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="9" fill="${k==2?'color-mix(in srgb,var(--accent) 22%,var(--panel2))':'var(--panel2)'}" stroke="var(--line)"/>`+t(x+bw/2,y+bh/2,l)).join('')+
+A.map(([a,b,c,d])=>`<line x1="${a}" y1="${b}" x2="${c}" y2="${d}" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#ah)"/>`).join('')+'</svg>'}}
+const dg=window.LS_DG;
+
+const hierSvg=dg(700,200,[
+[10,20,120,60,'Cluster|PGDATA',2],[160,20,120,60,'Database|pg_database',0],[310,20,120,60,'Schema|pg_namespace',0],[460,20,120,60,'Table / Index|pg_class',0],[590,20,100,60,'Row / Column|pg_attribute',0],
+[10,130,120,50,'Roles, tablespaces|are cluster-wide',0],[160,130,120,50,'Folder base/OID',0],[310,130,120,50,'Namespace only|no file of its own',0],[460,130,120,50,'File named by|relfilenode',0],[590,130,100,50,'8 KB pages',0]],
+[[130,50,160,50],[280,50,310,50],[430,50,460,50],[580,50,590,50],[70,80,70,130],[220,80,220,130],[370,80,370,130],[520,80,520,130],[640,80,640,130]]);
+const tplSvg=dg(700,250,[
+[10,50,150,55,'template0|pristine, never edit',0],[10,150,150,55,'template1|default model, editable',2],
+[220,100,160,55,'CREATE DATABASE|copies the template',2],
+[450,30,150,50,'appdb',0],[450,100,150,50,'reportdb',0],[450,170,150,50,'testdb',0]],
+[[160,78,220,118],[160,178,220,140],[380,115,450,55],[380,128,450,125],[380,140,450,195]]);
+const killSvg=dg(700,150,[
+[10,50,130,50,'Find the session|pg_stat_activity',0],[190,50,130,50,'Cancel the query|pg_cancel_backend',2],[370,50,130,50,'Still stuck?|pg_terminate_backend',2],[550,50,140,50,'Verify and fix|root cause',0]],
+[[140,75,190,75],[320,75,370,75],[500,75,550,75]]);
+
+window.EXTRA_LECTURES=window.EXTRA_LECTURES||{};
+window.EXTRA_LECTURES[4]=[
+['Encoding, Locale and Collation','0:00','How character encoding and collation are chosen per database, why they cannot be changed later, and the collation-version trap after OS upgrades.'],
+['Table Storage: Pages, TOAST, VACUUM and Bloat','0:00','How rows are physically stored in 8 KB pages, what dead tuples and bloat are, and what VACUUM does.'],
+['Monitoring with the Statistics Views','0:00','The pg_stat_* views every DBA queries: cache hit ratio, index usage, long transactions and progress reporting.']];
+
+Object.assign(window.LESSONS,{
+
+/* ---------------------------------------------------------------- 4:0 */
+'pg:4:0':{blocks:[
+{p:'Every PostgreSQL server stores **data about its own objects** (which tables exist, their columns, owners, indexes, privileges) inside ordinary tables. These are the **system catalogs**. The PostgreSQL documentation calls them the place where a relational database management system stores schema metadata, such as information about tables and columns, and internal bookkeeping information. Catalog **views** present that raw data in a readable form. Together they are the server\'s **data dictionary**, and querying them is how a DBA audits, documents and monitors a cluster with plain SQL.'},
+{h:'Three layers of metadata'},
+{t:[['Layer','Schema','What it is','When to use'],['System catalog tables','`pg_catalog`','Real tables such as `pg_class`, `pg_attribute`, `pg_database`. Source of truth, PostgreSQL-specific, complete.','Deep or exact information; scripts that must see everything'],['System views','`pg_catalog`','Friendly views built on the catalogs: `pg_tables`, `pg_indexes`, `pg_roles`, `pg_settings`, `pg_stat_activity`.','Everyday administration and monitoring'],['Information schema','`information_schema`','SQL-standard views (`tables`, `columns`, `table_privileges`, `routines`). Shows only objects the current user can access.','Portable queries and tools that must also work on other databases']]},
+{note:'`pg_catalog` is always searched first, even if it is not listed in `search_path`. That is why you can call `now()` or query `pg_class` without a schema prefix.'},
+{h:'The most important catalogs'},
+{t:[['Catalog / view','Scope','Holds'],['`pg_database`','Cluster-wide','One row per database: encoding, collation, template flag, connection limit, default tablespace'],['`pg_roles` / `pg_authid`','Cluster-wide','Roles and attributes (`pg_authid` also holds password hashes and is superuser-only; `pg_roles` hides them)'],['`pg_tablespace`','Cluster-wide','Tablespaces and owners'],['`pg_namespace`','Per database','Schemas'],['`pg_class`','Per database','Every relation: tables, indexes, sequences, views, materialized views'],['`pg_attribute`','Per database','Columns of every relation'],['`pg_index`, `pg_constraint`','Per database','Index and constraint definitions'],['`pg_proc`, `pg_type`','Per database','Functions/procedures and data types'],['`pg_depend`','Per database','Dependencies between objects (why `DROP` needs `CASCADE`)'],['`pg_settings`','Server','All configuration parameters with current value and context']]},
+{h:'Decoding `pg_class.relkind`'},
+{t:[['Code','Object','Code','Object'],['`r`','Ordinary table','`i`','Index'],['`p`','Partitioned table','`I`','Partitioned index'],['`v`','View','`m`','Materialized view'],['`S`','Sequence','`t`','TOAST table'],['`f`','Foreign table','`c`','Composite type']]},
+{h:'Practical queries'},
+{code:`-- 1. Databases, owners, encoding and size
+SELECT datname, pg_get_userbyid(datdba) AS owner,
+       pg_encoding_to_char(encoding) AS enc, datistemplate,
+       pg_size_pretty(pg_database_size(datname)) AS size
+FROM pg_database ORDER BY datname;
+
+-- 2. User tables with owner and row estimate
+SELECT n.nspname AS schema, c.relname AS table, pg_get_userbyid(c.relowner) AS owner,
+       c.reltuples::bigint AS est_rows
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind = 'r' AND n.nspname NOT IN ('pg_catalog','information_schema')
+ORDER BY n.nspname, c.relname;
+
+-- 3. Columns of one table (information_schema, portable)
+SELECT column_name, data_type, is_nullable, column_default
+FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'orders'
+ORDER BY ordinal_position;
+
+-- 4. Who can do what on a table
+SELECT grantee, privilege_type
+FROM information_schema.table_privileges
+WHERE table_schema = 'public' AND table_name = 'orders';
+
+-- 5. Indexes of a table with their definitions
+SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'orders';
+
+-- 6. Convert between name and OID with the reg* types
+SELECT 'public.orders'::regclass::oid;     -- name -> OID
+SELECT 16385::regclass;                    -- OID  -> name`},
+{h:'Learn the catalogs from psql itself'},
+{p:'Every backslash command in `psql` is just a catalog query. Start psql with `-E` (or run `\\set ECHO_HIDDEN on`) and it prints the SQL it sends. Reading those queries is the quickest way to learn which catalog holds what.'},
+{code:`psql -E -d appdb
+appdb=# \\dt
+********* QUERY **********
+SELECT n.nspname, c.relname, ... FROM pg_catalog.pg_class c ...`},
+{note:'Never run `UPDATE` or `DELETE` on catalog tables. A wrong edit can corrupt the cluster. Use DDL (`CREATE`, `ALTER`, `DROP`) and let the server maintain the catalogs.'}],
+src:[['System Catalogs',D+'catalogs.html'],['System Views',D+'views.html'],['The Information Schema',D+'information-schema.html'],['Object identifier types',D+'datatype-oid.html']]},
+
+/* ---------------------------------------------------------------- 4:1 */
+'pg:4:1':{blocks:[
+{p:'A **database** is a named collection of schemas and objects inside a cluster. A client connects to **exactly one database** at a time, and objects in one database cannot be referenced directly from another. New databases are created by **copying a template database**, which is why template management is a core DBA skill.'},
+{h:'The three databases created by initdb'},
+{t:[['Database','Purpose','Rules'],['`template1`','Default model copied by `CREATE DATABASE`.','Editable. Anything you add here (extensions, functions, schemas) appears in every future database.'],['`template0`','Pristine, read-only copy of the original `template1`.','Marked `datallowconn = false`. Use it when you need a different encoding or locale, or a clean database with none of your template1 changes.'],['`postgres`','Default maintenance database for utilities and tools.','Safe to drop but you should not. Many tools connect to it first.']]},
+{svg:tplSvg},
+{h:'Creating a database'},
+{code:`-- simplest form: copies template1
+CREATE DATABASE appdb;
+
+-- production-style: explicit owner, encoding, locale, limits
+CREATE DATABASE appdb
+  OWNER app_owner
+  TEMPLATE template0
+  ENCODING 'UTF8'
+  LOCALE_PROVIDER libc
+  LC_COLLATE 'en_US.UTF-8'
+  LC_CTYPE   'en_US.UTF-8'
+  TABLESPACE pg_default
+  CONNECTION LIMIT 100;
+
+-- from the shell
+createdb -U postgres -O app_owner -T template0 -E UTF8 appdb`},
+{t:[['Option','Meaning'],['`OWNER`','Role that owns the database (default: the creating role)'],['`TEMPLATE`','Database to copy (default `template1`)'],['`ENCODING`','Character set. Cannot be changed after creation'],['`LOCALE_PROVIDER`','`libc`, `icu` or `builtin` (builtin added in v17)'],['`LC_COLLATE` / `LC_CTYPE`','Sort order and character classification (libc provider)'],['`TABLESPACE`','Default tablespace for objects in this database'],['`ALLOW_CONNECTIONS`','If `false`, nobody can connect (used by `template0`)'],['`CONNECTION LIMIT`','Maximum concurrent connections to this database (`-1` = unlimited)'],['`IS_TEMPLATE`','If `true`, any user with CREATEDB can clone it'],['`STRATEGY`','`WAL_LOG` (default since v15) or `FILE_COPY`; v18 adds `file_copy_method` to allow fast cloning on supporting file systems']]},
+{h:'How the copy works'},
+{flow:['Check no other session is connected to the template','Take a checkpoint (FILE_COPY) or WAL-log blocks (WAL_LOG)','Copy all files of the template','Register the new database in `pg_database`','New database is ready']},
+{note:'If you see `source database "template1" is being accessed by other users`, someone is connected to the template. Find and end that session (see the Kill Sessions lesson) and retry.'},
+{h:'Using your own template'},
+{code:`-- Prepare a "golden" template with extensions and standard schemas
+CREATE DATABASE tpl_app TEMPLATE template0;
+\\c tpl_app
+CREATE EXTENSION pg_stat_statements;
+CREATE SCHEMA app AUTHORIZATION app_owner;
+\\c postgres
+ALTER DATABASE tpl_app WITH IS_TEMPLATE true ALLOW_CONNECTIONS false;
+
+-- every new tenant database starts identical
+CREATE DATABASE customer42 TEMPLATE tpl_app;`},
+{h:'Altering, renaming and dropping'},
+{code:`ALTER DATABASE appdb OWNER TO new_owner;
+ALTER DATABASE appdb SET work_mem = '32MB';    -- per-database default
+ALTER DATABASE appdb CONNECTION LIMIT 50;
+ALTER DATABASE appdb RENAME TO appdb_old;      -- no sessions allowed; use the new name from here on
+
+DROP DATABASE IF EXISTS appdb_old;
+DROP DATABASE appdb_old WITH (FORCE);          -- v13+: terminates sessions first`},
+{ul:['`DROP DATABASE` cannot run inside a transaction and cannot drop the database you are connected to. Connect to `postgres` first.','Dropping is **irreversible** and deletes the files on disk. Back up first.','`WITH (FORCE)` disconnects other sessions automatically; without it the command fails if anyone is connected.']},
+{h:'Template hygiene (production rules)'},
+{ul:['Do not casually modify `template1`. Keep it clean and use a **named custom template** instead.','Never connect to or edit `template0`.','When restoring a dump with `pg_restore -C`, the database is created from `template0` by default in the dump, so encoding settings are reproduced exactly.','Check `datistemplate`, `datallowconn` and `datconnlimit` in `pg_database` during audits.']}],
+src:[['CREATE DATABASE',D+'sql-createdatabase.html'],['Template Databases',D+'manage-ag-templatedbs.html'],['DROP DATABASE',D+'sql-dropdatabase.html'],['ALTER DATABASE',D+'sql-alterdatabase.html']]},
+
+/* ---------------------------------------------------------------- 4:2 */
+'pg:4:2':{blocks:[
+{p:'Environment variables let client programs (`psql`, `pg_dump`, `pg_restore`, `pg_basebackup`) and server utilities (`pg_ctl`, `initdb`) find the right server, database and data directory **without typing long command lines**. They are the foundation of a clean multi-cluster setup: switch one profile and every tool points to a different cluster.'},
+{h:'Client variables (libpq)'},
+{t:[['Variable','Equivalent option','Meaning'],['`PGHOST`','`-h`','Server host name or socket directory'],['`PGPORT`','`-p`','Server port (default `5432`)'],['`PGDATABASE`','`-d`','Database to connect to'],['`PGUSER`','`-U`','Role name to connect as'],['`PGPASSWORD`','(none)','Password. **Discouraged**: visible to other processes on some systems. Use `~/.pgpass` instead'],['`PGPASSFILE`','(none)','Path of the password file (default `~/.pgpass`)'],['`PGSERVICE`','`service=`','Named connection defined in `pg_service.conf`'],['`PGSSLMODE`','`sslmode=`','`disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`'],['`PGCONNECT_TIMEOUT`','`connect_timeout=`','Seconds to wait for a connection'],['`PGOPTIONS`','`options=`','Server settings sent at connect, e.g. `-c statement_timeout=30s`'],['`PGAPPNAME`','`application_name=`','Label shown in `pg_stat_activity`']]},
+{h:'Server-side utility variables'},
+{t:[['Variable','Used by','Meaning'],['`PGDATA`','`pg_ctl`, `initdb`, `postgres`, `pg_controldata`','Data directory of the cluster. Replaces `-D`'],['`PATH`','Shell','Must include the `bin` directory of the PostgreSQL version you intend to use'],['`PGTZ`, `PGCLIENTENCODING`','libpq clients','Session time zone and client encoding'],['`PSQLRC`, `PAGER`, `EDITOR`','`psql`','Startup file, pager (e.g. `less -S`), editor for `\\e`']]},
+{h:'Precedence'},
+{flow:['Explicit command-line option (`-h`, `-p`)','Connection string / `service`','Environment variable','Compiled-in default']},
+{h:'Setting them permanently'},
+{code:`# per user: ~/.bash_profile
+export PGDATA=/var/lib/pgsql/18/data
+export PATH=/usr/pgsql-18/bin:$PATH
+export PGPORT=5432
+export PGUSER=postgres
+
+# system wide: /etc/profile.d/pgsql.sh  (same lines)
+
+# apply and verify
+source ~/.bash_profile
+env | grep ^PG
+which psql pg_ctl
+psql -c "\\conninfo"`},
+{h:'Multi-cluster profiles with an environment script'},
+{p:'Graphical installers create a script (commonly `pg_env.sh`) that exports `PGDATA`, `PGPORT`, `PGUSER`, `PGLOCALEDIR` and `PATH`. On package installs you can create the same thing yourself, one file per cluster, and **source** the one you want.'},
+{code:`# /opt/pgenv/pg18_5432.env
+export PGHOME=/usr/pgsql-18
+export PGDATA=/var/lib/pgsql/18/data
+export PGPORT=5432
+export PATH=$PGHOME/bin:$PATH
+
+# /opt/pgenv/pg18_5433.env
+export PGHOME=/usr/pgsql-18
+export PGDATA=/pgdata/cluster2
+export PGPORT=5433
+export PATH=$PGHOME/bin:$PATH
+
+# switch cluster in the current shell
+source /opt/pgenv/pg18_5433.env
+pg_ctl status            # now talks to cluster 2
+psql -c "SHOW data_directory;"`},
+{h:'Password file and service file (safer than PGPASSWORD)'},
+{code:`# ~/.pgpass  (chmod 0600)   host:port:database:user:password
+localhost:5432:*:postgres:S3cret!
+10.0.0.5:5433:appdb:appuser:Another#Pass
+
+# ~/.pg_service.conf
+[prod_report]
+host=10.0.0.5
+port=5433
+dbname=appdb
+user=report_ro
+
+psql "service=prod_report"        # or: PGSERVICE=prod_report psql`},
+{note:'`libpq` ignores `~/.pgpass` if its permissions are more open than `0600`. If prompts keep appearing, check `ls -l ~/.pgpass`.'},
+{ul:['Keep a **standard data path convention** such as `/pgdata/<version>/<cluster>` so scripts, monitoring and backups can derive paths from variables.','Batch jobs and cron do not read your interactive profile. Source the env file explicitly at the top of each script.','`PGDATA` must point to the right cluster before you run `pg_ctl stop`. Many outages come from stopping the wrong instance.']}],
+src:[['Environment Variables (libpq)',D+'libpq-envars.html'],['The Password File',D+'libpq-pgpass.html'],['The Connection Service File',D+'libpq-pgservice.html'],['Server Setup and Operation',D+'runtime.html']]},
+
+/* ---------------------------------------------------------------- 4:3 */
+'pg:4:3':{blocks:[
+{p:'PostgreSQL organises objects in a strict **hierarchy**. Understanding it explains where data lives, what is shared between databases, and which commands affect which level.'},
+{svg:hierSvg},
+{h:'Logical hierarchy'},
+{t:[['Level','Definition','Key facts'],['**Cluster**','All databases managed by one server instance and stored in one data directory (`PGDATA`).','One postmaster, one port. Roles, tablespaces and some catalogs are shared by every database in the cluster.'],['**Database**','A named, isolated container of schemas.','A connection is bound to one database. No cross-database queries; use `dblink` or `postgres_fdw`.'],['**Schema**','A namespace inside a database.','Groups objects, controls access, avoids name clashes. Not a separate file.'],['**Table / index / view / sequence**','Relations stored or defined inside a schema.','Tables and indexes are files; views are stored queries.'],['**Row (tuple) and column**','Data inside a table.','Rows are stored in 8 KB pages with a per-row header.']]},
+{h:'What is global and what is local'},
+{t:[['Cluster-wide (shared)','Per database'],['Roles (users and groups)','Schemas'],['Tablespaces','Tables, indexes, sequences, views'],['Database list (`pg_database`)','Functions, types, extensions'],['Cluster configuration','Per-database settings (`ALTER DATABASE ... SET`)']]},
+{note:'Creating a role once makes it visible in every database, but its **privileges** are granted per object inside each database. `CONNECT` on the database is the first gate.'},
+{h:'Physical hierarchy on disk'},
+{flow:['`PGDATA`','`base/`','`base/<database OID>/`','`<relfilenode>` file','`_fsm`, `_vm`, `.1` segments']},
+{t:[['Logical object','Physical location'],['Cluster','`PGDATA` directory'],['Database','`PGDATA/base/<db OID>/` (or the folder inside a tablespace)'],['Table or index','One or more files named by **relfilenode**; split into 1 GB segments (`.1`, `.2`)'],['Extra forks','`_fsm` free space map, `_vm` visibility map, `_init` for unlogged tables'],['Large values','Stored out of line in the table\'s TOAST table'],['Shared catalogs','`PGDATA/global/`'],['Non-default tablespace','Symbolic link in `PGDATA/pg_tblspc/<tablespace OID>`']]},
+{h:'Finding the file behind an object'},
+{code:`SELECT oid, datname FROM pg_database;                    -- database OIDs
+SELECT pg_relation_filepath('public.orders');            -- e.g. base/16384/16402
+SELECT pg_relation_filenode('public.orders');
+SELECT relname, oid, relfilenode, reltablespace
+FROM pg_class WHERE relname = 'orders';`},
+{ul:['**OID** is a permanent object identifier. **relfilenode** is the current file name. They start equal but diverge after `TRUNCATE`, `VACUUM FULL`, `CLUSTER` or `REINDEX`, which write a new file.','`reltablespace = 0` means the database\'s default tablespace.','`oid2name` (a contrib tool) maps OIDs and file names back to object names from the shell.']},
+{h:'Fully qualified names'},
+{p:'Inside one database an object is addressed as `schema.table` (for example `sales.orders`). A third part, the database name, is accepted syntactically but only for the current database. To read data in another database you need an extension such as `postgres_fdw`.'}],
+src:[['Database Physical Storage',D+'storage.html'],['Database File Layout',D+'storage-file-layout.html'],['Managing Databases',D+'managing-databases.html'],['Schemas',D+'ddl-schemas.html']]},
+
+/* ---------------------------------------------------------------- 4:4 */
+'pg:4:4':{blocks:[
+{p:'Every client connection is a **backend process** with a process ID (PID). When a query runs too long, a transaction sits open or a session blocks others, a DBA can stop it from SQL. The server provides two functions, and knowing the difference between them is the whole lesson.'},
+{svg:killSvg},
+{h:'Step 1: Find the session'},
+{code:`SELECT pid, usename, datname, application_name, client_addr,
+       state, wait_event_type, wait_event,
+       now() - query_start  AS query_age,
+       now() - xact_start   AS xact_age,
+       left(query, 60)      AS query
+FROM pg_stat_activity
+WHERE backend_type = 'client backend' AND pid <> pg_backend_pid()
+ORDER BY query_start;`},
+{t:[['`state`','Meaning','Concern'],['`active`','Running a query now','Long ones may need review'],['`idle`','Connected, waiting for a command','Harmless except for connection slots'],['`idle in transaction`','Transaction open, doing nothing','**Dangerous**: holds locks and blocks VACUUM from removing dead rows'],['`idle in transaction (aborted)`','An error occurred, still in the transaction','Client must ROLLBACK'],['`fastpath function call`','Executing a fast-path function','Rare']]},
+{h:'Step 2: Cancel or terminate'},
+{t:[['Method','Effect','Session','Use when'],['`pg_cancel_backend(pid)`','Sends SIGINT: cancels the **current query** only','Stays connected','Runaway query; you want the application to continue'],['`pg_terminate_backend(pid [, timeout])`','Sends SIGTERM: ends the **whole session** and rolls back its transaction','Disconnected','Idle-in-transaction, stuck client, or cancel was ignored'],['`kill -9 <pid>` (OS)','Kills the process abruptly','Whole server restarts','**Never.** The postmaster treats it as a crash, disconnects everyone and runs crash recovery']]},
+{code:`SELECT pg_cancel_backend(12345);
+SELECT pg_terminate_backend(12345);
+
+-- bulk: end every session of one database (e.g. before DROP or RENAME)
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = 'appdb' AND pid <> pg_backend_pid();
+
+-- end sessions idle in transaction for more than 10 minutes
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE state = 'idle in transaction'
+  AND now() - state_change > interval '10 minutes';`},
+{h:'Who is allowed?'},
+{ul:['A **superuser** can signal any backend.','A role can signal backends of **its own role** or of roles it is a member of.','Membership in the predefined role **`pg_signal_backend`** lets a non-superuser signal other non-superuser sessions. It cannot touch superuser sessions.']},
+{h:'Finding the blocker'},
+{p:'When a session waits (`wait_event_type = Lock`), the culprit is the session holding the conflicting lock. Do not kill the waiter; find the holder.'},
+{code:`SELECT a.pid AS waiting_pid, a.usename, left(a.query,40) AS waiting_query,
+       pg_blocking_pids(a.pid) AS blocked_by
+FROM pg_stat_activity a
+WHERE cardinality(pg_blocking_pids(a.pid)) > 0;
+
+-- details of the blocker
+SELECT pid, usename, state, xact_start, left(query,60)
+FROM pg_stat_activity WHERE pid = ANY (pg_blocking_pids(<waiting_pid>));`},
+{h:'Worked scenario'},
+{flow:['Session A: `BEGIN; UPDATE orders SET status=\'X\' WHERE id=1;` (no COMMIT)','Session B: `UPDATE orders ... WHERE id=1;` waits','`pg_blocking_pids(B)` returns A','A is `idle in transaction`: terminate A','B proceeds immediately']},
+{h:'Prevent it instead of fixing it'},
+{t:[['Parameter','Effect'],['`statement_timeout`','Cancels any statement running longer than the limit'],['`lock_timeout`','Cancels a statement that waits too long for a lock'],['`idle_in_transaction_session_timeout`','Terminates sessions idle inside a transaction too long'],['`idle_session_timeout` (v14+)','Terminates sessions idle outside a transaction'],['`ALTER ROLE r CONNECTION LIMIT n`','Limits concurrent sessions per role']]},
+{code:`ALTER ROLE app_user SET idle_in_transaction_session_timeout = '5min';
+ALTER ROLE app_user SET statement_timeout = '60s';`},
+{note:'Record the PID, user, query and age **before** terminating. After a termination the evidence is gone, and you will need it for the root-cause report.'}],
+src:[['Server Signaling Functions',D+'functions-admin.html#FUNCTIONS-ADMIN-SIGNAL'],['pg_stat_activity',D+'monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW'],['Explicit Locking',D+'explicit-locking.html'],['Predefined Roles',D+'predefined-roles.html']]},
+
+/* ---------------------------------------------------------------- 4:5 */
+'pg:4:5':{blocks:[
+{p:'A **schema** is a namespace inside a database that contains tables, views, functions, types, sequences and other objects. Two objects can share a name if they live in different schemas (`sales.orders` and `archive.orders`). The documentation lists the reasons to use schemas: to allow many users to use one database without interfering, to organise objects into logical groups, and to separate third-party applications so names do not collide.'},
+{h:'Schemas versus databases'},
+{t:[['','Database','Schema'],['Isolation','Strong: separate connection, no cross queries','Logical: same connection, cross-schema queries and joins allowed'],['Backup unit','`pg_dump` per database','`pg_dump -n schema`'],['Privilege gate','`CONNECT`','`USAGE` and `CREATE` on schema'],['Typical use','One per application or tenant needing hard separation','Modules, environments, tenants, staging areas']]},
+{h:'Built-in schemas'},
+{t:[['Schema','Purpose'],['`public`','Default schema of new databases. From v15 only the database owner (via `pg_database_owner`) may create objects here by default'],['`pg_catalog`','System catalogs and built-in functions. Always searched first'],['`information_schema`','SQL-standard metadata views'],['`pg_toast`','TOAST tables for large values'],['`pg_temp_N`','Temporary tables of session N']]},
+{h:'Working with schemas'},
+{code:`CREATE SCHEMA sales AUTHORIZATION sales_owner;
+CREATE SCHEMA IF NOT EXISTS archive;
+
+-- create schema and objects in one statement
+CREATE SCHEMA hr
+  CREATE TABLE employee (id int PRIMARY KEY, name text)
+  CREATE VIEW v_names AS SELECT name FROM employee;
+
+CREATE TABLE sales.orders (id bigint PRIMARY KEY, total numeric);
+SELECT * FROM sales.orders;
+
+ALTER SCHEMA sales OWNER TO new_owner;
+ALTER TABLE sales.orders SET SCHEMA archive;      -- move an object
+ALTER SCHEMA hr RENAME TO human_resources;        -- rename a schema
+
+DROP SCHEMA archive;                              -- fails if not empty
+DROP SCHEMA archive CASCADE;                      -- drops everything inside`},
+{h:'How names are resolved: search_path'},
+{p:'When you write an unqualified name such as `orders`, PostgreSQL walks the schemas in `search_path` and uses the first match. The default is `"$user", public`, meaning a schema named after the current role, then `public`. New objects are created in the **first existing schema** of the path.'},
+{flow:['Query uses name `orders`','`pg_catalog` (implicit, first)','Schemas in `search_path` in order','First match wins','No match: `relation does not exist`']},
+{code:`SHOW search_path;
+SET search_path = sales, public;                  -- this session
+ALTER ROLE app_user SET search_path = sales;      -- every new session of the role
+ALTER DATABASE appdb SET search_path = sales, public;
+SELECT current_schema(), current_schemas(true);`},
+{h:'Privileges on schemas'},
+{t:[['Privilege','Allows'],['`USAGE`','Look up objects in the schema (needed in addition to object-level privileges)'],['`CREATE`','Create new objects in the schema']]},
+{code:`REVOKE ALL ON SCHEMA sales FROM PUBLIC;
+GRANT USAGE ON SCHEMA sales TO app_ro;
+GRANT USAGE, CREATE ON SCHEMA sales TO app_rw;
+GRANT SELECT ON ALL TABLES IN SCHEMA sales TO app_ro;`},
+{note:'A role needs `USAGE` on the schema **and** a privilege on the table. Forgetting `USAGE` produces `permission denied for schema` even if the table grant exists.'},
+{h:'Governance best practices'},
+{ul:['Do **not** put application objects in `public`. Create one schema per application or module and an owner role for it.','Always schema-qualify objects in scripts, migrations and `SECURITY DEFINER` functions.','Set `search_path` per role or database instead of relying on defaults.','For multi-tenant systems, schema-per-tenant is simple at tens of tenants; with thousands, catalog size and migration time grow, so consider a tenant-id column with Row Level Security.','Install extensions into a dedicated schema (for example `extensions`) and add it to `search_path`.']}],
+src:[['Schemas',D+'ddl-schemas.html'],['CREATE SCHEMA',D+'sql-createschema.html'],['Schema Search Path',D+'ddl-schemas.html#DDL-SCHEMAS-PATH'],['Secure Schema Usage Pattern',D+'ddl-schemas.html#DDL-SCHEMAS-PATTERNS']]},
+
+/* ---------------------------------------------------------------- 4:6 */
+'pg:4:6':{blocks:[
+{p:'Knowing how big things are is basic capacity management: it drives disk planning, backup duration and restore time. PostgreSQL provides size functions that return **bytes**, and `pg_size_pretty()` converts them to KB, MB, GB.'},
+{h:'Size functions'},
+{t:[['Function','Returns'],['`pg_database_size(name)`','Total size of a database on disk'],['`pg_tablespace_size(name)`','Size of a tablespace'],['`pg_relation_size(rel [, fork])`','One fork of a relation. Default `main` fork only: **table heap without indexes or TOAST**'],['`pg_table_size(rel)`','Table + TOAST + free space map + visibility map (no indexes)'],['`pg_indexes_size(rel)`','All indexes of a table'],['`pg_total_relation_size(rel)`','Table + TOAST + indexes. The number to use for "how big is this table"'],['`pg_size_pretty(bigint)`','Human-readable text'],['`pg_size_bytes(text)`','Parses `\'512 MB\'` back to bytes']]},
+{code:`SELECT pg_size_pretty(pg_database_size('appdb'));
+
+SELECT pg_size_pretty(pg_relation_size('public.orders'))        AS heap_only,
+       pg_size_pretty(pg_table_size('public.orders'))           AS table_toast,
+       pg_size_pretty(pg_indexes_size('public.orders'))         AS indexes,
+       pg_size_pretty(pg_total_relation_size('public.orders'))  AS total;`},
+{h:'Using psql meta-commands'},
+{t:[['Command','Shows'],['`\\l+`','Databases with **size**, tablespace and description'],['`\\dt+`','Tables with size (table + TOAST, excluding indexes)'],['`\\di+`','Indexes with size'],['`\\db+`','Tablespaces with size'],['`\\dn+`','Schemas with owner, privileges and description (**not** size)']]},
+{note:'`\\dn+` does not display schema size. To size a schema you must add up its relations with a query, as shown below.'},
+{h:'Reports a DBA keeps handy'},
+{code:`-- all databases, largest first
+SELECT datname, pg_size_pretty(pg_database_size(datname)) AS size
+FROM pg_database ORDER BY pg_database_size(datname) DESC;
+
+-- size of every schema in the current database
+SELECT n.nspname AS schema,
+       pg_size_pretty(sum(pg_total_relation_size(c.oid))) AS size
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r','m','p') AND n.nspname NOT IN ('pg_catalog','information_schema')
+GROUP BY n.nspname ORDER BY sum(pg_total_relation_size(c.oid)) DESC;
+
+-- top 10 tables with split between data and indexes
+SELECT n.nspname||'.'||c.relname AS table_name,
+       pg_size_pretty(pg_table_size(c.oid))         AS data,
+       pg_size_pretty(pg_indexes_size(c.oid))       AS idx,
+       pg_size_pretty(pg_total_relation_size(c.oid)) AS total
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind = 'r' AND n.nspname NOT IN ('pg_catalog','information_schema')
+ORDER BY pg_total_relation_size(c.oid) DESC LIMIT 10;
+
+-- the individual forks of one table
+SELECT fork, pg_size_pretty(pg_relation_size('public.orders', fork))
+FROM unnest(ARRAY['main','fsm','vm']) AS fork;`},
+{h:'Interpreting the numbers'},
+{ul:['Size on disk includes **dead tuples and bloat**, so it can be much larger than the live data. Compare with `n_live_tup` and run `VACUUM`.','A dump file is usually smaller than the database because it holds no indexes and is often compressed.','`pg_database_size` needs `CONNECT` privilege on the database; reading all table sizes is not restricted.','Also watch the **WAL directory** and **log directory**: they are outside the database size figure.','OS view for comparison: `du -sh $PGDATA/base`, `df -h`.']}],
+src:[['Database Object Size Functions',D+'functions-admin.html#FUNCTIONS-ADMIN-DBSIZE'],['psql meta-commands',D+'app-psql.html'],['Disk Usage',D+'diskusage.html']]},
+
+/* ---------------------------------------------------------------- 4:7 */
+'pg:4:7':{blocks:[
+{p:'PostgreSQL ships with a set of optional add-on modules, collectively called **contrib** (the `contrib` directory of the source, documented as "Additional Supplied Modules and Extensions"). Most are packaged as **extensions**: a bundle of SQL objects installed into a database with one command. Some are command-line tools, such as `pgbench` and `oid2name`.'},
+{h:'Getting the contrib modules'},
+{t:[['Installation method','How contrib is provided'],['PGDG yum/RPM','Install `postgresql18-contrib`'],['Debian / Ubuntu','Included with `postgresql-18` or the separate `postgresql-contrib` package'],['Windows GUI installer','Included'],['Source build','`cd contrib && make && sudo make install` (or `make world`)']]},
+{h:'Managing extensions'},
+{code:`SELECT name, default_version, installed_version, comment
+FROM pg_available_extensions WHERE name LIKE 'pg_%' ORDER BY name;
+
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION pgcrypto SCHEMA extensions;     -- install into a chosen schema
+ALTER EXTENSION pg_stat_statements UPDATE;
+DROP EXTENSION pgcrypto;
+-- list installed extensions in this database
+\\dx`},
+{ul:['Extensions are installed **per database**, not per cluster. Use `template1` or a custom template to preinstall them everywhere.','Installing usually requires superuser. Since v13, extensions marked **trusted** can be installed by any role with `CREATE` on the database.','Some modules need to load code at startup through `shared_preload_libraries`, which needs a **restart**.']},
+{h:'Frequently used modules'},
+{t:[['Module','Purpose','Preload needed'],['`pg_stat_statements`','Execution statistics of every normalised SQL statement','Yes'],['`auto_explain`','Logs execution plans of slow queries','Yes (or `LOAD`)'],['`pg_buffercache`','Inspect what is in `shared_buffers`','No'],['`pg_prewarm`','Load relations into cache; can restore cache after restart','Optional'],['`pgstattuple`','Measure table and index bloat precisely','No'],['`pageinspect`','Look inside raw pages','No'],['`amcheck`','Verify B-tree and heap integrity','No'],['`pg_walinspect`','Read WAL records with SQL','No'],['`pgcrypto`','Hashing and encryption functions','No'],['`pg_trgm`','Fuzzy text search, fast `LIKE \'%x%\'`','No'],['`postgres_fdw`, `dblink`','Query other PostgreSQL databases','No'],['`file_fdw`','Read server-side files as tables','No'],['`pgbench`, `oid2name`, `vacuumlo`','Command-line tools','n/a']]},
+{h:'Worked example: pg_stat_statements'},
+{flow:['Add the module to `shared_preload_libraries` in `postgresql.conf`','Restart the cluster','`CREATE EXTENSION` in the database','Run workload','Query the view']},
+{code:`# postgresql.conf   (restart required)
+shared_preload_libraries = 'pg_stat_statements'
+pg_stat_statements.track = all
+compute_query_id = auto                 # on is also fine
+
+sudo systemctl restart postgresql-18
+
+-- in psql
+CREATE EXTENSION pg_stat_statements;
+
+SELECT left(query,60) AS query, calls,
+       round(total_exec_time::numeric,1) AS total_ms,
+       round(mean_exec_time::numeric,2)  AS mean_ms, rows
+FROM pg_stat_statements
+ORDER BY total_exec_time DESC LIMIT 10;
+
+SELECT pg_stat_statements_reset();      -- start a new measuring window`},
+{note:'If `shared_preload_libraries` already lists other libraries, **append** the new name to the comma-separated list. Replacing the value silently stops the others from loading. Check first with `SHOW shared_preload_libraries;`.'},
+{h:'Verify'},
+{code:`SHOW shared_preload_libraries;
+SELECT * FROM pg_extension;
+SELECT count(*) FROM pg_stat_statements;`}],
+src:[['Additional Supplied Modules',D+'contrib.html'],['CREATE EXTENSION',D+'sql-createextension.html'],['pg_stat_statements',D+'pgstatstatements.html'],['shared_preload_libraries',D+'runtime-config-client.html#GUC-SHARED-PRELOAD-LIBRARIES']]},
+
+/* ---------------------------------------------------------------- 4:8 bonus */
+'pg:4:8':{blocks:[
+{p:'Two settings are fixed **when a database is created** and decide how every text value is stored and compared: the **character encoding** and the **locale** (collation and character classification). Choosing them badly is one of the few mistakes that cannot be fixed in place.'},
+{h:'Encoding'},
+{t:[['Encoding','Notes'],['`UTF8`','Recommended default. Stores all of Unicode, 1 to 4 bytes per character'],['`LATIN1` ... `LATIN9`, `WIN1252`','Single-byte, limited alphabets'],['`SQL_ASCII`','No encoding validation. Accepts any bytes, so garbage can be stored. Avoid for new systems']]},
+{p:'Server encoding is set per database. The **client encoding** (`client_encoding`) can differ, and the server converts between them automatically.'},
+{h:'Locale and collation'},
+{t:[['Setting','Controls'],['`LC_COLLATE`','Sort order of text (`ORDER BY`, `<`, `>`, B-tree index order)'],['`LC_CTYPE`','Which characters are letters, digits, upper or lower case'],['`lc_messages`, `lc_monetary`, `lc_numeric`, `lc_time`','Language of messages and formatting; can change per session']]},
+{h:'Locale providers'},
+{t:[['Provider','Source','Characteristics'],['`libc`','Operating system C library','Default. Ordering can change when the OS or glibc is upgraded'],['`icu`','ICU library (PostgreSQL must be built with ICU support)','Versioned, more consistent across platforms'],['`builtin` (v17+)','PostgreSQL itself','Simple, stable `C` and `C.UTF-8` behaviour, no external dependency']]},
+{h:'Why it matters in practice'},
+{ul:['**Index use for prefix searches.** `LIKE \'abc%\'` can use a plain B-tree index only under the `C` collation. With another locale create the index with `text_pattern_ops`.','**Uniqueness and sorting** follow the collation. `\'a\'` and `\'A\'` may sort differently between servers.','**Collation version drift.** After an OS upgrade the library may sort differently, silently invalidating text indexes. PostgreSQL records the collation version and warns on mismatch.']},
+{code:`SELECT datname, pg_encoding_to_char(encoding) AS encoding,
+       datlocprovider, datcollate, datctype
+FROM pg_database;
+
+-- different encoding requires template0
+CREATE DATABASE legacy TEMPLATE template0 ENCODING 'LATIN1'
+  LC_COLLATE 'en_US.iso88591' LC_CTYPE 'en_US.iso88591';
+
+-- after an OS / ICU upgrade shows a version mismatch warning
+REINDEX DATABASE appdb;
+ALTER DATABASE appdb REFRESH COLLATION VERSION;
+
+-- at cluster creation
+initdb -D /pgdata/c3 --encoding=UTF8 --locale=en_US.UTF-8 --locale-provider=icu --icu-locale=en-US`},
+{flow:['Plan encoding and locale','Create database from `template0`','Verify in `pg_database`','OS upgrade? check collation version','`REINDEX` then `REFRESH COLLATION VERSION`']},
+{note:'You cannot change encoding of an existing database. The only path is dump, create a new database with the right settings, and restore. `pg_upgrade` requires the new cluster to use the same encoding and locale as the old one.'}],
+src:[['Character Set Support',D+'multibyte.html'],['Locale Support',D+'locale.html'],['Collation Support',D+'collation.html']]},
+
+/* ---------------------------------------------------------------- 4:9 bonus */
+'pg:4:9':{blocks:[
+{p:'To size, tune and vacuum tables intelligently you need to know how a row is stored. PostgreSQL keeps table data in a **heap**: a file divided into fixed **8 KB pages**, each holding many rows.'},
+{h:'Anatomy of a page'},
+{t:[['Part','Contents'],['Page header (24 bytes)','LSN of last change, checksum, pointers to free space'],['Line pointer array','Small entries that point to each row, growing from the top'],['Free space','The gap between pointers and rows'],['Row versions (tuples)','Stored from the bottom up. Each has a **header** with `xmin`, `xmax`, `ctid` and flags, followed by column data']]},
+{code:`SELECT ctid, xmin, xmax, * FROM orders LIMIT 5;
+-- ctid = (page number, line pointer), xmin = creating transaction, xmax = deleting/locking one`},
+{h:'UPDATE and DELETE leave dead rows'},
+{p:'Because of MVCC, an `UPDATE` writes a **new row version** and marks the old one as ended by that transaction. A `DELETE` only marks the row. Old versions remain until no running transaction can still see them; then they are **dead tuples**. If dead space is not reclaimed the table grows: this is **bloat**.'},
+{flow:['UPDATE writes new version','Old version still visible to older snapshots','Snapshots finish','Old version is dead','VACUUM marks space reusable']},
+{ul:['**HOT updates** (heap-only tuples): if no indexed column changes and there is room in the same page, the new version stays in the page without touching indexes. A lower `fillfactor` (for example 80) leaves room for this.','The **free space map** (`_fsm`) tells inserts where space is available; the **visibility map** (`_vm`) marks pages whose rows are all visible, allowing index-only scans and letting VACUUM skip them.']},
+{h:'VACUUM, ANALYZE and VACUUM FULL'},
+{t:[['Command','What it does','Lock','Returns space to OS'],['`VACUUM`','Removes dead tuples, updates FSM/VM, freezes old rows','Does not block reads or writes','Only trailing empty pages'],['`VACUUM (ANALYZE)`','Same, plus refreshes planner statistics','Same','Same'],['`ANALYZE`','Refreshes statistics only','Light','No'],['`VACUUM FULL`','Rewrites the whole table into a new file','`ACCESS EXCLUSIVE` (blocks everything)','Yes, fully'],['`autovacuum`','Runs the above automatically in the background','Same as VACUUM','Same as VACUUM']]},
+{code:`VACUUM (VERBOSE, ANALYZE) orders;
+
+SELECT relname, n_live_tup, n_dead_tup,
+       round(100.0*n_dead_tup/nullif(n_live_tup+n_dead_tup,0),1) AS dead_pct,
+       last_vacuum, last_autovacuum, last_analyze
+FROM pg_stat_user_tables ORDER BY n_dead_tup DESC LIMIT 10;
+
+-- accurate bloat numbers (contrib)
+CREATE EXTENSION pgstattuple;
+SELECT * FROM pgstattuple('public.orders');`},
+{h:'TOAST: storing large values'},
+{p:'A row must fit in a page, so values larger than about **2 KB** are compressed and/or moved to a hidden **TOAST table** (The Oversized-Attribute Storage Technique). The main row keeps a small pointer. This is automatic.'},
+{t:[['Strategy','Meaning'],['`PLAIN`','Never compress or move out of line'],['`EXTENDED`','Compress, then move out of line (default for text, bytea, jsonb)'],['`EXTERNAL`','Move out of line without compressing; faster substring access'],['`MAIN`','Compress, move out only as a last resort']]},
+{h:'Transaction ID wraparound (why autovacuum is not optional)'},
+{p:'Row versions are stamped with a 32-bit transaction ID. After about 2 billion transactions the numbering would wrap and old rows would appear to be in the future. VACUUM prevents this by **freezing** old rows. If the age of a database approaches the limit, PostgreSQL forces aggressive vacuums and finally stops accepting writes.'},
+{code:`SELECT datname, age(datfrozenxid) AS xid_age FROM pg_database ORDER BY 2 DESC;
+SHOW autovacuum_freeze_max_age;       -- default 200000000`},
+{note:'Long-open transactions, abandoned replication slots and prepared transactions hold back the "oldest visible" horizon. VACUUM then cannot remove rows and bloat grows. Always look for them first when a table keeps growing.'}],
+src:[['Database Page Layout',D+'storage-page-layout.html'],['TOAST',D+'storage-toast.html'],['Routine Vacuuming',D+'routine-vacuuming.html'],['VACUUM',D+'sql-vacuum.html'],['pgstattuple',D+'pgstattuple.html']]},
+
+/* ---------------------------------------------------------------- 4:10 bonus */
+'pg:4:10':{blocks:[
+{p:'PostgreSQL\'s **cumulative statistics system** collects counters about activity (rows read, blocks hit, scans, vacuums, WAL, I/O) and exposes them as `pg_stat_*` views. Since v15 they live in **shared memory** (the old stats collector process is gone) and are saved at clean shutdown. Counters only grow, so compare two readings or reset them to measure an interval.'},
+{h:'The views to know'},
+{t:[['View','Tells you'],['`pg_stat_activity`','Current sessions and what they run'],['`pg_stat_database`','Per database: commits, rollbacks, blocks read vs hit, deadlocks, temp files'],['`pg_stat_user_tables`','Per table: sequential vs index scans, inserts/updates/deletes, dead tuples, vacuum times'],['`pg_stat_user_indexes`','Per index: number of scans (find unused indexes)'],['`pg_statio_user_tables`','Per table: heap and index block hits vs reads'],['`pg_stat_checkpointer` (v17+) / `pg_stat_bgwriter`','Checkpoint counts and timing; background writer activity'],['`pg_stat_wal`','WAL records, bytes, full-page images'],['`pg_stat_io` (v16+)','I/O by backend type and context'],['`pg_stat_replication`','Standbys connected and their lag'],['`pg_stat_statements`','Per-query statistics (extension)'],['`pg_locks`','Locks held and awaited'],['`pg_stat_progress_*`','Live progress of VACUUM, CREATE INDEX, CLUSTER, base backup, COPY']]},
+{h:'Ready-to-use health queries'},
+{code:`-- 1. buffer cache hit ratio per database (aim for > 99% on OLTP)
+SELECT datname,
+       round(100.0*blks_hit/nullif(blks_hit+blks_read,0),2) AS hit_pct,
+       xact_commit, xact_rollback, deadlocks, temp_files
+FROM pg_stat_database WHERE datname IS NOT NULL;
+
+-- 2. tables read mostly by sequential scan (index candidates)
+SELECT relname, seq_scan, idx_scan, n_live_tup
+FROM pg_stat_user_tables
+WHERE seq_scan > 100 AND n_live_tup > 10000
+ORDER BY seq_tup_read DESC LIMIT 10;
+
+-- 3. indexes never used since stats reset (review before dropping)
+SELECT s.schemaname, s.relname, s.indexrelname, s.idx_scan,
+       pg_size_pretty(pg_relation_size(s.indexrelid)) AS size
+FROM pg_stat_user_indexes s JOIN pg_index i ON i.indexrelid = s.indexrelid
+WHERE s.idx_scan = 0 AND NOT i.indisunique
+ORDER BY pg_relation_size(s.indexrelid) DESC;
+
+-- 4. oldest open transactions
+SELECT pid, usename, state, now()-xact_start AS xact_age, left(query,50)
+FROM pg_stat_activity WHERE xact_start IS NOT NULL ORDER BY xact_start LIMIT 5;
+
+-- 5. live progress of a running VACUUM
+SELECT relid::regclass, phase, heap_blks_total, heap_blks_scanned, heap_blks_vacuumed
+FROM pg_stat_progress_vacuum;`},
+{h:'Controlling statistics collection'},
+{t:[['Parameter','Default','Purpose'],['`track_counts`','on','Row and block counters. Autovacuum needs it'],['`track_activities`','on','Shows current command in `pg_stat_activity`'],['`track_io_timing`','off','Adds read/write timing. Small overhead; test with `pg_test_timing`'],['`track_functions`','none','`pl` or `all` to track function calls'],['`stats_fetch_consistency`','cache','Whether repeated reads in a transaction give a stable snapshot']]},
+{code:`SELECT pg_stat_reset();                    -- current database counters
+SELECT pg_stat_reset_shared('bgwriter');   -- cluster-wide counters
+SELECT stats_reset FROM pg_stat_database WHERE datname = current_database();`},
+{note:'Always read a counter together with its `stats_reset` time. "Zero scans" of an index means nothing if statistics were reset an hour ago.'}],
+src:[['The Cumulative Statistics System',D+'monitoring-stats.html'],['Progress Reporting',D+'progress-reporting.html'],['pg_locks',D+'view-pg-locks.html'],['Statistics Collection settings',D+'runtime-config-statistics.html']]}
+
+});
+})();
+
+/* ================================================================
+   PART: Section 06 - Logging and Parameters  (was lessons5.js)
+   ================================================================ */
+/* LearnSphere: Section 06 - Logging and Parameters (lectures 1-9 + bonus lectures 10-12)
+   Load AFTER lessons4.js. Docs links target PostgreSQL 18. Also back-fills notes into earlier lessons. */
+(function(){
+const D='https://www.postgresql.org/docs/18/';
+const dg=window.LS_DG;
+
+/* ---------- diagrams ---------- */
+const logSvg=dg(700,230,[
+[10,15,130,50,'Backend processes|ereport() messages',0],[10,95,130,50,'Postmaster and|background processes',0],
+[190,55,130,60,'stderr|(all messages)',0],[370,55,150,60,'Logging collector|logging_collector = on',2],
+[570,10,120,45,'log/*.log|stderr text',0],[570,70,120,45,'*.csv / *.json|csvlog, jsonlog',0],[570,130,120,45,'syslog / journal|eventlog on Windows',0],
+[190,160,330,50,'Rotation: log_rotation_age, log_rotation_size, log_filename',1]],
+[[140,40,190,75],[140,120,190,95],[320,85,370,85],[520,75,570,32],[520,85,570,92],[520,95,570,152]]);
+const ctxSvg=dg(700,200,[
+[10,20,110,60,'internal|read-only',0],[135,20,125,60,'postmaster|restart required',2],[275,20,110,60,'sighup|reload is enough',2],[400,20,135,60,'backend /|superuser-backend|new sessions only',0],[550,20,140,60,'superuser / user|SET inside a session',0],
+[135,120,125,50,'shared_buffers|max_connections',0],[275,120,110,50,'checkpoint_timeout|autovacuum',0],[400,120,135,50,'log_connections|log_disconnections',0],[550,120,140,50,'work_mem|log_statement',0]],
+[[197,80,197,120],[330,80,330,120],[467,80,467,120],[620,80,620,120]]);
+const precSvg=dg(700,230,[
+[10,20,115,55,'1. Built-in|default (boot_val)',0],[140,20,115,55,'2. postgresql.conf|and include files',0],[270,20,125,55,'3. postgresql.auto.conf|ALTER SYSTEM',2],[410,20,125,55,'4. Command line|postgres -c, pg_ctl -o',0],[550,20,140,55,'5. ALTER DATABASE|SET',0],
+[10,140,150,55,'6. ALTER ROLE|SET',0],[185,140,170,55,'7. ALTER ROLE IN|DATABASE SET',0],[380,140,150,55,'8. Connection options|PGOPTIONS',0],[555,140,135,55,'9. SET in session|SET LOCAL: txn',2],
+[10,100,680,24,'Later steps override earlier ones. Reading left-to-right, top-to-bottom, the last value that applies wins.',1]],
+[[125,47,140,47],[255,47,270,47],[395,47,410,47],[535,47,550,47],[620,75,620,100],[160,167,185,167],[355,167,380,167],[530,167,555,167]]);
+const memSvg=dg(700,250,[
+[10,15,330,215,'Shared memory (one copy, set at startup)',1],
+[25,45,140,55,'shared_buffers|cached 8 KB pages',2],[185,45,140,55,'wal_buffers|WAL not yet flushed',0],[25,120,140,50,'Lock tables|max_connections',0],[185,120,140,50,'CLOG, SLRU|small caches',0],
+[360,15,330,215,'Per backend / per operation',1],
+[375,45,150,55,'work_mem|each sort or hash node',2],[545,45,135,55,'temp_buffers|temporary tables',0],[375,120,150,50,'maintenance_work_mem|VACUUM, CREATE INDEX',2],[545,120,135,50,'effective_cache_size|planner hint only',0],
+[200,190,140,30,'Operating system page cache',0]],[]);
+const ckSvg=dg(700,200,[
+[10,70,110,55,'Checkpoint N|starts',2],[170,70,170,55,'Dirty buffers written|spread over 90 percent|checkpoint_completion_target',0],[390,70,110,55,'Checkpoint N|complete, WAL|recycled',2],[550,70,140,55,'Next checkpoint|timeout or max_wal_size',0],
+[10,15,680,30,'Trigger: checkpoint_timeout elapsed, WAL near max_wal_size, CHECKPOINT command, shutdown, base backup',1]],
+[[120,97,170,97],[340,97,390,97],[500,97,550,97]]);
+const avSvg=dg(700,200,[
+[10,70,120,55,'Autovacuum|launcher|every autovacuum_naptime',2],[180,70,120,55,'Pick a database|and start a worker',0],[350,70,140,55,'Worker checks each|table against|threshold + scale x rows',0],[540,20,150,50,'VACUUM|dead tuples above limit',2],[540,110,150,50,'ANALYZE|changes above limit',2]],
+[[130,97,180,97],[300,97,350,97],[490,85,540,48],[490,110,540,135]]);
+
+window.EXTRA_LECTURES=window.EXTRA_LECTURES||{};
+window.EXTRA_LECTURES[5]=[
+['Parameter Precedence, Scope and Per-Role Settings','0:00','The full order in which PostgreSQL resolves a parameter: files, ALTER SYSTEM, ALTER DATABASE/ROLE, session SET. Includes pg_file_settings and pg_db_role_setting.'],
+['Reading and Analysing the Server Log','0:00','log_line_prefix, structured csvlog/jsonlog, finding slow queries, lock waits, deadlocks and temp files, and the tools used on logs.'],
+['Connection, Timeout and Safety Parameters','0:00','max_connections, listen_addresses, idle and statement timeouts, lock_timeout and deadlock_timeout: parameters that protect a production server.']];
+
+Object.assign(window.LESSONS,{
+
+/* ---------------------------------------------------------------- 5:0 */
+'pg:5:0':{blocks:[
+{p:'The **server log** is the text record PostgreSQL keeps about its own life: startup and shutdown, errors, warnings, checkpoints, autovacuum activity, failed logins and (if you ask for them) slow or all SQL statements. The PostgreSQL documentation describes chapter "Error Reporting and Logging" as the place where the server sends messages and where you control **where** they go, **when** they are written and **what** they contain. For a DBA the log is the first thing to read when something breaks, the main source for performance troubleshooting, and the basis of an audit trail.'},
+{h:'Why logging matters'},
+{t:[['Purpose','What the log gives you','Example'],['Troubleshooting','The exact error, the statement and the time it happened','`ERROR: relation "orders" does not exist`'],['Performance analysis','Statements slower than a threshold, temp-file spills, lock waits','`duration: 2413.2 ms statement: SELECT ...`'],['Audit and security','Who connected, from where, which DDL ran, failed authentication','`FATAL: password authentication failed for user "app"`'],['Operations','Checkpoint behaviour, autovacuum runs, replication events','`checkpoint complete: wrote 1204 buffers`']]},
+{h:'How a log message travels'},
+{svg:logSvg},
+{p:'Every server process reports through the same internal routine, so all messages first arrive on **stderr** of the postmaster. What happens next depends on `logging_collector`.'},
+{t:[['Setting','Behaviour'],['`logging_collector = off` (upstream default)','Messages stay on the stderr of the postmaster. They go wherever the start command sent them: a file given to `pg_ctl -l`, the terminal, or the systemd journal.'],['`logging_collector = on`','A background **logger** process captures stderr and writes it into files under `log_directory`, handling naming and rotation itself.']]},
+{p:'The documentation explains why the collector is preferred over plain syslog: it can capture every message, including those a library writes directly to stderr, and it is the only way to produce the structured `csvlog` and `jsonlog` formats. Many packaged installations (including the PGDG RPMs) ship a `postgresql.conf` that already enables it; a source build usually does not.'},
+{h:'log_destination: where messages are sent'},
+{t:[['Value','Meaning','Needs collector?'],['`stderr`','Plain text lines (default)','Only to land in files'],['`csvlog`','Comma-separated, one fixed set of columns per line, easy to load into a table','Yes'],['`jsonlog`','One JSON object per line, easy for log shippers (PostgreSQL 15+)','Yes'],['`syslog`','Sent to the OS syslog daemon; see `syslog_facility`, `syslog_ident`','No'],['`eventlog`','Windows Event Log; see `event_source`','No']]},
+{p:'You may list several values, for example `log_destination = \'stderr,jsonlog\'`; the collector then writes both a text file and a JSON file side by side.'},
+{h:'Procedure to enable and verify logging'},
+{flow:['Pick a log directory with free space','Set collector, destination, filename, rotation','Restart (collector is a postmaster setting)','Generate a test message','Confirm the file and its contents']},
+{code:`-- 1. choose settings (written to postgresql.auto.conf)
+ALTER SYSTEM SET logging_collector = on;                 -- needs restart
+ALTER SYSTEM SET log_destination   = 'stderr';
+ALTER SYSTEM SET log_directory     = 'log';              -- relative to PGDATA, or an absolute path
+ALTER SYSTEM SET log_filename      = 'postgresql-%a.log';
+ALTER SYSTEM SET log_truncate_on_rotation = on;
+ALTER SYSTEM SET log_rotation_age  = '1d';
+ALTER SYSTEM SET log_rotation_size = '100MB';
+
+-- 2. logging_collector only changes at server start
+-- shell: sudo systemctl restart postgresql-18
+
+-- 3. verify
+SHOW logging_collector;
+SELECT pg_current_logfile();            -- path of the file being written now
+SELECT 1/0;                             -- raises an error that must appear in the log
+-- shell: tail -n 5 $PGDATA/log/postgresql-Wed.log`},
+{note:'`pg_current_logfile()` returns the file that the collector is writing right now, so scripts do not have to guess the name. `pg_rotate_logfile()` forces a switch to a new file.'},
+{h:'File naming and rotation'},
+{t:[['Parameter','Default','Purpose'],['`log_directory`','`log`','Folder for log files; relative paths are under `PGDATA`. Use an absolute path on a separate disk in production.'],['`log_filename`','`postgresql-%Y-%m-%d_%H%M%S.log`','File name pattern; accepts strftime escapes such as `%a` (weekday) or `%d` (day of month).'],['`log_file_mode`','`0600`','Permissions of new files. Logs can contain SQL text and user names, so keep them private.'],['`log_rotation_age`','`1d`','Start a new file after this much time. `0` disables time-based rotation.'],['`log_rotation_size`','`10MB`','Start a new file after this size. `0` disables size-based rotation.'],['`log_truncate_on_rotation`','`off`','When on, an existing file with the same name is overwritten instead of appended.']]},
+{h:'Self-cleaning retention pattern'},
+{p:'Logs grow without limit unless something removes them. A simple built-in pattern needs no cron job: name files by weekday and truncate on rotation, so each file is overwritten a week later.'},
+{t:[['Goal','log_filename','log_rotation_age','log_truncate_on_rotation','Result'],['Keep 7 days','`postgresql-%a.log`','`1d`','`on`','Seven files, Mon to Sun, reused weekly'],['Keep 31 days','`postgresql-%d.log`','`1d`','`on`','One file per day of month'],['Keep everything','`postgresql-%Y-%m-%d.log`','`1d`','`off`','Unique files; archive and delete with your own job']]},
+{h:'Severity levels'},
+{t:[['Level','Used for','Sent to client?','Written to log?'],['`DEBUG1` to `DEBUG5`','Increasing developer detail','Per `client_min_messages`','Per `log_min_messages`'],['`INFO`','Implicitly requested output such as `VACUUM VERBOSE`','Always','Not by default'],['`NOTICE`','Helpful hints, e.g. identifier truncation','Yes','Not by default'],['`WARNING`','Likely problem, e.g. commit outside a transaction','Yes','Yes (default threshold)'],['`ERROR`','The current command was aborted','Yes','Yes'],['`LOG`','Server activity for administrators: checkpoints, slow statements','Not by default','Yes'],['`FATAL`','The session was terminated','Yes','Yes'],['`PANIC`','All sessions were aborted, server restarts','Yes','Yes']]},
+{h:'If the log stays empty'},
+{ul:['The collector is on but the server was only reloaded, not restarted. Check `SHOW logging_collector;`.','The OS user `postgres` cannot write to `log_directory`. The server then reports the problem on the original stderr or in the journal.','The disk is full. Logging failures can stall the server, so monitor free space on the log volume.','On systemd installations, messages emitted before the collector started are in `journalctl -u postgresql-18`.']},
+{note:'Keep logs on a different filesystem from `PGDATA` and `pg_wal`. A runaway log must never be able to fill the disk that holds your data.'}],
+src:[['Error Reporting and Logging',D+'runtime-config-logging.html'],['The Server Log (routine maintenance)',D+'logfile-maintenance.html'],['pg_current_logfile() and system information functions',D+'functions-info.html']]},
+
+/* ---------------------------------------------------------------- 5:1 */
+'pg:5:1':{blocks:[
+{p:'Almost everything about how a PostgreSQL server behaves is controlled by **configuration parameters**, also called **settings** or **GUCs** (Grand Unified Configuration, the name of the internal subsystem). A parameter has a name, a value, a data type and a **context** that decides when and by whom it can be changed. The documentation (Chapter "Server Configuration") lists several hundred of them, grouped by purpose. Learning how to **read, set and verify** them is the core day-to-day skill of a DBA.'},
+{h:'Where parameters live'},
+{t:[['File / mechanism','Location','Purpose'],['`postgresql.conf`','`PGDATA` (or `/etc/postgresql/...` on Debian)','Main hand-edited file, created by `initdb` with every parameter listed and commented'],['`postgresql.auto.conf`','`PGDATA`','Written only by `ALTER SYSTEM`. Read **after** `postgresql.conf`, so it wins'],['`pg_hba.conf`','`PGDATA`','Client authentication rules (not a GUC, but reloaded the same way)'],['`pg_ident.conf`','`PGDATA`','User name maps used by `pg_hba.conf`'],['Command line','`postgres -c name=value`, `pg_ctl -o`','Overrides both files for that server run'],['Database / role defaults','`ALTER DATABASE ... SET`, `ALTER ROLE ... SET`','Stored in the catalog `pg_db_role_setting`'],['Session','`SET name = value`','Lasts for the connection (or one transaction with `SET LOCAL`)']]},
+{h:'Syntax of postgresql.conf'},
+{t:[['Rule','Example'],['One `name = value` per line; the `=` is optional','`max_connections = 200`'],['Names are case-insensitive; values that are strings or contain spaces need single quotes','`log_line_prefix = \'%m [%p] \'`'],['`#` starts a comment, anywhere on a line','`#port = 5432`'],['If a parameter appears twice, the **last** occurrence wins','Later line overrides the earlier one'],['Include other files','`include \'extra.conf\'`, `include_if_exists`, `include_dir \'conf.d\'`'],['Embedded single quote is written doubled','`\'it\'\'s\'`']]},
+{h:'Value units'},
+{t:[['Kind','Accepted units','Example'],['Memory','`B`, `kB`, `MB`, `GB`, `TB` (binary: 1 kB = 1024 B)','`shared_buffers = 8GB`'],['Time','`us`, `ms`, `s`, `min`, `h`, `d`','`checkpoint_timeout = 30min`'],['Boolean','`on`, `off`, `true`, `false`, `yes`, `no`, `1`, `0` (unique prefixes allowed)','`autovacuum = on`'],['Integer / real','Plain numbers, no thousands separator','`max_connections = 200`'],['Enumerated','One word from a fixed list','`wal_level = replica`']]},
+{note:'Without a unit, each parameter has its own base unit (for example `shared_buffers` counts 8 kB blocks, `checkpoint_timeout` counts seconds). Always write the unit explicitly to avoid mistakes.'},
+{h:'Parameter groups in the documentation'},
+{t:[['Group','Typical parameters'],['File locations','`data_directory`, `hba_file`, `config_file`'],['Connections and authentication','`listen_addresses`, `port`, `max_connections`, `password_encryption`, `ssl`'],['Resource consumption','`shared_buffers`, `work_mem`, `maintenance_work_mem`, `max_worker_processes`'],['Write-ahead log','`wal_level`, `checkpoint_timeout`, `max_wal_size`, `archive_mode`'],['Replication','`max_wal_senders`, `hot_standby`, `primary_conninfo`'],['Query planning','`random_page_cost`, `effective_cache_size`, `enable_*`'],['Error reporting and logging','`log_destination`, `log_min_duration_statement`'],['Run-time statistics','`track_counts`, `track_io_timing`'],['Autovacuum','`autovacuum`, `autovacuum_naptime`, `autovacuum_vacuum_scale_factor`'],['Client connection defaults','`search_path`, `statement_timeout`, `timezone`, `shared_preload_libraries`'],['Lock management','`deadlock_timeout`, `max_locks_per_transaction`'],['Preset (read-only)','`server_version`, `block_size`, `data_checksums`, `wal_segment_size`'],['Customized options','Names with a dot, such as `pg_stat_statements.max`, defined by extensions']]},
+{h:'Reading a parameter'},
+{code:`SHOW shared_buffers;                         -- one value, as text with unit
+SHOW ALL;                                    -- every parameter
+SELECT current_setting('work_mem');          -- usable inside SQL
+SELECT current_setting('max_connections')::int;
+
+SHOW config_file;     SHOW hba_file;     SHOW data_directory;`},
+{h:'Life cycle of a change'},
+{flow:['Decide the new value','Edit file or ALTER SYSTEM','Validate (pg_file_settings)','Reload or restart','Verify with SHOW and pg_settings','Record the change']},
+{ul:['Always change **one thing at a time** and note the old value, so you can roll back.','Prefer one place for permanent settings. Mixing `postgresql.conf` edits and `ALTER SYSTEM` makes it hard to know which value is active.','Commit `postgresql.conf` to version control or keep dated copies before editing.']},
+{h:'Practice'},
+{code:`SHOW max_connections;
+SHOW shared_buffers;
+SHOW checkpoint_timeout;
+SELECT name, setting, unit, source FROM pg_settings
+WHERE name IN ('max_connections','shared_buffers','checkpoint_timeout');`}],
+src:[['Setting Parameters',D+'config-setting.html'],['Server Configuration',D+'runtime-config.html'],['The Configuration File: include directives',D+'config-includes.html']]},
+
+/* ---------------------------------------------------------------- 5:2 */
+'pg:5:2':{blocks:[
+{p:'The view **`pg_settings`** is the authoritative reference for every parameter. The documentation describes it as another interface to the `SHOW` and `SET` commands, with more information per parameter: the unit, the allowed range, the **context** and the **source** of the current value. Reading its columns correctly tells you what a parameter is, how it may be changed and why it has the value it has.'},
+{h:'Data types (vartype)'},
+{t:[['vartype','Meaning','Example parameters','Allowed values'],['`bool`','On or off','`autovacuum`, `fsync`, `log_connections` (before 18)','on/off/true/false/yes/no/1/0'],['`integer`','Whole number, often with a unit','`max_connections`, `shared_buffers`, `checkpoint_timeout`','Range in `min_val`..`max_val`'],['`real`','Floating-point number','`autovacuum_vacuum_scale_factor`, `random_page_cost`','Range in `min_val`..`max_val`'],['`string`','Free text','`log_line_prefix`, `log_filename`, `search_path`','Any text'],['`enum`','One of a fixed list','`wal_level`, `log_statement`, `synchronous_commit`','Listed in `enumvals`']]},
+{h:'Main columns of pg_settings'},
+{t:[['Column','Meaning'],['`name`','Parameter name'],['`setting`','Current value in the **base unit** (no unit text)'],['`unit`','Base unit of `setting`: `8kB`, `kB`, `ms`, `s`, `min`, or empty'],['`category`','Documentation group'],['`short_desc`, `extra_desc`','Built-in description'],['`context`','**When** the parameter can be changed (see below)'],['`vartype`','`bool`, `integer`, `real`, `string`, `enum`'],['`source`','**Where** the current value came from'],['`min_val`, `max_val`, `enumvals`','Valid range or choices'],['`boot_val`','Built-in default'],['`reset_val`','Value a `RESET` in this session would restore'],['`sourcefile`, `sourceline`','File and line that set it (superusers and `pg_read_all_settings` only)'],['`pending_restart`','`true` if the file now holds a new value that only a restart will apply']]},
+{h:'Context: the key to reload vs restart'},
+{svg:ctxSvg},
+{t:[['context','Who may change it, and when it takes effect','Examples'],['`internal`','Fixed at build or `initdb` time. Cannot be changed by configuration.','`block_size`, `wal_segment_size`, `server_version`'],['`postmaster`','Only at **server start**. Changing the file has no effect until restart.','`shared_buffers`, `max_connections`, `wal_level`, `logging_collector`, `shared_preload_libraries`'],['`sighup`','In the file, picked up by **reload**. Cannot be set per session.','`checkpoint_timeout`, `max_wal_size`, `autovacuum`, `log_destination`'],['`superuser-backend`','Reload affects **new** connections only; a superuser may set it at connection time.','`log_connections`, `log_disconnections`'],['`backend`','Reload affects **new** connections only; set at connection start.','`ignore_system_indexes`, `post_auth_delay`'],['`superuser`','Superuser (or granted `SET` privilege) can change it in a session; file change needs reload.','`log_min_duration_statement`, `log_statement`, `track_activities`'],['`user`','Any user can change it in a session; file change needs reload.','`work_mem`, `search_path`, `statement_timeout`']]},
+{h:'Source: why the value is what it is'},
+{t:[['source','Meaning'],['`default`','Built-in value, never changed'],['`configuration file`','From `postgresql.conf`, an include or `postgresql.auto.conf` (see `sourcefile`)'],['`command line`','From `postgres -c` or `pg_ctl -o`'],['`environment variable`','Read from the postmaster environment (`PGDATA`, `PGPORT`)'],['`database`, `user`, `database user`','From `ALTER DATABASE/ROLE ... SET`'],['`client`','Sent by the client at connect time (`PGOPTIONS`, `options=`)'],['`session`','Changed with `SET` in this session'],['`override`','Forced by the server itself, for example derived from other settings']]},
+{h:'Useful queries'},
+{code:`-- 1. one parameter in full
+SELECT name, setting, unit, context, vartype, source, boot_val, min_val, max_val, pending_restart
+FROM pg_settings WHERE name = 'shared_buffers';
+
+-- 2. everything that differs from the built-in default
+SELECT name, setting, unit, source, sourcefile
+FROM pg_settings WHERE source <> 'default' ORDER BY name;
+
+-- 3. how many parameters fall in each context
+SELECT context, count(*) FROM pg_settings GROUP BY context ORDER BY 2 DESC;
+
+-- 4. all parameters that need a restart to change
+SELECT name, setting, unit FROM pg_settings WHERE context = 'postmaster' ORDER BY name;
+
+-- 5. pending changes waiting for a restart
+SELECT name, setting, pending_restart FROM pg_settings WHERE pending_restart;
+
+-- 6. human-readable size from a base unit
+SELECT name, setting, unit,
+       pg_size_pretty(setting::bigint * 8192) AS size   -- valid because unit = 8kB
+FROM pg_settings WHERE name = 'shared_buffers';`},
+{note:'Read `setting` together with `unit`. `shared_buffers` showing `1048576` with unit `8kB` is 8 GB, not 1 million bytes. `SHOW` already formats this for you (`8GB`).'},
+{h:'boot_val versus reset_val'},
+{p:'`boot_val` is the compiled-in default. `reset_val` is the value `RESET name` would restore in the current session, which includes configuration files and role or database defaults. When `setting <> reset_val` you know someone changed the parameter with `SET` in this session.'}],
+src:[['pg_settings view',D+'view-pg-settings.html'],['Setting Parameters',D+'config-setting.html'],['Server Configuration',D+'runtime-config.html']]},
+
+/* ---------------------------------------------------------------- 5:3 */
+'pg:5:3':{blocks:[
+{p:'After you change a parameter, PostgreSQL does not always notice. Some settings are read while the server runs; others are read **once at startup** because they size shared memory or start processes. The parameter\'s **context** (previous lecture) decides which applies. Choosing wrongly has real cost: a reload that was needed but not done leaves the old value active, while an unnecessary restart disconnects every user.'},
+{h:'Reload versus restart'},
+{t:[['','Reload','Restart'],['What it does','Postmaster re-reads config files and signals every process (`SIGHUP`)','Stops the whole server and starts it again'],['Connections','Kept open','All dropped'],['Memory caches','Kept','`shared_buffers` starts cold (OS cache usually survives)'],['Downtime','None','Seconds to minutes, plus crash-recovery time if shutdown was not clean'],['Applies to','Contexts `sighup`, `superuser`, `user`, and new sessions for `backend` types; also `pg_hba.conf` and `pg_ident.conf`','Everything, and **required** for context `postmaster`']]},
+{h:'Decision flow'},
+{flow:['Change the value','Query pg_settings.context','postmaster? → restart in a window','sighup, user, superuser? → reload','Check pending_restart and SHOW']},
+{h:'Common parameters by action'},
+{t:[['Needs restart (`postmaster`)','Reload is enough (`sighup` or session level)'],['`shared_buffers`, `huge_pages`','`work_mem`, `maintenance_work_mem` (also per session)'],['`max_connections`, `superuser_reserved_connections`','`checkpoint_timeout`, `max_wal_size`, `min_wal_size`'],['`wal_level`, `max_wal_senders`, `max_replication_slots`','`log_min_duration_statement`, `log_statement`, `log_line_prefix`'],['`archive_mode`, `max_worker_processes`','`archive_command`, `autovacuum` and most `autovacuum_*` tuning'],['`logging_collector`, `listen_addresses`, `port`','`log_destination`, `log_rotation_age`, `log_filename`'],['`shared_preload_libraries`','`pg_hba.conf` rules, `hot_standby_feedback`']]},
+{note:'PostgreSQL 18 split worker handling for autovacuum: `autovacuum_worker_slots` (restart) reserves slots, while `autovacuum_max_workers` can be raised by reload up to that limit. On older versions `autovacuum_max_workers` itself needs a restart. Always confirm with `pg_settings.context` on your own server.'},
+{h:'How to reload'},
+{code:`-- from SQL (superuser, or role granted EXECUTE on the function)
+SELECT pg_reload_conf();
+
+-- from the shell, any of these
+pg_ctl reload -D /var/lib/pgsql/18/data
+sudo systemctl reload postgresql-18
+kill -HUP $(head -1 /var/lib/pgsql/18/data/postmaster.pid)`},
+{h:'How to restart'},
+{code:`pg_ctl restart -D /var/lib/pgsql/18/data -m fast
+sudo systemctl restart postgresql-18
+
+-- after the restart
+SELECT count(*) FROM pg_settings WHERE pending_restart;   -- expect 0`},
+{p:'Shutdown modes (`smart`, `fast`, `immediate`) were covered in Section 03. A restart normally uses **fast**: it rolls back running transactions, writes a shutdown checkpoint and exits cleanly, so the next start needs no recovery.'},
+{h:'Safe change procedure'},
+{flow:['Check pg_file_settings for errors','Record old value','Apply change','Reload or restart','Verify in pg_settings','Watch the log']},
+{code:`-- 1. does the new file parse? (applied = false means a problem)
+SELECT sourcefile, sourceline, name, setting, applied, error
+FROM pg_file_settings WHERE NOT applied OR error IS NOT NULL;
+
+-- 2. after reload: did it take effect, and is anything waiting on a restart?
+SELECT name, setting, unit, pending_restart
+FROM pg_settings WHERE name IN ('checkpoint_timeout','shared_buffers');`},
+{h:'What reload really does to running sessions'},
+{ul:['`sighup` parameters change in **existing** sessions as soon as each backend processes the signal, unless that session has overridden the value with `SET`.','`backend` and `superuser-backend` parameters (for example `log_connections`) are read when a connection starts, so only **new** connections see the change.','A restart loads everything fresh. Connection pools reconnect and application errors during the gap are expected, so schedule it.','A reload of a file with a **syntax error** is rejected as a whole and the old settings stay active; an invalid value for one parameter is skipped and logged. Read the log after every reload.']},
+{note:'If the server fails to **start** after editing a file, the log says which line is wrong. Keep a copy of the previous `postgresql.conf` and `postgresql.auto.conf` so you can restore them quickly.'}],
+src:[['Setting Parameters',D+'config-setting.html'],['pg_ctl',D+'app-pg-ctl.html'],['pg_file_settings view',D+'view-pg-file-settings.html'],['System administration functions (pg_reload_conf)',D+'functions-admin.html']]},
+
+/* ---------------------------------------------------------------- 5:4 */
+'pg:5:4':{blocks:[
+{p:'`ALTER SYSTEM` is the SQL way to change server-wide parameters without editing a file by hand. The documentation states that it writes the given setting to **`postgresql.auto.conf`**, a file in the data directory, which is read in addition to `postgresql.conf`. Because it is read last, a value in `postgresql.auto.conf` **overrides** the same parameter in `postgresql.conf`. The change is permanent across restarts but does not apply until the server re-reads its configuration.'},
+{h:'Syntax'},
+{t:[['Command','Effect'],['`ALTER SYSTEM SET name = value;`','Write or replace a line in `postgresql.auto.conf`'],['`ALTER SYSTEM SET name TO DEFAULT;`','Remove that parameter from the file (same as RESET)'],['`ALTER SYSTEM RESET name;`','Remove that parameter from the file'],['`ALTER SYSTEM RESET ALL;`','Remove **every** entry, leaving the file empty']]},
+{code:`ALTER SYSTEM SET shared_buffers = '8GB';          -- postmaster: restart needed
+ALTER SYSTEM SET checkpoint_timeout = '30min';    -- sighup: reload
+ALTER SYSTEM SET log_min_duration_statement = '1s';
+ALTER SYSTEM SET search_path = '"$user", public';
+
+SELECT pg_reload_conf();
+
+-- see what ALTER SYSTEM has written
+SELECT name, setting, applied FROM pg_file_settings
+WHERE sourcefile LIKE '%postgresql.auto.conf';
+
+-- undo one setting, then reload
+ALTER SYSTEM RESET log_min_duration_statement;
+SELECT pg_reload_conf();`},
+{h:'Effect on the files'},
+{p:'`postgresql.auto.conf` is machine-written and starts with a comment telling you not to edit it. A typical file after the commands above:'},
+{code:`# Do not edit this file manually!
+# It will be overwritten by the ALTER SYSTEM command.
+shared_buffers = '8GB'
+checkpoint_timeout = '30min'`},
+{h:'Permissions and restrictions'},
+{ul:['By default only **superusers** may run it. Since PostgreSQL 15 a superuser can delegate: `GRANT ALTER SYSTEM ON PARAMETER log_min_duration_statement TO dba_role;`.','It **cannot** run inside a transaction block.','It cannot change preset or `internal` parameters.','Since PostgreSQL 17 the parameter `allow_alter_system` (default `on`) can be set to `off` in `postgresql.conf` to block the command, which suits environments where an external tool owns the configuration. It does not stop anyone who can edit files.','Values containing spaces or special characters are quoted for you, but always supply units as quoted strings.']},
+{h:'Choosing a method'},
+{t:[['Method','Scope','Persists restart','Best for'],['Edit `postgresql.conf`','Whole cluster','Yes','Baseline reviewed in version control'],['`ALTER SYSTEM`','Whole cluster','Yes','Quick changes, scripts, remote administration'],['`ALTER DATABASE ... SET`','One database','Yes (new sessions)','Different `work_mem` or `search_path` per database'],['`ALTER ROLE ... SET`','One role','Yes (new sessions)','Timeouts for application or reporting users'],['`SET` / `SET LOCAL`','Session / transaction','No','Testing a value, one heavy report'],['`postgres -c` / `pg_ctl -o`','One server run','No','Temporary or emergency override']]},
+{h:'Recommended workflow'},
+{flow:['ALTER SYSTEM SET','pg_file_settings: applied?','pg_reload_conf()','SHOW and pg_settings','Restart if pending_restart']},
+{code:`ALTER SYSTEM SET work_mem = '32MB';
+SELECT name, setting, applied, error FROM pg_file_settings WHERE name = 'work_mem';
+SELECT pg_reload_conf();
+SELECT name, setting, unit, source, sourcefile FROM pg_settings WHERE name = 'work_mem';
+-- source = configuration file, sourcefile ends with postgresql.auto.conf`},
+{h:'Pitfalls'},
+{ul:['**Two places, one parameter.** If `postgresql.conf` says 2GB and `postgresql.auto.conf` says 8GB, 8GB wins and the edit you make in `postgresql.conf` seems to be ignored. Check `sourcefile` in `pg_settings`.','**Lost on rebuild.** `postgresql.auto.conf` lives in `PGDATA`; it is included in a `pg_basebackup` copy, so a standby cloned from a primary inherits the same overrides.','**A bad value** that makes the server refuse to start is fixed by editing or deleting the offending line from `postgresql.auto.conf` while the server is down.']},
+{note:'To return the server to a clean state: `ALTER SYSTEM RESET ALL;` followed by a reload. Settings from `postgresql.conf` are then used again.'}],
+src:[['ALTER SYSTEM',D+'sql-altersystem.html'],['Setting Parameters',D+'config-setting.html'],['GRANT (privileges on parameters)',D+'sql-grant.html'],['Client Connection Defaults',D+'runtime-config-client.html']]},
+
+/* ---------------------------------------------------------------- 5:5 */
+'pg:5:5':{blocks:[
+{p:'Memory parameters decide how much RAM PostgreSQL uses to cache data, sort and hash rows, and build indexes. They are the most common performance levers and the most common cause of out-of-memory kills when set carelessly. The documentation (Chapter "Resource Consumption") separates them into **shared** memory, allocated once at start, and **per-operation** memory, allocated by each backend when it needs it.'},
+{h:'Memory map'},
+{svg:memSvg},
+{h:'Parameter reference'},
+{t:[['Parameter','Default','Context','Scope','What it does'],['`shared_buffers`','`128MB`','postmaster','Whole server','PostgreSQL\'s own page cache (8 kB pages)'],['`work_mem`','`4MB`','user','**Per sort or hash node**, per query','Memory for sorts, hash joins, hash aggregates before spilling to temp files'],['`hash_mem_multiplier`','`2.0`','user','Per hash node','Hash operations may use `work_mem` x this value'],['`maintenance_work_mem`','`64MB`','user','Per maintenance command','`VACUUM`, `CREATE INDEX`, `ALTER TABLE ADD FOREIGN KEY`'],['`autovacuum_work_mem`','`-1` (use maintenance)','sighup','Per autovacuum worker','Separate limit for autovacuum'],['`effective_cache_size`','`4GB`','user','Planner only','Estimate of cache available (PostgreSQL + OS). **Allocates nothing**'],['`temp_buffers`','`8MB`','user','Per session','Buffers for temporary tables'],['`wal_buffers`','`-1` (auto)','postmaster','Whole server','WAL not yet written; auto = 1/32 of `shared_buffers`, capped at one WAL segment (16MB)'],['`max_connections`','`100`','postmaster','Whole server','Each connection can use memory; also sizes lock tables'],['`huge_pages`','`try`','postmaster','Whole server','Use OS huge pages for shared memory on Linux']]},
+{h:'shared_buffers'},
+{p:'The docs recommend as a starting point about **25 percent of system RAM** on a dedicated server with 1 GB or more, noting that more than 40 percent seldom helps because PostgreSQL also relies on the operating system cache and values above that duplicate data between the two caches. Changes need a **restart**.'},
+{h:'work_mem: the multiplier trap'},
+{p:'`work_mem` is **not** a per-connection limit. One query can contain several sort and hash nodes, parallel workers each get their own allowance, and many connections run at once. The documentation warns that total use may be many times `work_mem`.'},
+{code:`-- rough worst case (not typical): connections x nodes x work_mem
+-- 100 connections x 4 nodes x 32MB = 12.8 GB   -> far more than the "32MB" suggests
+-- so raise work_mem per session or role for the few heavy queries instead:
+ALTER ROLE reporting SET work_mem = '256MB';
+SET work_mem = '512MB';          -- this session only
+SET LOCAL work_mem = '1GB';      -- this transaction only`},
+{p:'A sort that does not fit in `work_mem` spills to disk. `EXPLAIN (ANALYZE)` then shows `Sort Method: external merge  Disk: ...kB`. Enable `log_temp_files = 0` to log every spill and see which statements need more memory.'},
+{h:'Worked example: dedicated 32 GB server'},
+{t:[['Parameter','Starting value','Reason'],['`shared_buffers`','`8GB`','About 25 percent of RAM'],['`effective_cache_size`','`24GB`','Planner assumes roughly 50 to 75 percent of RAM is cache'],['`work_mem`','`16MB`','Small global default, raise for specific roles'],['`maintenance_work_mem`','`1GB`','Fast index builds and vacuum; few run at once'],['`autovacuum_work_mem`','`512MB`','Cap total when several workers run'],['`max_connections`','`100`','Use a pooler (PgBouncer) before raising this'],['`huge_pages`','`try`','Lower page-table overhead for a large `shared_buffers`']]},
+{code:`ALTER SYSTEM SET shared_buffers = '8GB';
+ALTER SYSTEM SET effective_cache_size = '24GB';
+ALTER SYSTEM SET work_mem = '16MB';
+ALTER SYSTEM SET maintenance_work_mem = '1GB';
+-- shared_buffers is postmaster context: restart, others: reload
+SELECT pg_reload_conf();
+-- shell: sudo systemctl restart postgresql-18
+SHOW shared_buffers;`},
+{h:'Check whether the memory is working'},
+{code:`-- cache hit ratio per database (aim for high 90s on OLTP)
+SELECT datname,
+       round(100.0 * blks_hit / nullif(blks_hit + blks_read, 0), 2) AS hit_pct,
+       temp_files, pg_size_pretty(temp_bytes) AS temp_spill
+FROM pg_stat_database WHERE datname = current_database();
+
+-- what is in shared_buffers? (needs: CREATE EXTENSION pg_buffercache;)
+SELECT c.relname, count(*) AS buffers
+FROM pg_buffercache b JOIN pg_class c ON c.relfilenode = b.relfilenode
+GROUP BY c.relname ORDER BY 2 DESC LIMIT 10;`},
+{h:'Tuning method'},
+{flow:['Set baseline from RAM','Measure hit ratio and temp spills','Change one parameter','Re-measure under load','Keep or revert']},
+{note:'Leave memory for the OS cache, for per-backend overhead and for autovacuum. A server that starts swapping is slower than one with a smaller `shared_buffers`.'}],
+src:[['Resource Consumption',D+'runtime-config-resource.html'],['Query Planning (effective_cache_size)',D+'runtime-config-query.html'],['Managing Kernel Resources (huge pages)',D+'kernel-resources.html'],['pg_buffercache',D+'pgbuffercache.html']]},
+
+/* ---------------------------------------------------------------- 5:6 */
+'pg:5:6':{blocks:[
+{p:'**Write-ahead logging (WAL)** records every change in a sequential log **before** the data pages are changed, so the database can be rebuilt after a crash (Section 04). A **checkpoint** is the point at which PostgreSQL guarantees that all changes made before it have been flushed from `shared_buffers` to the data files. WAL and checkpoint parameters control how much WAL is produced, how often checkpoints happen, how much disk WAL may use and how long crash recovery takes. The documentation chapter "Write Ahead Log" and "Reliability and the Write-Ahead Log" describe the details.'},
+{h:'wal_level'},
+{t:[['Value','WAL contains','Enables','Typical use'],['`minimal`','Only what crash recovery needs','Nothing beyond recovery; some bulk operations skip WAL','Standalone server with no backups by WAL or replication'],['`replica` (default)','Adds data needed for archiving and physical replication','WAL archiving, `pg_basebackup`, streaming standby, point-in-time recovery','Most production servers'],['`logical`','Adds information for logical decoding','Logical replication, change data capture','Publish/subscribe, CDC tools']]},
+{note:'`wal_level` is a **postmaster** parameter and needs a restart. `minimal` also requires `max_wal_senders = 0` and `archive_mode = off`. Raising to `replica` or `logical` is safe; lowering it can break standbys and slots.'},
+{h:'Checkpoint parameters'},
+{t:[['Parameter','Default','Context','Meaning'],['`checkpoint_timeout`','`5min`','sighup','Maximum time between automatic checkpoints (range 30s to 1d)'],['`max_wal_size`','`1GB`','sighup','Soft limit for WAL growth between checkpoints; reaching it **forces** a checkpoint'],['`min_wal_size`','`80MB`','sighup','WAL below this size is recycled, not removed'],['`checkpoint_completion_target`','`0.9`','sighup','Spread writing across this fraction of the interval to avoid I/O spikes'],['`checkpoint_warning`','`30s`','sighup','Log a hint if size-triggered checkpoints come closer than this'],['`checkpoint_flush_after`','`256kB`','sighup','Ask the OS to flush after this much written']]},
+{h:'What starts a checkpoint'},
+{svg:ckSvg},
+{t:[['Trigger','Visible in log as'],['`checkpoint_timeout` elapsed','`checkpoint starting: time`'],['WAL volume approaches `max_wal_size`','`checkpoint starting: wal`'],['Manual `CHECKPOINT` command','`checkpoint starting: immediate force wait`'],['Clean shutdown','`checkpoint starting: shutdown immediate`'],['`pg_basebackup`, `CREATE DATABASE`, `DROP DATABASE`','`checkpoint starting: force wait`']]},
+{h:'The effect of a 30-minute timeout with 1 GB max_wal_size'},
+{p:'A common course setting is `wal_level = replica`, `checkpoint_timeout = 30min` and `max_wal_size = 1GB`. Be aware of how they interact: if the workload writes more than a few hundred MB of WAL in 30 minutes, the **size** limit triggers checkpoints long before the 30-minute timer, so the longer timeout changes nothing. On a busy system raise `max_wal_size` together with the timeout.'},
+{t:[['Choice','Benefit','Cost'],['Longer interval, larger `max_wal_size`','Fewer checkpoints, less I/O, fewer full-page images written to WAL, better throughput','**Longer crash recovery** (more WAL to replay), more disk used in `pg_wal`'],['Shorter interval, smaller `max_wal_size`','Fast crash recovery, small `pg_wal`','More I/O, more full-page writes, throughput dips'],['Higher `checkpoint_completion_target`','Smoother disk load','Slightly slower completion']]},
+{h:'Other WAL parameters worth knowing'},
+{t:[['Parameter','Default','Purpose'],['`fsync`','`on`','Force WAL and data to stable storage. **Never** turn off in production: crash can corrupt the cluster'],['`synchronous_commit`','`on`','How long COMMIT waits. `off` risks losing the last moments of commits but not corruption'],['`full_page_writes`','`on`','Write whole page after first change post-checkpoint; protects against torn pages'],['`wal_compression`','`off`','Compress full-page images (`pglz`, `lz4`, `zstd`) to reduce WAL volume'],['`wal_buffers`','`-1`','Memory for unwritten WAL'],['`wal_writer_delay`','`200ms`','How often the WAL writer flushes'],['`archive_mode`, `archive_command`','`off`','Copy finished segments for PITR (`archive_mode` needs restart)'],['`max_wal_senders`','`10`','Concurrent streaming connections for standbys and backups'],['`wal_keep_size`','`0`','Minimum WAL kept for standbys'],['`max_slot_wal_keep_size`','`-1`','Cap WAL held back by replication slots']]},
+{h:'synchronous_commit values'},
+{t:[['Value','COMMIT returns when','Risk'],['`on`','WAL is flushed locally (and on sync standbys if configured)','None'],['`remote_apply`','Sync standby has replayed it','None, highest latency'],['`remote_write`','Sync standby has written it to OS','Small'],['`local`','Flushed locally only','Standby may lag'],['`off`','Before WAL is flushed','Lose up to about 3x `wal_writer_delay` of commits on crash']]},
+{h:'Apply and observe'},
+{code:`ALTER SYSTEM SET wal_level = 'replica';
+ALTER SYSTEM SET checkpoint_timeout = '30min';
+ALTER SYSTEM SET max_wal_size = '4GB';
+ALTER SYSTEM SET checkpoint_completion_target = 0.9;
+ALTER SYSTEM SET log_checkpoints = on;
+SELECT pg_reload_conf();            -- wal_level itself needs a restart
+
+-- how many checkpoints were timed vs forced by WAL volume (PostgreSQL 17+)
+SELECT num_timed, num_requested, write_time, sync_time, buffers_written
+FROM pg_stat_checkpointer;
+
+-- current WAL position, and how much WAL is on disk
+SELECT pg_current_wal_lsn();
+SELECT count(*) AS files, pg_size_pretty(sum(size)) AS total FROM pg_ls_waldir();`},
+{p:'With `log_checkpoints = on` each checkpoint writes two lines:'},
+{code:`LOG:  checkpoint starting: time
+LOG:  checkpoint complete: wrote 12043 buffers (73.5%); 0 WAL file(s) added,
+      0 removed, 4 recycled; write=809.9 s, sync=0.05 s, total=810.2 s;
+      distance=65536 kB, estimate=65536 kB`},
+{note:'If `num_requested` is much larger than `num_timed`, checkpoints are being forced by WAL volume: increase `max_wal_size`. On PostgreSQL 16 and earlier the same counters are in `pg_stat_bgwriter` (`checkpoints_timed`, `checkpoints_req`).'}],
+src:[['Write Ahead Log settings',D+'runtime-config-wal.html'],['WAL Configuration',D+'wal-configuration.html'],['Reliability and the Write-Ahead Log',D+'wal.html'],['pg_stat_checkpointer',D+'monitoring-stats.html']]},
+
+/* ---------------------------------------------------------------- 5:7 */
+'pg:5:7':{blocks:[
+{p:'This lecture is the **reference and hands-on** companion to "Enable Logging Mechanism". Once the collector is running you decide **what** is worth recording. Too little leaves you blind during an incident; too much hides the signal, costs disk and I/O, and can expose sensitive data. The parameters sit in the documentation chapter "Error Reporting and Logging", in three groups: **where**, **when** and **what**.'},
+{h:'When to log: thresholds'},
+{t:[['Parameter','Default','Context','Meaning'],['`log_min_messages`','`warning`','superuser','Lowest severity written to the server log'],['`log_min_error_statement`','`error`','superuser','Statement text is added for errors at or above this level'],['`log_min_duration_statement`','`-1` (off)','superuser','Log any statement that takes at least this long; `0` logs all with duration'],['`log_min_duration_sample`','`-1`','superuser','Duration threshold for **sampled** logging'],['`log_statement_sample_rate`','`1.0`','superuser','Fraction of statements over the sample threshold that is logged'],['`log_transaction_sample_rate`','`0`','superuser','Fraction of whole transactions whose statements are all logged']]},
+{h:'What to log'},
+{t:[['Parameter','Default','Logs'],['`log_connections`','`off`','Connection attempts; PostgreSQL 18 accepts a list (`receipt`, `authentication`, `authorization`, `setup_durations`) as well as `on`'],['`log_disconnections`','`off`','Session end with duration and user'],['`log_statement`','`none`','`none`, `ddl`, `mod` (DDL plus INSERT/UPDATE/DELETE/TRUNCATE/COPY FROM), `all`'],['`log_duration`','`off`','Duration of every completed statement (without text)'],['`log_checkpoints`','`on`','Checkpoint start and end statistics'],['`log_lock_waits`','`off`','A line when a session waits longer than `deadlock_timeout` for a lock'],['`log_temp_files`','`-1`','Temp files at least this big (`0` = all)'],['`log_autovacuum_min_duration`','`10min`','Autovacuum/analyze runs at least this long (`0` = all)'],['`log_replication_commands`','`off`','Replication protocol commands'],['`log_hostname`','`off`','Resolve client IP to host name (adds DNS cost)'],['`log_error_verbosity`','`default`','`terse`, `default` or `verbose` (adds SQLSTATE, source file)'],['`log_parameter_max_length`','`-1`','Bind-parameter values included with statements']]},
+{h:'log_statement values'},
+{t:[['Value','Records','Typical use'],['`none`','Nothing from this setting','Default'],['`ddl`','`CREATE`, `ALTER`, `DROP`','Change auditing with low volume'],['`mod`','`ddl` plus data-changing statements','Write audit'],['`all`','Every statement','Short debugging windows only']]},
+{h:'log_line_prefix: the header on every line'},
+{p:'The prefix is text printed at the start of each line, with **escapes** replaced by session facts. The default is `%m [%p] `. A richer prefix makes logs searchable.'},
+{t:[['Escape','Value','Escape','Value'],['`%t`','Timestamp','`%m`','Timestamp with milliseconds'],['`%p`','Process ID','`%l`','Line number in session'],['`%u`','User name','`%d`','Database name'],['`%a`','Application name','`%h`','Client host'],['`%r`','Host and port','`%c`','Session ID'],['`%x`','Transaction ID','`%e`','SQLSTATE error code'],['`%Q`','Query ID','`%q`','Stop here for background processes']]},
+{code:`ALTER SYSTEM SET log_line_prefix = '%m [%p] %q%u@%d app=%a host=%h ';
+-- example output
+-- 2026-10-07 10:15:42.318 IST [2841] postgres@sales app=psql host=[local] ERROR:  division by zero`},
+{h:'Hands-on: capture query time, errors and disconnections'},
+{flow:['Enable collector and restart','Turn on duration, connection logging','Reload','Run test queries','Read the log']},
+{code:`-- 1. destination (needs restart for the collector)
+ALTER SYSTEM SET logging_collector = on;
+ALTER SYSTEM SET log_directory = 'log';
+-- restart:  sudo systemctl restart postgresql-18
+
+-- 2. what to record
+ALTER SYSTEM SET log_min_duration_statement = 0;       -- log every statement duration (test only)
+ALTER SYSTEM SET log_disconnections = on;
+ALTER SYSTEM SET log_connections = on;
+ALTER SYSTEM SET log_line_prefix = '%m [%p] %q%u@%d ';
+SELECT pg_reload_conf();
+
+-- 3. generate events
+SELECT pg_sleep(2);
+SELECT 1/0;                         -- an error
+-- shell: psql -c "select 1" ; (connect and exit)
+
+-- 4. read $PGDATA/log/ and look for:
+--   LOG:  duration: 2001.2 ms  statement: SELECT pg_sleep(2);
+--   ERROR:  division by zero
+--   STATEMENT:  SELECT 1/0;
+--   LOG:  disconnection: session time: 0:00:03.1 user=postgres database=postgres host=[local]`},
+{note:'After testing, set `log_min_duration_statement` to a sensible value such as `1s` (or `500ms`). Leaving it at `0` on a busy server writes a line for every query and can slow the system.'},
+{h:'Production starter profile'},
+{t:[['Parameter','Suggested value','Why'],['`logging_collector`','`on`','Own files and rotation'],['`log_min_duration_statement`','`1s` (tune to workload)','Catch slow queries without noise'],['`log_checkpoints`','`on`','See checkpoint pressure'],['`log_connections` / `log_disconnections`','`on`','Audit and connection-storm detection'],['`log_lock_waits`','`on`','Find blocking sessions'],['`log_temp_files`','`0` or `10MB`','Find queries that spill to disk'],['`log_autovacuum_min_duration`','`0` or `1min`','Visibility into autovacuum'],['`log_line_prefix`','`%m [%p] %q%u@%d app=%a `','Searchable, attributable lines'],['`log_statement`','`ddl`','Schema change audit']]},
+{h:'Security and privacy'},
+{ul:['`log_statement = ddl` or `all` records `CREATE ROLE ... PASSWORD \'secret\'` in clear text. Set passwords from `psql` with `\\password`, which sends a hash, not the statement text.','Logged SQL may contain personal data. Restrict file access (`log_file_mode = 0600`) and protect backups of the log directory.','Only superusers (or roles granted the parameter) can change `log_statement` and `log_min_duration_statement`.']}],
+src:[['Error Reporting and Logging',D+'runtime-config-logging.html'],['What to Log',D+'runtime-config-logging.html#RUNTIME-CONFIG-LOGGING-WHAT'],['Lock management settings',D+'runtime-config-locks.html']]},
+
+/* ---------------------------------------------------------------- 5:8 */
+'pg:5:8':{blocks:[
+{p:'PostgreSQL uses **MVCC**: an `UPDATE` or `DELETE` does not overwrite a row but leaves the old version, a **dead tuple**, until no transaction can see it. Left alone, dead tuples cause **table bloat**, slower scans and, in the extreme, **transaction ID wraparound**. **Autovacuum** is the built-in background service that runs `VACUUM` and `ANALYZE` automatically. The documentation (Routine Vacuuming) says the autovacuum daemon is **highly recommended** for most installations, and it is on by default. Section 05 explained dead tuples and bloat; this lecture shows how to control the automation.'},
+{h:'What autovacuum does'},
+{t:[['Task','Why it is needed'],['Remove dead tuples and mark space reusable','Stops bloat; keeps scans and indexes small'],['Update the visibility map and free space map','Enables index-only scans and faster inserts'],['`ANALYZE` the table','Keeps planner statistics fresh so plans stay good'],['Freeze old row versions','Prevents transaction ID wraparound, which would otherwise force the server to stop accepting writes']]},
+{h:'Architecture'},
+{svg:avSvg},
+{p:'The **autovacuum launcher** starts a worker for a database about every `autovacuum_naptime`. Each **worker** looks at every table in that database, decides whether it passes a threshold and, if so, vacuums and/or analyzes it. At most `autovacuum_max_workers` workers run at the same time. All of it depends on `track_counts = on`, which is the default.'},
+{h:'When does a table qualify?'},
+{code:`vacuum threshold  = autovacuum_vacuum_threshold  + autovacuum_vacuum_scale_factor  x reltuples
+analyze threshold = autovacuum_analyze_threshold + autovacuum_analyze_scale_factor x reltuples
+insert threshold  = autovacuum_vacuum_insert_threshold + autovacuum_vacuum_insert_scale_factor x reltuples
+-- a table is vacuumed when dead tuples (or inserts since last vacuum) exceed the threshold`},
+{h:'Parameter reference'},
+{t:[['Parameter','Default','Context','Meaning'],['`autovacuum`','`on`','sighup','Master switch for the daemon'],['`autovacuum_naptime`','`1min`','sighup','Delay between runs per database'],['`autovacuum_max_workers`','`3`','sighup (18) / postmaster (earlier)','Concurrent workers'],['`autovacuum_vacuum_threshold`','`50`','sighup','Base number of dead tuples'],['`autovacuum_vacuum_scale_factor`','`0.2`','sighup','Fraction of table size added to the threshold'],['`autovacuum_vacuum_insert_threshold`','`1000`','sighup','Inserts that trigger a vacuum on append-only tables'],['`autovacuum_vacuum_insert_scale_factor`','`0.2`','sighup','Fraction of table for the insert trigger'],['`autovacuum_analyze_threshold`','`50`','sighup','Base number of changed rows'],['`autovacuum_analyze_scale_factor`','`0.1`','sighup','Fraction for analyze'],['`autovacuum_vacuum_max_threshold`','`100000000`','sighup','PostgreSQL 18: caps the computed vacuum threshold on huge tables'],['`autovacuum_vacuum_cost_delay`','`2ms`','sighup','Pause when the cost limit is reached (throttling)'],['`autovacuum_vacuum_cost_limit`','`-1` (uses `vacuum_cost_limit`, 200)','sighup','Work allowed before pausing; shared by all workers'],['`autovacuum_work_mem`','`-1` (uses `maintenance_work_mem`)','sighup','Memory per worker for tracking dead tuples'],['`autovacuum_freeze_max_age`','`200000000`','postmaster','Force an anti-wraparound vacuum at this transaction age'],['`log_autovacuum_min_duration`','`10min`','sighup','Log runs at least this long']]},
+{h:'Worked example'},
+{t:[['Table rows','Default (0.2) trigger','With scale factor 0.01'],['10,000','2,050 dead tuples','150'],['1,000,000','200,050','10,050'],['100,000,000','20,000,050 (capped by max_threshold in 18)','1,000,050']]},
+{p:'The default scale factor is fine for small tables but too lax for large ones: a 100-million-row table can accumulate millions of dead rows before autovacuum starts. The standard fix is a **per-table** override rather than changing the cluster default.'},
+{code:`ALTER TABLE big_orders SET (
+  autovacuum_vacuum_scale_factor = 0.01,
+  autovacuum_analyze_scale_factor = 0.005,
+  autovacuum_vacuum_cost_limit = 1000);
+
+-- see overrides, and remove them
+SELECT relname, reloptions FROM pg_class WHERE reloptions IS NOT NULL;
+ALTER TABLE big_orders RESET (autovacuum_vacuum_scale_factor);`},
+{h:'Demonstration on a test table'},
+{code:`CREATE TABLE av_test (id int PRIMARY KEY, val text);
+INSERT INTO av_test SELECT g, md5(g::text) FROM generate_series(1,100000) g;
+ANALYZE av_test;
+
+-- make 30000 dead tuples (more than 50 + 0.2 x 100000 = 20050)
+DELETE FROM av_test WHERE id <= 30000;
+
+SELECT n_live_tup, n_dead_tup, last_autovacuum, autovacuum_count
+FROM pg_stat_user_tables WHERE relname = 'av_test';
+
+-- wait about one autovacuum_naptime (1 min), then repeat the query:
+-- n_dead_tup falls toward 0, last_autovacuum is set, autovacuum_count = 1`},
+{h:'Monitoring'},
+{code:`-- tables with the most dead tuples
+SELECT schemaname, relname, n_live_tup, n_dead_tup,
+       round(100.0 * n_dead_tup / nullif(n_live_tup + n_dead_tup,0), 1) AS dead_pct,
+       last_autovacuum, last_autoanalyze
+FROM pg_stat_user_tables ORDER BY n_dead_tup DESC LIMIT 10;
+
+-- running now
+SELECT pid, relid::regclass, phase, heap_blks_scanned, heap_blks_total
+FROM pg_stat_progress_vacuum;
+
+-- transaction age: how close to wraparound
+SELECT datname, age(datfrozenxid) AS xid_age FROM pg_database ORDER BY 2 DESC;`},
+{h:'Why autovacuum may not clean'},
+{t:[['Blocker','Symptom','Fix'],['Long-running or idle-in-transaction session','Dead tuples stay, `n_dead_tup` grows','Find with `pg_stat_activity`, end it, set `idle_in_transaction_session_timeout`'],['Replication slot or standby feedback holding the horizon','Same','Drop unused slots, review `hot_standby_feedback`'],['Prepared transaction left open','Same, plus wraparound risk','`SELECT * FROM pg_prepared_xacts;` then commit or roll back'],['Workers too slow or too few','Large tables never finish','Raise cost limit or lower delay; more workers; per-table settings'],['Autovacuum disabled','No vacuum at all','Re-enable; never disable globally']]},
+{note:'Do not turn autovacuum off to "save I/O". If it is hurting, **tune** it (cost limit, per-table thresholds, off-peak manual `VACUUM`). Disabling it risks bloat and, eventually, an emergency shutdown to prevent wraparound.'}],
+src:[['Automatic Vacuuming settings',D+'runtime-config-vacuum.html'],['Routine Vacuuming',D+'routine-vacuuming.html'],['Storage Parameters (per-table)',D+'sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS'],['Progress Reporting',D+'progress-reporting.html']]},
+
+/* ---------------------------------------------------------------- 5:9  (bonus) */
+'pg:5:9':{blocks:[
+{p:'The same parameter can be set in many places at once. PostgreSQL resolves the conflict with a fixed order: **the most specific, latest setting wins**. Knowing the order explains puzzles such as "I changed `postgresql.conf` but `SHOW` still shows the old value". This lecture completes the picture started in "Parameter Basics" and "ALTER Command".'},
+{h:'Order of precedence (lowest to highest)'},
+{svg:precSvg},
+{t:[['Level','How it is set','Lasts','pg_settings.source'],['1. Default','Compiled in','Always','`default`'],['2. `postgresql.conf`','Edit file, reload','Until edited','`configuration file`'],['3. `postgresql.auto.conf`','`ALTER SYSTEM`','Until reset','`configuration file`'],['4. Command line','`postgres -c name=value`','One server run','`command line`'],['5. Database default','`ALTER DATABASE db SET ...`','Until reset; new sessions','`database`'],['6. Role default','`ALTER ROLE r SET ...`','Until reset; new sessions','`user`'],['7. Role in database','`ALTER ROLE r IN DATABASE db SET ...`','Until reset; new sessions','`database user`'],['8. Connection options','`PGOPTIONS=\'-c work_mem=64MB\'`, `options=` in conninfo','That connection','`client`'],['9. Session / transaction','`SET`, `SET LOCAL`','Session or transaction','`session`']]},
+{note:'A parameter with context `postmaster` or `sighup` cannot be set at levels 5 to 9. Only `user` and `superuser` context parameters can be set per session; `backend` ones at connection time only.'},
+{h:'Per-database and per-role defaults'},
+{code:`-- different defaults without touching the server-wide file
+ALTER DATABASE reporting SET work_mem = '128MB';
+ALTER ROLE app_user SET statement_timeout = '30s';
+ALTER ROLE app_user IN DATABASE sales SET search_path = 'sales, public';
+
+-- inspect (stored in the catalog pg_db_role_setting)
+SELECT s.setdatabase, s.setrole, d.datname, r.rolname, s.setconfig
+FROM pg_db_role_setting s
+LEFT JOIN pg_database d ON d.oid = s.setdatabase
+LEFT JOIN pg_roles    r ON r.oid = s.setrole;
+
+-- remove
+ALTER ROLE app_user RESET statement_timeout;
+ALTER DATABASE reporting RESET ALL;`},
+{p:'These defaults apply to **new** sessions only. They are ideal for giving a reporting role a larger `work_mem` or an application role a statement timeout, without raising global values.'},
+{h:'Session and transaction level'},
+{code:`SET work_mem = '256MB';                 -- until the session ends or RESET
+SET LOCAL work_mem = '1GB';             -- until COMMIT or ROLLBACK
+SELECT set_config('work_mem', '64MB', false);   -- function form; true = local
+RESET work_mem;                         -- back to what the session started with
+
+-- connection-time option from the shell
+PGOPTIONS='-c statement_timeout=5s -c work_mem=64MB' psql -d sales`},
+{h:'Debugging "why is this value in effect?"'},
+{flow:['SHOW name','pg_settings: source, sourcefile','pg_file_settings: all file entries','pg_db_role_setting: role/db defaults','Check session SET history']},
+{code:`SELECT name, setting, source, sourcefile, sourceline FROM pg_settings WHERE name = 'work_mem';
+
+-- every line in every config file, and which one actually applied
+SELECT sourcefile, sourceline, seqno, name, setting, applied, error
+FROM pg_file_settings WHERE name = 'work_mem' ORDER BY seqno;`},
+{p:'`pg_file_settings` shows a row for **each** assignment found in the files, in order, with `applied = true` for the one that won. If a value is invalid, `error` explains why, which makes it a pre-flight check before every reload.'},
+{h:'Include files for tidy configuration'},
+{code:`# end of postgresql.conf
+include_dir 'conf.d'            # loads conf.d/*.conf in file-name order
+# conf.d/10-memory.conf
+shared_buffers = '8GB'
+# conf.d/20-logging.conf
+log_min_duration_statement = '1s'`},
+{ul:['Files in an include directory load in **alphabetical order**, so use numeric prefixes.','Later lines override earlier ones; `postgresql.auto.conf` is still read last.']}],
+src:[['Setting Parameters',D+'config-setting.html'],['ALTER ROLE',D+'sql-alterrole.html'],['ALTER DATABASE',D+'sql-alterdatabase.html'],['SET',D+'sql-set.html'],['pg_db_role_setting',D+'catalog-pg-db-role-setting.html']]},
+
+/* ---------------------------------------------------------------- 5:10 (bonus) */
+'pg:5:10':{blocks:[
+{p:'Collecting a log is half the job; the other half is **reading it quickly** during an incident and **summarising** it over days. A readable, consistent format is the foundation. This lecture covers structured formats, the patterns to search for and the tools used on server logs.'},
+{h:'Anatomy of a log entry'},
+{code:`2026-10-07 10:15:42.318 IST [2841] app_user@sales app=api host=10.0.0.12 ERROR:  deadlock detected
+2026-10-07 10:15:42.318 IST [2841] app_user@sales DETAIL:  Process 2841 waits for ShareLock on transaction 9012; blocked by process 2850.
+2026-10-07 10:15:42.318 IST [2841] app_user@sales HINT:  See server log for query details.
+2026-10-07 10:15:42.318 IST [2841] app_user@sales STATEMENT:  UPDATE accounts SET balance = balance - 10 WHERE id = 2;`},
+{t:[['Part','Meaning'],['Prefix (from `log_line_prefix`)','When, which backend process, which user and database'],['Severity (`ERROR`)','Level of the message'],['Message','What happened'],['`DETAIL`, `HINT`, `CONTEXT`','Extra lines attached to the same event'],['`STATEMENT`','The SQL that caused it (see `log_min_error_statement`)']]},
+{h:'Structured formats'},
+{t:[['Format','Strength','Typical use'],['`stderr` text','Human-readable, `grep`-friendly','Daily DBA work'],['`csvlog`','Fixed columns; load into a table with `COPY`','SQL-based log analysis'],['`jsonlog`','One JSON object per line, named fields','Log shippers, Elasticsearch, Loki, `jq`'],['`syslog` / journal','Central OS logging','Fleet-wide aggregation']]},
+{code:`-- load a csvlog file into a table for SQL analysis
+CREATE TABLE pglog (log_time timestamptz(3), user_name text, database_name text,
+  process_id int, connection_from text, session_id text, session_line_num bigint,
+  command_tag text, session_start_time timestamptz, virtual_transaction_id text,
+  transaction_id bigint, error_severity text, sql_state_code text, message text,
+  detail text, hint text, internal_query text, internal_query_pos int, context text,
+  query text, query_pos int, location text, application_name text, backend_type text,
+  leader_pid int, query_id bigint);
+COPY pglog FROM '/var/lib/pgsql/18/data/log/postgresql-Wed.csv' WITH csv;
+SELECT error_severity, count(*) FROM pglog GROUP BY 1 ORDER BY 2 DESC;
+
+-- shell, jsonlog:  jq -r 'select(.error_severity=="ERROR") | .message' postgresql-Wed.json`},
+{note:'The csvlog column list follows the server version; check "Using CSV-Format Log Output" in the documentation for the exact list of your release before creating the table.'},
+{h:'Patterns to search for'},
+{t:[['Symptom','Search for','Meaning and action'],['Slow queries','`duration:`','Find top offenders; use `EXPLAIN ANALYZE`, add indexes'],['Spill to disk','`temporary file`','Raise `work_mem` for that role or tune query (needs `log_temp_files`)'],['Blocking','`still waiting for` / `acquired ... after`','Lock waits (needs `log_lock_waits`); find the blocker in `pg_locks`'],['Deadlocks','`deadlock detected`','Make transactions touch rows in the same order'],['Checkpoint pressure','`checkpoints are occurring too frequently`','Increase `max_wal_size`'],['Auth problems','`password authentication failed`, `no pg_hba.conf entry`','Fix `pg_hba.conf` or credentials; possible attack if repeated'],['Connection exhaustion','`remaining connection slots are reserved`','Use a pooler or raise `max_connections`'],['Crashes','`terminated by signal`, `PANIC`','Check OS logs (OOM killer), restart recovery messages'],['Autovacuum','`automatic vacuum of table`','Duration and tuples removed per run']]},
+{h:'Quick command-line toolkit'},
+{code:`grep -c ERROR   postgresql-Wed.log                 # error count
+grep "duration:" postgresql-Wed.log | sort -t: -k4 -n -r | head   # slowest first (approx.)
+grep -B2 -A6 "deadlock detected" postgresql-Wed.log
+tail -f $PGDATA/log/postgresql-Wed.log                           # follow live
+journalctl -u postgresql-18 --since "1 hour ago"                 # systemd installs`},
+{h:'Tools'},
+{t:[['Tool','Purpose'],['pgBadger','Open-source analyser that turns logs into an HTML report of slow queries, errors, connections, checkpoints and locks. Works best with a full `log_line_prefix` and `log_min_duration_statement`.'],['`pg_stat_statements`','Cumulative statistics per normalised query, without logging. Complements the log.'],['`auto_explain`','Logs execution plans of slow statements (`auto_explain.log_min_duration`).'],['Log shippers (Fluent Bit, Vector, Filebeat)','Forward `jsonlog` to central storage.']]},
+{flow:['Log with a rich prefix','Collect csv/json','Analyse with pgBadger or SQL','Confirm with pg_stat_statements','Fix and re-measure']}],
+src:[['Using CSV-Format Log Output',D+'runtime-config-logging.html#RUNTIME-CONFIG-LOGGING-CSVLOG'],['Using JSON-Format Log Output',D+'runtime-config-logging.html#RUNTIME-CONFIG-LOGGING-JSONLOG'],['auto_explain',D+'auto-explain.html'],['pg_stat_statements',D+'pgstatstatements.html']]},
+
+/* ---------------------------------------------------------------- 5:11 (bonus) */
+'pg:5:11':{blocks:[
+{p:'Some parameters do not tune speed; they **protect the server** from runaway sessions, forgotten transactions and connection storms. A production DBA sets these deliberately. They belong in this section because most can be applied per role or per database (see the precedence lecture) and all are visible in `pg_settings`.'},
+{h:'Connection parameters'},
+{t:[['Parameter','Default','Context','Meaning'],['`listen_addresses`','`localhost`','postmaster','Interfaces the server listens on; `*` for all'],['`port`','`5432`','postmaster','TCP port'],['`max_connections`','`100`','postmaster','Total concurrent connections'],['`superuser_reserved_connections`','`3`','postmaster','Slots kept for superusers during overload'],['`reserved_connections`','`0`','postmaster','Slots kept for roles with `pg_use_reserved_connections` (PostgreSQL 16+)'],['`unix_socket_directories`','`/run/postgresql, /tmp`','postmaster','Where local sockets are created'],['`tcp_keepalives_idle`, `_interval`, `_count`','OS default','user','Detect dead clients behind firewalls']]},
+{p:'Each connection is a **process**, so thousands of idle connections waste memory and slow the system. The usual fix is a pooler such as PgBouncer in front of a moderate `max_connections`, not a very large value.'},
+{h:'Timeout parameters'},
+{t:[['Parameter','Default','Purpose','Common value'],['`statement_timeout`','`0` (off)','Cancel any statement running longer than this','`30s` for application roles'],['`lock_timeout`','`0`','Give up waiting for a lock after this long','`5s` for migrations'],['`idle_in_transaction_session_timeout`','`0`','Terminate sessions idle inside an open transaction (they block vacuum and hold locks)','`1min` to `10min`'],['`idle_session_timeout`','`0`','Terminate sessions idle outside a transaction (PostgreSQL 14+)','Use with care; poolers expect long-lived connections'],['`transaction_timeout`','`0`','Maximum length of a whole transaction (PostgreSQL 17+)','Depends on workload'],['`deadlock_timeout`','`1s`','Wait before checking for deadlock; also threshold for `log_lock_waits`','Keep `1s`'],['`authentication_timeout`','`1min`','Time allowed to complete authentication','Default']]},
+{code:`-- protect the whole application, not the DBA
+ALTER ROLE app_user SET statement_timeout = '30s';
+ALTER ROLE app_user SET idle_in_transaction_session_timeout = '5min';
+ALTER ROLE app_user SET lock_timeout = '10s';
+
+-- migrations should fail fast rather than queue behind a lock
+ALTER ROLE migrator SET lock_timeout = '3s';
+
+-- connection use right now
+SELECT count(*) FILTER (WHERE state = 'active') AS active,
+       count(*) FILTER (WHERE state = 'idle') AS idle,
+       count(*) FILTER (WHERE state = 'idle in transaction') AS idle_in_txn,
+       current_setting('max_connections')::int AS max_conn
+FROM pg_stat_activity WHERE backend_type = 'client backend';`},
+{h:'How these guards interact'},
+{flow:['Client connects','Slot available? (max_connections)','Runs statement','statement_timeout / lock_timeout','Idle too long? idle_in_transaction timeout']},
+{note:'Do not set `statement_timeout` globally to a low value: long maintenance jobs, backups and migrations will be cancelled. Apply it to application roles and leave administrative roles unrestricted.'},
+{h:'Security-related parameters'},
+{t:[['Parameter','Default','Note'],['`password_encryption`','`scram-sha-256`','Hash method for new passwords; avoid `md5`'],['`ssl`','`off`','Enable TLS; needs certificate files; reload applies'],['`log_connections`','`off`','Audit trail of who connects'],['`row_security`','`on`','Row-level security enforcement'],['`allow_alter_system`','`on`','Block `ALTER SYSTEM` where config is managed externally']]}],
+src:[['Connections and Authentication',D+'runtime-config-connection.html'],['Client Connection Defaults (timeouts)',D+'runtime-config-client.html'],['Lock Management',D+'runtime-config-locks.html'],['Resource Consumption',D+'runtime-config-resource.html']]}
+
+});
+
+/* ------------------------------------------------------------------
+   Back-fill: notes added to earlier lessons from what Section 06 teaches
+   ------------------------------------------------------------------ */
+const X=(k,blocks,src)=>{const L=window.LESSONS[k];if(!L)return;L.blocks.push(...blocks);if(src)L.src=(L.src||[]).concat(src)};
+
+X('pg:2:0',[
+{h:'Diagnosing connection failures from the log'},
+{p:'When a remote connection is refused, the client message is deliberately vague. The **server log** is precise. Enable `log_connections = on` (Section 06) and read the line produced for the failed attempt.'},
+{t:[['Log message','Cause','Fix'],['`no pg_hba.conf entry for host "x", user "u", database "d"`','No matching rule','Add a rule to `pg_hba.conf`, then reload'],['`password authentication failed for user "u"`','Wrong password or method mismatch','Reset password; check `password_encryption`'],['`connection refused` (client side only, nothing in log)','Server not listening on that interface or firewall','Check `listen_addresses`, firewall, port'],['`remaining connection slots are reserved`','`max_connections` reached','Close idle sessions or use a pooler']]},
+{note:'`listen_addresses` and `port` are **postmaster** parameters: changing them needs a restart. `pg_hba.conf` changes need only a reload. See "Reload or Restart".'}],
+[['Connections and Authentication',D+'runtime-config-connection.html']]);
+
+X('pg:2:2',[
+{h:'Shutdown and parameter changes'},
+{p:'Restarting the server is required for every parameter whose context is `postmaster` (for example `shared_buffers`, `max_connections`, `wal_level`). Use `fast` mode so a shutdown checkpoint is written and the next start needs no recovery. A reload (`pg_ctl reload`) is enough for `sighup` parameters and for `pg_hba.conf`. Section 06 explains how to tell the two apart with `pg_settings.context` and `pending_restart`.'}],
+[['Setting Parameters',D+'config-setting.html']]);
+
+X('pg:2:3',[
+{h:'Reading order and the extra file (see Section 06)'},
+{p:'The server reads `postgresql.conf` first, then any files named by `include`, `include_if_exists` or `include_dir`, and finally **`postgresql.auto.conf`**, which `ALTER SYSTEM` writes. The last value found wins, so an entry in `postgresql.auto.conf` overrides the same parameter in `postgresql.conf`. Use `pg_file_settings` to see every entry and which one applied, and `pg_settings.sourcefile` to see where the active value came from.'},
+{code:`SELECT sourcefile, sourceline, name, setting, applied FROM pg_file_settings ORDER BY seqno LIMIT 20;`}],
+[['pg_file_settings',D+'view-pg-file-settings.html']]);
+
+X('pg:3:4',[
+{h:'The WAL parameters that control this behaviour'},
+{t:[['Parameter','Effect on the WAL mechanism described above'],['`wal_level`','How much information is written: `minimal`, `replica`, `logical` (restart)'],['`wal_buffers`','Size of the in-memory WAL buffer'],['`checkpoint_timeout`, `max_wal_size`','When checkpoints occur and how much WAL accumulates'],['`checkpoint_completion_target`','How evenly checkpoint writes are spread'],['`fsync`, `synchronous_commit`','Whether and when WAL reaches stable storage on COMMIT'],['`archive_mode`, `archive_command`','Copy completed segments for point-in-time recovery']]},
+{note:'Tuning guidance, the `log_checkpoints` output and `pg_stat_checkpointer` are covered in "WAL and Checkpoint Parameters" in Section 06.'}],
+[['Write Ahead Log settings',D+'runtime-config-wal.html']]);
+
+X('pg:4:2',[
+{h:'Passing parameters through the environment'},
+{p:'Environment variables can also carry **server parameters**. `PGOPTIONS` is read by `libpq` clients such as `psql` and sends `-c name=value` options at connection time, which sit above role and database defaults in the precedence order (Section 06).'},
+{code:`PGOPTIONS='-c work_mem=64MB -c statement_timeout=10s' psql -d postgres -c "SHOW work_mem;"`}],
+[['Environment Variables',D+'libpq-envars.html']]);
+
+X('pg:4:7',[
+{h:'Why a restart is needed (context postmaster)'},
+{p:'`shared_preload_libraries` has context **postmaster**: the libraries are loaded when the server starts, so a reload is not enough. After editing it, restart, then confirm with `SHOW shared_preload_libraries;`. If `pg_settings.pending_restart` is `true` for it, the new value is written but not active yet. Extensions also add their own dotted parameters, for example `pg_stat_statements.max` and `pg_stat_statements.track`, visible in `pg_settings` once loaded.'},
+{code:`SELECT name, setting, context, pending_restart FROM pg_settings
+WHERE name = 'shared_preload_libraries' OR name LIKE 'pg_stat_statements.%';`}],
+[['Setting Parameters',D+'config-setting.html']]);
+
+X('pg:4:9',[
+{h:'Controlling vacuum automatically'},
+{p:'Autovacuum starts a vacuum when dead tuples exceed `autovacuum_vacuum_threshold + autovacuum_vacuum_scale_factor x reltuples` (defaults 50 and 0.2). Large tables often need a lower scale factor set per table. The parameters, a worked example and monitoring queries are in "Autovacuum Parameter" in Section 06.'}],
+[['Automatic Vacuuming settings',D+'runtime-config-vacuum.html']]);
+
+X('pg:4:10',[
+{h:'Complement statistics with the log'},
+{p:'The statistics views show **totals**; the log shows **individual events**. Turn on `log_checkpoints`, `log_lock_waits`, `log_temp_files` and `log_autovacuum_min_duration` (Section 06) so that the counters you read in `pg_stat_database`, `pg_stat_checkpointer` and `pg_stat_user_tables` can be matched to specific lines in the server log.'}],
+[['Error Reporting and Logging',D+'runtime-config-logging.html']]);
+})();
+
+/* ================================================================
+   PART: Section 07 - User Management & Security  (was lessons6.js)
+   ================================================================ */
+/* LearnSphere: Section 07 - User Management & Security (lectures 1-7 + bonus lectures 8-11)
+   Load AFTER lessons5.js. Docs links target PostgreSQL 18. Also back-fills notes into earlier lessons. */
+(function(){
+const D='https://www.postgresql.org/docs/18/';
+const dg=window.LS_DG;
+
+/* ---------- diagrams ---------- */
+const roleSvg=dg(700,250,[
+[10,15,200,215,'Login roles (people, apps)',1],[25,45,170,45,'alice|LOGIN',0],[25,105,170,45,'bob|LOGIN',0],[25,165,170,45,'app_user|LOGIN, CONNECTION LIMIT',0],
+[250,15,200,215,'Group roles (NOLOGIN)',1],[265,45,170,50,'app_read|SELECT',2],[265,110,170,50,'app_write|INSERT, UPDATE, DELETE',2],[265,175,170,40,'app_owner|owns objects',0],
+[490,15,200,215,'Database objects',1],[505,45,170,50,'Schema app|USAGE, CREATE',0],[505,110,170,50,'Tables, sequences|SELECT, INSERT ...',0],[505,175,170,40,'Rows via policies|RLS',0]],
+[[195,67,265,67],[195,127,265,127],[195,187,265,135],[435,70,505,70],[435,135,505,135],[435,195,505,195]]);
+const authSvg=dg(700,200,[
+[10,70,95,55,'Client|connects',0],[125,70,110,55,'pg_hba.conf|first matching rule',2],[255,70,110,55,'Method|scram, peer, cert',2],[385,70,110,55,'Role checks|LOGIN, VALID UNTIL|CONNECTION LIMIT',0],[515,70,80,55,'CONNECT|on database',0],[615,70,75,55,'Object|privileges, RLS',0],
+[10,15,355,30,'AUTHENTICATION: who are you?',1],[385,15,305,30,'AUTHORIZATION: what may you do?',1]],
+[[105,97,125,97],[235,97,255,97],[365,97,385,97],[495,97,515,97],[595,97,615,97]]);
+const pubSvg=dg(700,190,[
+[10,65,130,55,'PUBLIC|every role,|present and future',2],
+[220,10,200,45,'Database|CONNECT, TEMPORARY',0],[220,70,200,45,'Schema public|USAGE (CREATE removed in 15)',0],[220,130,200,45,'Functions, procedures|EXECUTE',0],[470,70,220,45,'Languages and types|USAGE',0]],
+[[140,85,220,32],[140,92,220,92],[140,100,220,152],[420,92,470,92]]);
+const inhSvg=dg(700,230,[
+[10,15,320,200,'INHERIT: privileges are automatic',1],[25,50,100,45,'alice',0],[165,50,150,45,'dev_read|SELECT',2],[25,130,290,50,'alice can SELECT immediately',0],
+[370,15,320,200,'NOINHERIT: privileges are opt-in',1],[385,50,100,45,'bob',0],[525,50,150,45,'migrator|DDL, owns tables',2],[385,130,290,50,'bob must run SET ROLE migrator|to use those privileges',0]],
+[[125,72,165,72],[485,72,525,72],[170,95,170,130],[530,95,530,130]]);
+const rlsSvg=dg(700,200,[
+[10,70,120,55,'SELECT * FROM|orders',0],[170,70,150,55,'Policy USING|company = current_setting|(app.current_company)',2],[370,70,120,55,'Table orders|all tenants',0],[540,10,150,45,'acme sees|only acme rows',0],[540,75,150,45,'globex sees|only globex rows',0],[540,140,150,45,'no setting|sees no rows',0]],
+[[130,97,170,97],[320,97,370,97],[490,85,540,32],[490,97,540,97],[490,110,540,162]]);
+
+window.EXTRA_LECTURES=window.EXTRA_LECTURES||{};
+window.EXTRA_LECTURES[6]=[
+['Predefined Roles','0:00','The built-in pg_* roles (pg_monitor, pg_read_all_data, pg_signal_backend and others): what each grants and how to use them instead of superuser.'],
+['Ownership, Default Privileges and Dropping Roles','0:00','Object ownership, ALTER DEFAULT PRIVILEGES, REASSIGN OWNED and DROP OWNED, and a safe procedure to offboard a role.'],
+['Passwords, SCRAM and TLS','0:00','How passwords are stored and verified, migrating from md5 to SCRAM-SHA-256, password expiry, and encrypting connections with TLS and client certificates.'],
+['Security Hardening Checklist and Auditing','0:00','Column-level privileges, SECURITY DEFINER safety, pgAudit, audit queries and a production hardening checklist.']];
+
+Object.assign(window.LESSONS,{
+
+/* ---------------------------------------------------------------- 6:0 */
+'pg:6:0':{blocks:[
+{p:'PostgreSQL manages access through **roles**. The documentation (Chapter "Database Roles") defines a role as an entity that can own database objects and have database privileges; depending on how it is used it can be thought of as a **user**, a **group**, or both. Since PostgreSQL 8.1 the older separate concepts of users and groups were merged into this single idea. Everything that follows in this section (authentication, `GRANT`, row-level security) is built on roles, so a clear mental model here saves many mistakes later.'},
+{h:'Role, user and group'},
+{t:[['Term','What it really is','How it is usually created'],['Role','The only account concept in PostgreSQL. Has a name, attributes, optional password, memberships','`CREATE ROLE name ...`'],['User','A role that has the `LOGIN` attribute, so it can start a session','`CREATE USER name` (same as `CREATE ROLE name LOGIN`)'],['Group','A role used as a **container of privileges**; other roles become members. Normally `NOLOGIN`','`CREATE ROLE name NOLOGIN` (or the legacy `CREATE GROUP`)']]},
+{note:'`CREATE USER` and `CREATE ROLE` differ in one way only: `CREATE USER` assumes `LOGIN`, `CREATE ROLE` assumes `NOLOGIN`.'},
+{h:'Key facts from the documentation'},
+{ul:['Roles are **cluster-wide**. A role is not tied to one database, and role names are unique across the whole cluster.','Role names that start with `pg_` are **reserved** for predefined roles.','A role is **not** the same as an operating-system user, although `peer` authentication can link them.','The initial **superuser** is created by `initdb`; its name is the OS user that ran `initdb`, normally `postgres`.','A **superuser** bypasses every permission check except the right to log in. Treat it like root.','Roles are stored in the catalog `pg_authid` (password hashes, superuser only). The view `pg_roles` shows the same roles without passwords and is readable by everyone.']},
+{h:'The role model'},
+{svg:roleSvg},
+{p:'The recommended pattern separates **who logs in** from **what is allowed**. People and applications are login roles. Privileges are granted to NOLOGIN group roles. Login roles become members of those groups. When someone changes team you change a membership, not dozens of table grants.'},
+{h:'Role attributes at a glance'},
+{t:[['Attribute','Default','Meaning'],['`LOGIN` / `NOLOGIN`','NOLOGIN for `CREATE ROLE`','May start a session'],['`SUPERUSER`','No','Bypasses permission checks; can do anything'],['`CREATEDB`','No','May create databases'],['`CREATEROLE`','No','May create and manage roles it has ADMIN rights on (restricted since PostgreSQL 16)'],['`REPLICATION`','No','May start streaming replication connections'],['`BYPASSRLS`','No','Ignores row-level security policies'],['`INHERIT` / `NOINHERIT`','INHERIT','Default for whether memberships pass privileges automatically'],['`CONNECTION LIMIT n`','`-1` (none)','Maximum concurrent sessions for this role'],['`PASSWORD`, `VALID UNTIL`','none','Credential and its expiry']]},
+{p:'Each attribute is explained with examples in "User Creation". Attributes are **not inherited** through membership: being a member of a `CREATEDB` role does not let you create databases; you must have the attribute yourself.'},
+{h:'Layers of access control (defence in depth)'},
+{t:[['Layer','Controlled by','Question it answers'],['Network','Firewall, `listen_addresses`, `port`','Can the client reach the server?'],['Host-based authentication','`pg_hba.conf`','Is this client, user and database combination allowed to try?'],['Authentication','scram-sha-256, peer, cert, ...','Is the user really who they claim?'],['Role state','`LOGIN`, `VALID UNTIL`, connection limits','Is the account usable now?'],['Database','`CONNECT` privilege','May this role enter this database?'],['Schema','`USAGE`, `CREATE`','May it see or create objects in this schema?'],['Object','`SELECT`, `INSERT`, `EXECUTE`, ...','What may it do with each object?'],['Row','Row-level security policies','Which rows may it see or change?'],['Audit','Logging, pgAudit','What did it actually do?']]},
+{h:'Least-privilege design flow'},
+{flow:['List the duties (read, write, migrate, monitor)','Create NOLOGIN group role per duty','GRANT privileges to groups','Create login roles per person or app','GRANT groups to logins','Review with \\du and \\dp']},
+{h:'First commands to know'},
+{code:`-- list roles (psql)
+\\du
+\\du+                                  -- with descriptions
+
+-- list roles with SQL
+SELECT rolname, rolsuper, rolcreatedb, rolcreaterole, rolcanlogin, rolconnlimit, rolvaliduntil
+FROM pg_roles WHERE rolname !~ '^pg_' ORDER BY rolname;
+
+-- who am I?
+SELECT session_user, current_user;      -- differ after SET ROLE
+SELECT pg_has_role('alice', 'app_read', 'MEMBER');
+
+-- membership relations
+SELECT r.rolname AS "group", m.rolname AS member, am.admin_option, am.inherit_option, am.set_option
+FROM pg_auth_members am
+JOIN pg_roles r ON r.oid = am.roleid
+JOIN pg_roles m ON m.oid = am.member;`},
+{note:'`session_user` is the role that logged in; `current_user` is the role whose privileges apply right now. They differ after `SET ROLE`, which matters for the NOINHERIT model later in this section.'},
+{h:'Common mistakes this section avoids'},
+{ul:['Using the `postgres` superuser for applications.','Granting privileges directly to individuals instead of group roles.','Leaving the default `PUBLIC` privileges untouched on production databases.','Letting application roles own the tables they query, so a SQL injection can drop them.']}],
+src:[['Database Roles',D+'user-manag.html'],['Role Attributes',D+'role-attributes.html'],['Role Membership',D+'role-membership.html'],['pg_roles view',D+'view-pg-roles.html']]},
+
+/* ---------------------------------------------------------------- 6:1 */
+'pg:6:1':{blocks:[
+{p:'Two separate questions guard every session. **Authentication** asks "who are you?" and is decided by the **`pg_hba.conf`** file and the chosen method (password, certificate, OS identity...). **Authorization** asks "what are you allowed to do?" and is decided by role attributes, memberships and privileges stored in the catalogs. The documentation (Chapter "Client Authentication") describes `pg_hba.conf` as the file that controls client authentication: "HBA" stands for **host-based authentication**.'},
+{h:'The path of a connection'},
+{svg:authSvg},
+{t:[['Step','Where decided','Failure message (typical)'],['1. Rule match','`pg_hba.conf`: type, database, user, address','`no pg_hba.conf entry for host "10.0.0.5", user "app", database "sales"`'],['2. Method','The method column of the matched rule','`password authentication failed for user "app"`'],['3. Role state','`rolcanlogin`, `rolvaliduntil`, `rolconnlimit`','`role "app" is not permitted to log in`; `too many connections for role "app"`'],['4. Database access','`CONNECT` privilege on the database','`permission denied for database "sales"`'],['5. Object access','Schema, table, function privileges','`permission denied for table orders`'],['6. Row access','Row-level security policies','No error: rows are simply not visible']]},
+{h:'pg_hba.conf record format'},
+{t:[['Field','Allowed values'],['Type','`local` (Unix socket), `host` (TCP, with or without TLS), `hostssl` (TLS only), `hostnossl`, `hostgssenc`, `hostnogssenc`'],['Database','`all`, a database name, `sameuser`, `samerole`, `replication`, comma list, or `@file`'],['User','`all`, a role name, `+groupname` (members of a role), comma list, or `@file`'],['Address','IP with mask (`10.0.0.0/24`), `samehost`, `samenet`, or a host name (not for `local`)'],['Method','See the table below'],['Options','`name=value` pairs such as `map=`, `clientcert=verify-full`']]},
+{note:'The server reads rules **top to bottom and uses the first record that matches**. There is no fall-through: if that record fails authentication, the connection is refused even if a later record would have accepted it. Put specific rules before general ones and finish with a `reject`.'},
+{h:'Authentication methods'},
+{t:[['Method','How it works','Notes'],['`trust`','Accept without any check','Only for tightly controlled local testing. Never on a network'],['`reject`','Always refuse','Use to block ranges or as a final catch-all'],['`scram-sha-256`','Challenge-response with salted, iterated hashing; password never sent in clear','**Recommended** password method. Default for `password_encryption` since PostgreSQL 14'],['`md5`','Older challenge-response','**Deprecated** in PostgreSQL 18; replace with SCRAM'],['`password`','Clear text over the connection','Avoid; only safe inside TLS'],['`peer`','Takes the OS user name from the kernel and checks it matches the database role','Local sockets only; no password needed'],['`ident`','Asks an ident server for the OS user','TCP; rarely used, trust-dependent'],['`cert`','TLS client certificate; role name from certificate CN','Strong; needs a CA and `hostssl`'],['`gss`, `sspi`','Kerberos / Windows integrated sign-on','Enterprise single sign-on'],['`ldap`, `radius`, `pam`, `bsd`','Delegate to an external service','Central directory or MFA'],['`oauth`','OAuth 2.0 bearer tokens validated by a configured validator','New in PostgreSQL 18']]},
+{h:'A sensible pg_hba.conf'},
+{code:`# TYPE    DATABASE     USER          ADDRESS          METHOD
+local     all          postgres                       peer
+local     all          all                            scram-sha-256
+host      all          all           127.0.0.1/32     scram-sha-256
+host      all          all           ::1/128          scram-sha-256
+# application servers, TLS required
+hostssl   sales        app_user      10.0.1.0/24      scram-sha-256
+# DBAs from the admin network only
+hostssl   all          +dba          10.0.9.0/24      scram-sha-256
+# standby server for streaming replication
+hostssl   replication  replicator    10.0.2.15/32     scram-sha-256
+# everything else is refused
+host      all          all           0.0.0.0/0        reject
+host      all          all           ::/0             reject`},
+{h:'Applying and checking changes'},
+{flow:['Edit pg_hba.conf','Check pg_hba_file_rules for errors','Reload (no restart)','Test from the client','Watch the log']},
+{code:`-- parsed view of the file; error column shows syntax problems
+SELECT line_number, type, database, user_name, address, auth_method, error
+FROM pg_hba_file_rules ORDER BY line_number;
+
+SELECT pg_reload_conf();            -- or: pg_ctl reload / systemctl reload postgresql-18`},
+{ul:['A **syntax error** in `pg_hba.conf` makes the reload fail and the old rules stay active, so always check `pg_hba_file_rules` first.','Existing sessions are not affected by a reload; only new connections use the new rules.','Keep a way in: before tightening rules, test from a second session so you cannot lock yourself out.']},
+{h:'User name maps (pg_ident.conf)'},
+{p:'`peer`, `ident`, `gss`, `cert` and similar methods give the server an **external** user name. A map in `pg_ident.conf` translates it to a database role. Select it with `map=` in the `pg_hba.conf` record.'},
+{code:`# pg_ident.conf   MAPNAME   SYSTEM-USERNAME   DATABASE-USERNAME
+osmap             deploy     app_user
+osmap             alice      alice
+
+# pg_hba.conf
+local   sales   all   peer map=osmap`},
+{h:'Authentication versus authorization: worked example'},
+{t:[['Scenario','Authentication','Authorization'],['`app_user` connects from `10.0.1.7` to `sales` with the correct password','Rule `hostssl sales app_user 10.0.1.0/24 scram-sha-256` matches and the password verifies','Allowed only if `app_user` (or its groups) has `CONNECT`, schema `USAGE` and table privileges'],['Same user connects from `10.0.7.7`','No matching rule except `reject`: refused before any password is asked','Never reached'],['`alice` logs in correctly but runs `SELECT * FROM payroll`','Succeeds','`ERROR: permission denied for table payroll`']]},
+{note:'Authentication proves identity; it grants nothing. A freshly created login role with a valid password can connect to any database that grants `CONNECT` to `PUBLIC` (the default) but can read no tables until you grant privileges.'}],
+src:[['Client Authentication',D+'client-authentication.html'],['The pg_hba.conf File',D+'auth-pg-hba-conf.html'],['Authentication Methods',D+'auth-methods.html'],['User Name Maps',D+'auth-username-maps.html'],['pg_hba_file_rules',D+'view-pg-hba-file-rules.html']]},
+
+/* ---------------------------------------------------------------- 6:2 */
+'pg:6:2':{blocks:[
+{p:'**PUBLIC** is a special, implicitly defined group that always contains **every role**, including roles created in the future. The documentation (Privileges, and the `GRANT` reference) explains that when a privilege is granted to `PUBLIC` it is granted to all roles. `PUBLIC` is not a real role: you cannot create it, alter it, drop it, or see it in `\\du`. It exists only as a possible **grantee** in access control lists. Because new databases, functions and types start with some privileges already given to `PUBLIC`, a freshly installed cluster is more open than most people expect, and hardening it is one of the first DBA security tasks.'},
+{h:'What PUBLIC is and is not'},
+{t:[['Question','Answer'],['Is it a role?','No. `CREATE ROLE public` fails because the name is reserved. It is a pseudo-role used as a grantee keyword.'],['Does it show in `\\du` or `pg_roles`?','No. It appears in ACLs as an **empty grantee name** (the text before the `=` is blank).'],['Can a role opt out of it?','No. Every role is always a member. The only fix is to `REVOKE` the privilege from `PUBLIC`.'],['Does it include roles created later?','Yes. That is why a grant to `PUBLIC` is permanent exposure for all future accounts.'],['Is it different from `pg_*` predefined roles?','Yes. Predefined roles (next bonus lecture) are real, grantable roles. `PUBLIC` is not.']]},
+{h:'Privileges PUBLIC receives by default'},
+{p:'The Privileges chapter lists the defaults applied when an object is created and no explicit grants are made. Everything not listed here is private to the owner until granted.'},
+{svg:pubSvg},
+{t:[['Object type','Default granted to PUBLIC','Consequence'],['Database','`CONNECT` and `TEMPORARY`','Any role that passes authentication can enter every database and create temporary tables in it.'],['Function and procedure','`EXECUTE`','Any role can call any new function (including `SECURITY DEFINER` ones) unless you revoke it.'],['Language','`USAGE`','Any role can write functions in trusted languages such as PL/pgSQL.'],['Data type and domain','`USAGE`','Any role can use any new type in its own tables.'],['Schema `public`','`USAGE` (and `CREATE` only on clusters created before PostgreSQL 15)','See the search_path section below.'],['Table, sequence, tablespace, schema (other than public)','Nothing','Private to the owner. This is the safe default.']]},
+{note:'System catalogs such as `pg_class` and `pg_proc` are readable by everyone and this cannot be revoked. Privileges protect **data**, not the existence of objects: any login can list table names and function definitions in a database it can connect to. That is another reason to remove `CONNECT` from `PUBLIC`.'},
+{h:'How to read an ACL'},
+{p:'Privileges are stored as `aclitem` values with the form `grantee=privileges/grantor`. A blank grantee means `PUBLIC`. An **empty (NULL) ACL column** means the object still has its default privileges, which is not the same as having none.'},
+{t:[['Letter','Privilege','Letter','Privilege'],['`r`','SELECT (read)','`X`','EXECUTE'],['`w`','UPDATE (write)','`U`','USAGE'],['`a`','INSERT (append)','`C`','CREATE'],['`d`','DELETE','`c`','CONNECT'],['`D`','TRUNCATE','`T`','TEMPORARY'],['`x`','REFERENCES','`s`','SET (parameter)'],['`t`','TRIGGER','`A`','ALTER SYSTEM (parameter)'],['`m`','MAINTAIN (PostgreSQL 17+)','`*`','Suffix: WITH GRANT OPTION']]},
+{code:`-- databases: =Tc/postgres means PUBLIC has TEMPORARY(T) and CONNECT(c), granted by postgres
+\\l
+
+-- schemas: on 15+ you see  pg_database_owner=UC/pg_database_owner  and  =U/pg_database_owner  for public
+\\dn+
+
+-- functions in a schema
+\\df+ public.*
+
+-- the same facts as SQL
+SELECT datname, datacl FROM pg_database ORDER BY 1;
+SELECT nspname, nspacl FROM pg_namespace WHERE nspname !~ '^(pg_|information_schema)';
+
+-- expand an ACL into rows
+SELECT a.grantor::regrole, a.grantee::regrole, a.privilege_type, a.is_grantable
+FROM pg_database d, aclexplode(COALESCE(d.datacl, acldefault('d', d.datdba))) a
+WHERE d.datname = 'postgres';      -- grantee 0 (shown as -) is PUBLIC`},
+{h:'Why PUBLIC is a security risk'},
+{t:[['Exposure','Attack or mistake it enables','Mitigation'],['`CONNECT` to every database','A low-trust account (for example a reporting login) can open a database it was never meant to touch and read catalog metadata.','`REVOKE ALL ON DATABASE ... FROM PUBLIC`, then grant `CONNECT` to group roles'],['`TEMPORARY`','Creating many temporary tables consumes disk and catalog space.','Revoke from `PUBLIC`; grant only to roles that need it'],['`EXECUTE` on new functions','A helper function that was never meant for general use is callable by everyone, which is dangerous for `SECURITY DEFINER` functions.','`ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`'],['`CREATE` on schema `public` (pre-15 clusters)','Any user can plant objects that other users later call by accident (search_path hijack).','`REVOKE CREATE ON SCHEMA public FROM PUBLIC`']]},
+{h:'Search_path hijacking'},
+{p:'When a query uses an **unqualified name**, PostgreSQL looks through the schemas listed in `search_path`. The default is `"$user", public`: first a schema named after the current role, then `public`. `pg_catalog` is always searched too, but when several functions with the same name exist, the one whose argument types match **exactly** is chosen. If an untrusted user is allowed to create objects in a schema that appears in the path, they can create a function with a closer type match than the built-in one. When a privileged user later runs an unqualified call, the planted function executes **with the caller\'s privileges**. This class of problem was published as CVE-2018-1058 and is the reason for the `PUBLIC` changes in PostgreSQL 15.'},
+{svg:dg(700,200,[[10,45,135,60,'Attacker|has CREATE on|schema public',0],[185,45,165,60,'Plants public.upper|(varchar) with a|hidden payload',2],[390,45,145,60,'Superuser runs|SELECT upper(name)|unqualified',0],[575,45,115,60,'Payload runs|as superuser',2],[10,135,680,50,'Defences: remove CREATE from PUBLIC; schema-qualify names (pg_catalog.upper)|SET search_path on functions; keep scripts out of superuser sessions',2]],[[145,75,185,75],[350,75,390,75],[535,75,575,75]])},
+{code:`-- ATTACKER (possible when CREATE on public is granted to PUBLIC)
+CREATE FUNCTION public.upper(varchar) RETURNS text LANGUAGE sql AS $$
+    SELECT 'a real attack would run its payload here, with the caller''s rights'::text $$;
+
+-- LATER, a maintenance script is run by a privileged role; name is varchar.
+-- The exact match public.upper(varchar) beats pg_catalog.upper(text).
+SELECT upper(name) FROM customers;
+
+-- DEFENCE: always qualify, or pin the search path
+SELECT pg_catalog.upper(name) FROM customers;
+SET search_path = pg_catalog;      -- for a maintenance session`},
+{h:'Secure schema usage patterns (from the documentation)'},
+{t:[['Pattern','How','Trade-off'],['Private schema per user','`REVOKE CREATE ON SCHEMA public FROM PUBLIC;` then `CREATE SCHEMA alice AUTHORIZATION alice;` The default `"$user"` path finds it.','Best isolation for multi-user clusters'],['Remove public from the path','`ALTER ROLE ALL SET search_path = "$user";` (or set it in `postgresql.conf`). Users then qualify `public.table` explicitly.','Existing applications may break if they rely on `public`'],['Keep the default and trust everyone','Do nothing special, but only on a cluster where every user is trusted.','Acceptable only for single-tenant or lab systems']]},
+{h:'Hardening procedure'},
+{flow:['Inspect ACLs with \\l, \\dn+, \\df+','REVOKE database privileges from PUBLIC','REVOKE CREATE on public schema','Change default function privileges','Grant CONNECT to group roles only','Test with a low-privilege login']},
+{code:`-- 1. Stop anonymous entry (database ACL is per database, so repeat for every database)
+REVOKE ALL ON DATABASE sales FROM PUBLIC;
+GRANT  CONNECT ON DATABASE sales TO app_rw, app_ro;
+
+-- 2. Public schema (already default on new 15+ clusters; REQUIRED on clusters upgraded from 14 or older)
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+
+-- 3. Future functions created by the current role are no longer executable by everybody
+ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+-- existing ones (run per schema; skip extension schemas you want left alone)
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
+
+-- 4. Harden the template so new databases start safe
+\\c template1
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;`},
+{note:'The **database-level** ACL (`CONNECT`, `TEMPORARY`) is not copied from a template, so every new database starts with `PUBLIC` having `CONNECT`. Script the `REVOKE` into your database-creation procedure. Schema and function ACLs **are** copied from the template.'},
+{h:'Verify that the lockdown works'},
+{code:`-- as an unprivileged role that has not been granted CONNECT
+psql -U alice -d sales
+-- FATAL:  permission denied for database "sales"
+-- DETAIL:  User does not have CONNECT privilege.
+
+-- functions that still carry default (PUBLIC) EXECUTE: proacl IS NULL
+SELECT n.nspname, p.proname, pg_get_function_identity_arguments(p.oid) AS args
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE p.proacl IS NULL AND n.nspname NOT IN ('pg_catalog','information_schema')
+ORDER BY 1,2;`},
+{h:'Summary of good practice'},
+{ul:['Treat **PUBLIC** as the broadest group you have and keep it empty on production databases.','Grant access to **named group roles**, never to `PUBLIC`.','Use **schema-qualified** names in scripts, views and functions.','Give every `SECURITY DEFINER` function a fixed `search_path` (covered in the hardening lecture).','Re-check after every major upgrade: `pg_upgrade` keeps the old ACLs, including a permissive `public` schema.']}],
+src:[['Privileges',D+'ddl-priv.html'],['Schemas and secure usage patterns',D+'ddl-schemas.html'],['GRANT',D+'sql-grant.html'],['ALTER DEFAULT PRIVILEGES',D+'sql-alterdefaultprivileges.html'],['Release 15 notes (public schema change)','https://www.postgresql.org/docs/release/15.0/'],['A Guide to CVE-2018-1058: Protect Your Search Path','https://wiki.postgresql.org/wiki/A_Guide_to_CVE-2018-1058:_Protect_Your_Search_Path']]},
+
+/* ---------------------------------------------------------------- 6:3 */
+'pg:6:3':{blocks:[
+{p:'Creating a role is simple; creating it **safely** is the skill. Every attribute you add widens what the account can do, so the rule from the documentation and from security practice is the same: start from nothing (`NOSUPERUSER NOCREATEDB NOCREATEROLE NOLOGIN`) and add only what the duty requires. This lecture covers the full `CREATE ROLE` command, what each attribute means, how passwords and expiry work, connection limits, per-role defaults, and the changes to `CREATEROLE` in PostgreSQL 16.'},
+{h:'Full syntax'},
+{code:`CREATE ROLE name [ [ WITH ] option [ ... ] ]
+
+option:   SUPERUSER   | NOSUPERUSER
+        | CREATEDB    | NOCREATEDB
+        | CREATEROLE  | NOCREATEROLE
+        | INHERIT     | NOINHERIT
+        | LOGIN       | NOLOGIN
+        | REPLICATION | NOREPLICATION
+        | BYPASSRLS   | NOBYPASSRLS
+        | CONNECTION LIMIT connlimit
+        | [ ENCRYPTED ] PASSWORD 'password' | PASSWORD NULL
+        | VALID UNTIL 'timestamp'
+        | IN ROLE role_name [, ...]      -- become a member of these roles now
+        | ROLE role_name [, ...]         -- these roles become members of the new one
+        | ADMIN role_name [, ...]        -- like ROLE, with ADMIN OPTION
+
+-- shortcuts
+CREATE USER  name ...;    -- identical to CREATE ROLE name LOGIN ...
+CREATE GROUP name ...;    -- legacy synonym of CREATE ROLE`},
+{h:'Attributes, risks and recommendations'},
+{t:[['Attribute','What it allows','Risk','Recommendation'],['`SUPERUSER`','Bypasses all permission checks except the right to log in; can read files and run programs through server features','Total compromise of the cluster and often the host','One or two named break-glass accounts; never for applications; never for daily work'],['`CREATEDB`','Create databases and become their owner','Resource sprawl; owner of a database controls it','Only for provisioning roles'],['`CREATEROLE`','Create roles and manage the roles it has `ADMIN` rights on (PostgreSQL 16+)','Before 16 it was close to superuser (could grant itself powerful roles)','Give to a delegated user-administrator role, not to humans in general'],['`REPLICATION`','Open streaming-replication and base-backup connections','Can copy the entire cluster including all data','Dedicated `replicator` role, restricted in `pg_hba.conf` to standby addresses'],['`BYPASSRLS`','Ignores every row-level security policy','Defeats tenant isolation','Only for backup and maintenance roles that must see all rows'],['`LOGIN`','Start a session','Every login role is an attack surface','Set only on accounts used by a person or an application'],['`INHERIT`','Default for new memberships: privileges flow automatically','Privilege creep if used carelessly','Keep default for read roles; use NOINHERIT for powerful roles (see that lecture)'],['`CONNECTION LIMIT`','Cap on concurrent sessions for the role','Runaway application pools can exhaust slots','Set for every application role'],['`VALID UNTIL`','Password stops working at that time','Stale accounts stay usable forever','Use for contractors and temporary accounts']]},
+{note:'Role **attributes** (`SUPERUSER`, `CREATEDB`, `CREATEROLE`, `REPLICATION`, `BYPASSRLS`, `LOGIN`) are never inherited through membership. Privileges on objects are. To use `CREATEDB` through a group you must `SET ROLE` to that group first.'},
+{h:'Creation workflow'},
+{flow:['Decide the duty and the account type (person, app, service)','Create with the minimum attributes','Set a strong password and expiry','Set a connection limit and role defaults','Add to group roles','Add a pg_hba.conf rule','Test login and permissions']},
+{h:'Examples for typical account types'},
+{code:`-- A person (DBA) : login, password with expiry, member of the dba group, no superuser
+CREATE ROLE alice LOGIN PASSWORD 'Change_Me_1!' VALID UNTIL '2026-12-31' IN ROLE dba;
+
+-- An application : limited sessions, no extra attributes
+CREATE ROLE app_user LOGIN PASSWORD 'S3cret_App_Pw' CONNECTION LIMIT 40 IN ROLE app_rw;
+
+-- A read-only reporting login
+CREATE ROLE report_user LOGIN CONNECTION LIMIT 10 IN ROLE app_ro;
+
+-- Streaming replication (see the Replication section)
+CREATE ROLE replicator LOGIN REPLICATION CONNECTION LIMIT 5 PASSWORD 'Repl_Pw_2026';
+
+-- Monitoring agent using a predefined role instead of superuser
+CREATE ROLE exporter LOGIN CONNECTION LIMIT 3 IN ROLE pg_monitor;
+
+-- A group role: cannot log in, holds privileges
+CREATE ROLE app_rw NOLOGIN;`},
+{h:'Passwords: do not leave them in logs or history'},
+{p:'A literal password in `CREATE ROLE ... PASSWORD \'...\'` can appear in the server log (if `log_statement` is `ddl` or higher), in `pg_stat_statements` and in shell history. The server stores only a hash, but the statement text exists before hashing. Prefer the psql meta-command, which asks for the password interactively and hashes it **on the client** using the current `password_encryption` setting.'},
+{code:`\\password alice            -- prompts twice, sends an already-hashed value
+\\password                  -- change your own password
+
+-- command-line utility: -P prompts for the password, --interactive asks questions
+createuser --interactive -P app_user`},
+{ul:['`VALID UNTIL \'infinity\'` removes an expiry; a past timestamp locks the password out.','After expiry the client sees only `password authentication failed`; the server log says `User "x" has an expired password`.','A role with no password (`PASSWORD NULL`) cannot use password methods, but still works with `peer`, `cert`, `gss` and similar methods.']},
+{h:'Limiting connections at four levels'},
+{t:[['Level','Setting','Scope'],['Cluster','`max_connections` (restart)','All sessions'],['Reserve for emergencies','`superuser_reserved_connections` (default 3) and `reserved_connections` (PostgreSQL 16+, used by members of `pg_use_reserved_connections`)','Slots kept free so admins can still log in'],['Database','`ALTER DATABASE sales CONNECTION LIMIT 100;`','Sessions to one database'],['Role','`ALTER ROLE app_user CONNECTION LIMIT 40;`','Sessions by one role']]},
+{h:'Per-role defaults with ALTER ROLE ... SET'},
+{p:'A role can carry its own defaults for run-time parameters. They are stored in `pg_db_role_setting` and applied **at login**. The most specific setting wins: role-and-database beats role, and role beats database, and all of them beat `postgresql.conf`.'},
+{code:`ALTER ROLE app_user SET statement_timeout = '30s';
+ALTER ROLE app_user SET idle_in_transaction_session_timeout = '60s';
+ALTER ROLE app_user IN DATABASE sales SET search_path = app, pg_catalog;
+ALTER ROLE report_user SET default_transaction_read_only = on;
+
+-- review and remove
+SELECT r.rolname, d.datname, s.setconfig
+FROM pg_db_role_setting s
+LEFT JOIN pg_roles r ON r.oid = s.setrole
+LEFT JOIN pg_database d ON d.oid = s.setdatabase;
+ALTER ROLE app_user RESET statement_timeout;`},
+{h:'CREATEROLE after PostgreSQL 16'},
+{t:[['Behaviour','Before 16','16 and later (including 18)'],['What CREATEROLE can alter','Any non-superuser role','Only roles on which it holds `ADMIN OPTION`'],['Creator of a role','No special link','Receives `ADMIN OPTION` on the new role automatically'],['Granting powerful attributes','Could create `CREATEDB` roles freely','Cannot give an attribute (such as `REPLICATION` or `BYPASSRLS`) that it does not itself hold'],['Granting itself access','Possible by joining any non-superuser role','Does not get `INHERIT` or `SET` on created roles unless `createrole_self_grant` says so']]},
+{h:'Changing and removing roles'},
+{code:`ALTER ROLE alice VALID UNTIL '2027-06-30';
+ALTER ROLE alice CONNECTION LIMIT 5;
+ALTER ROLE alice NOLOGIN;                  -- lock the account but keep ownership and grants
+ALTER ROLE alice RENAME TO alice_w;        -- an MD5 password is cleared by a rename (SCRAM is not)
+DROP ROLE IF EXISTS alice_w;               -- fails while objects or privileges still reference it`},
+{note:'Dropping a role that owns objects or holds privileges fails by design. The safe offboarding sequence (`REASSIGN OWNED`, `DROP OWNED`, `DROP ROLE`) is in the lecture on ownership and default privileges.'},
+{h:'Verify and troubleshoot'},
+{code:`\\du+ alice
+SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls,
+       rolconnlimit, rolvaliduntil
+FROM pg_roles WHERE rolname = 'alice';
+
+SELECT usename, count(*) FROM pg_stat_activity GROUP BY usename;  -- compare with the limit`},
+{t:[['Message','Meaning','Fix'],['`role "x" does not exist`','Wrong name or role created in a different cluster','Check `\\du` and the port'],['`role "x" is not permitted to log in`','Role is `NOLOGIN`','`ALTER ROLE x LOGIN`'],['`password authentication failed for user "x"`','Wrong or expired password, or the method in `pg_hba.conf` needs a different credential type','Reset password; read the log DETAIL line'],['`too many connections for role "x"`','Role connection limit reached','Raise limit or fix the application pool'],['`permission denied to create role`','Caller lacks `CREATEROLE`','Use a role that has it, or a superuser']]}],
+src:[['CREATE ROLE',D+'sql-createrole.html'],['ALTER ROLE',D+'sql-alterrole.html'],['Role Attributes',D+'role-attributes.html'],['Database Roles',D+'user-manag.html'],['createuser',D+'app-createuser.html'],['pg_db_role_setting',D+'catalog-pg-db-role-setting.html']]},
+
+/* ---------------------------------------------------------------- 6:4 */
+'pg:6:4':{blocks:[
+{p:'`GRANT` and `REVOKE` are the two commands that implement authorization. The documentation (Privileges) describes the model: every object has an **owner**; the owner can do anything with it and decides which other roles receive which privileges. A privilege is a right to perform one kind of action on one kind of object. `GRANT` has two forms: granting **privileges on objects** to roles, and granting **membership in a role** to another role. Both are covered here.'},
+{h:'Privileges by object type'},
+{t:[['Object','Privileges that can be granted','Notes'],['Database','`CONNECT`, `CREATE` (schemas), `TEMPORARY`','`CONNECT` and `TEMPORARY` default to PUBLIC'],['Schema','`USAGE`, `CREATE`','Without `USAGE` the objects inside cannot be reached at all'],['Table / view','`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER`, `MAINTAIN` (17+)','`UPDATE` and `DELETE` with a `WHERE` clause also need `SELECT`'],['Column','`SELECT`, `INSERT`, `UPDATE`, `REFERENCES`','Granted per column: `GRANT SELECT (col1, col2) ON t TO r`'],['Sequence','`USAGE`, `SELECT`, `UPDATE`','`nextval` needs `USAGE` or `UPDATE`; `currval` needs `USAGE` or `SELECT`'],['Function / procedure','`EXECUTE`','Defaults to PUBLIC'],['Tablespace','`CREATE`','Allows creating objects in it'],['Type, domain, language, FDW, foreign server','`USAGE`',''],['Large object','`SELECT`, `UPDATE`',''],['Configuration parameter','`SET`, `ALTER SYSTEM`','`GRANT SET ON PARAMETER log_statement TO auditor;` (PostgreSQL 15+)']]},
+{h:'Privileges needed for one simple query'},
+{flow:['CONNECT on the database','USAGE on the schema','SELECT on the table (or on each column used)','Row-level security policy allows the rows']},
+{p:'A missing privilege at any step produces a different error. This is the first thing to check when a user reports `permission denied`.'},
+{h:'GRANT on objects'},
+{code:`GRANT SELECT ON TABLE app.orders TO app_ro;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA app TO app_rw;   -- existing tables only
+GRANT USAGE ON SCHEMA app TO app_ro, app_rw;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA app TO app_rw;
+GRANT EXECUTE ON FUNCTION app.close_order(bigint) TO app_rw;
+GRANT CONNECT ON DATABASE sales TO app_ro, app_rw;
+GRANT SELECT (order_id, status) ON app.orders TO support;                      -- column level
+GRANT SELECT ON app.orders TO app_ro WITH GRANT OPTION;                         -- may pass it on
+GRANT ALL PRIVILEGES ON SCHEMA app TO app_owner;`},
+{ul:['`ON ALL TABLES IN SCHEMA` covers tables, views, materialized views and foreign tables that **exist now**. Objects created later need `ALTER DEFAULT PRIVILEGES` (next bonus lecture).','**serial** columns call `nextval` as the inserting role, so that role needs sequence privileges. **Identity** columns (`GENERATED ... AS IDENTITY`) do not.','`GRANT ... TO PUBLIC` gives the privilege to everyone, current and future. Avoid it outside of deliberate, documented cases.','Only the owner (or a role that is a member of the owner, or a superuser) can grant privileges on an object. Others can re-grant only if they hold `WITH GRANT OPTION`.']},
+{h:'GRANT a role (membership)'},
+{code:`GRANT app_ro TO alice;                                  -- alice becomes a member
+GRANT app_rw TO app_user;
+GRANT dba    TO alice WITH ADMIN OPTION;                -- alice may grant/revoke dba to others
+GRANT migrator TO bob WITH INHERIT FALSE, SET TRUE;     -- PostgreSQL 16+: control how membership behaves
+REVOKE app_ro FROM alice;`},
+{t:[['Membership option (16+)','Meaning'],['`ADMIN`','The member can grant and revoke this role to others'],['`INHERIT`','The member automatically uses the role\'s privileges'],['`SET`','The member may `SET ROLE` to it']]},
+{h:'REVOKE'},
+{code:`REVOKE INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA app FROM app_ro;
+REVOKE ALL PRIVILEGES ON DATABASE sales FROM PUBLIC;
+REVOKE GRANT OPTION FOR SELECT ON app.orders FROM app_ro;     -- keep privilege, remove the right to pass it on
+REVOKE SELECT ON app.orders FROM bob CASCADE;                 -- also removes what bob granted to others`},
+{svg:dg(700,190,[[10,60,120,55,'owner|app_owner',0],[190,60,150,55,'bob|WITH GRANT OPTION',2],[400,60,130,55,'carol|granted by bob',0],[550,25,140,50,'REVOKE ... FROM bob|CASCADE',2],[550,110,140,50,'carol loses the|privilege too',0]],[[130,87,190,87],[340,87,400,87],[620,75,620,110]])},
+{h:'Why a REVOKE seems to have no effect'},
+{t:[['Symptom','Real cause','Check'],['User still reads the table after `REVOKE SELECT ... FROM alice`','The privilege also comes from **PUBLIC** or from a **group role** alice belongs to','`\\dp app.orders` shows `=r/...` for PUBLIC; `SELECT pg_has_role(\'alice\',\'app_ro\',\'USAGE\')`'],['Revoke ran but nothing changed','The grant was made by a **different grantor**. `REVOKE` removes only grants made by the current role (or a role it can act as).','Run as the owner, or `REVOKE ... GRANTED BY owner`'],['Owner lost access after `REVOKE ALL`','The owner can revoke its own privileges','`GRANT ALL ON ... TO owner`'],['Revoked on the table but column still readable','A separate column-level grant exists','`\\dp` column privileges section; `has_column_privilege`']]},
+{h:'Role-based model: read-only and read-write'},
+{svg:dg(700,200,[[10,15,180,170,'Login roles',1],[25,45,150,40,'report_user',0],[25,105,150,40,'app_user',0],[260,15,180,170,'Group roles (NOLOGIN)',1],[275,45,150,40,'app_ro|SELECT',2],[275,105,150,40,'app_rw|app_ro + DML',2],[500,15,190,170,'Objects in schema app',1],[515,45,160,40,'tables:|SELECT',0],[515,105,160,40,'tables:|INSERT UPDATE DELETE',0]],[[175,65,275,65],[175,125,275,125],[425,65,515,65],[425,125,515,125]])},
+{code:`-- groups hold privileges
+CREATE ROLE app_ro NOLOGIN;
+CREATE ROLE app_rw NOLOGIN IN ROLE app_ro;      -- app_rw inherits everything app_ro has
+
+GRANT CONNECT ON DATABASE sales TO app_ro;
+GRANT USAGE   ON SCHEMA app TO app_ro;
+GRANT SELECT  ON ALL TABLES IN SCHEMA app TO app_ro;
+
+GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA app TO app_rw;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA app TO app_rw;
+
+-- people and applications are members
+CREATE ROLE report_user LOGIN IN ROLE app_ro;
+CREATE ROLE app_user    LOGIN IN ROLE app_rw;`},
+{h:'Inspecting and testing privileges'},
+{code:`\\dp app.*                                   -- table privileges, ACL strings like app_ro=r/app_owner
+\\ddp                                        -- default privileges (next lecture)
+
+SELECT has_table_privilege('report_user','app.orders','SELECT');   -- true
+SELECT has_table_privilege('report_user','app.orders','INSERT');   -- false
+SELECT has_schema_privilege('report_user','app','USAGE');
+SELECT has_database_privilege('report_user','sales','CONNECT');
+SELECT has_column_privilege('support','app.orders','status','SELECT');
+SELECT has_function_privilege('app_user','app.close_order(bigint)','EXECUTE');
+
+-- every table privilege, including those from PUBLIC
+SELECT grantee, table_schema, table_name, privilege_type
+FROM information_schema.table_privileges WHERE table_schema = 'app' ORDER BY 1,3;
+
+-- try it as the user
+SET ROLE report_user;  SELECT count(*) FROM app.orders;  DELETE FROM app.orders;  RESET ROLE;
+-- ERROR:  permission denied for table orders`},
+{t:[['Error','Missing privilege'],['`permission denied for database "d"`','`CONNECT` on the database'],['`permission denied for schema app`','`USAGE` on the schema'],['`permission denied for table orders`','Table or column privilege (or the column list of `SELECT *`)'],['`permission denied for sequence orders_id_seq`','`USAGE` on the sequence (serial column)'],['`permission denied for function f`','`EXECUTE` on the function'],['`must be owner of table orders`','`ALTER`, `DROP`, `COMMENT`, `GRANT` need ownership; they are not grantable privileges'],['`permission denied to set parameter "x"`','`GRANT SET ON PARAMETER x`']]},
+{note:'Grant privileges to **group roles**, grant groups to **login roles**, and let each person be a member of few groups. Direct grants to individual users are the most common reason that privilege audits become impossible.'}],
+src:[['Privileges',D+'ddl-priv.html'],['GRANT',D+'sql-grant.html'],['REVOKE',D+'sql-revoke.html'],['Role Membership',D+'role-membership.html'],['Privilege inquiry functions',D+'functions-info.html#FUNCTIONS-INFO-ACCESS-TABLE'],['information_schema.table_privileges',D+'infoschema-table-privileges.html']]},
+
+/* ---------------------------------------------------------------- 6:5 */
+'pg:6:5':{blocks:[
+{p:'Membership in a role can work in two different ways. With **INHERIT**, the member automatically holds every privilege of the role, exactly as if it had been granted directly. With **NOINHERIT**, the member holds **nothing** from the role until it explicitly runs `SET ROLE` to become that role. The documentation (Role Membership) calls out this choice as the way to separate everyday access from powerful access. Since PostgreSQL 16 the behaviour is a property of **each membership grant** (the `INHERIT` and `SET` options), and the `INHERIT`/`NOINHERIT` role attribute only sets the default for future grants.'},
+{svg:inhSvg},
+{h:'Two ways a role can use another role'},
+{t:[['','Automatic (INHERIT)','Explicit (SET ROLE)'],['How','Privileges are combined with your own','You switch identity; your own privileges are no longer in effect'],['Needs','Membership with `INHERIT TRUE`','Membership with `SET TRUE`'],['Typical use','Read access, reporting, application groups','Schema changes, ownership, break-glass access'],['Audit trail','Hard to see which privilege was used','`current_user` changes, clearly visible in logs and pgAudit'],['Attributes (`CREATEDB`, `LOGIN`)','Not inherited','Not inherited, but `SET ROLE` to a role that has them makes you that role']]},
+{h:'PostgreSQL 16 changes'},
+{t:[['Topic','Before 16','16 and later'],['Where behaviour is set','`INHERIT` / `NOINHERIT` attribute of the **member** role, for all its memberships','`INHERIT` and `SET` options on **each** `GRANT role TO member`'],['Role attribute','Controls every membership','Default for memberships granted afterwards'],['`SET ROLE` permission','Any member could switch','Only if the grant has `SET TRUE`'],['Visibility','`pg_auth_members` had `admin_option`','Also `inherit_option` and `set_option`']]},
+{code:`-- default for new grants comes from the role attribute
+CREATE ROLE bob LOGIN NOINHERIT;
+
+-- explicit per-grant control (16+)
+GRANT dev_read TO alice WITH INHERIT TRUE,  SET FALSE;   -- automatic reading, cannot become dev_read
+GRANT migrator TO bob   WITH INHERIT FALSE, SET TRUE;    -- must SET ROLE; nothing automatic
+
+-- change an existing grant
+GRANT migrator TO bob WITH INHERIT FALSE;`},
+{h:'Enterprise pattern: separate duties'},
+{p:'The goal is that **nobody can accidentally change the schema** while doing normal work. Developers read data every day (inherited) but make structural changes only after deliberately switching to the migration role.'},
+{t:[['Role','Type','Holds'],['`migrator`','NOLOGIN','Owns the schema and every object in it. Nobody logs in as it directly.'],['`dev_read`','NOLOGIN','`USAGE` on schema, `SELECT` on tables'],['`alice`','LOGIN, INHERIT','Member of `dev_read`; reads data automatically'],['`bob`','LOGIN, NOINHERIT for migrator','Member of `dev_read` (INHERIT) and `migrator` (SET only)']]},
+{code:`CREATE ROLE migrator NOLOGIN;                         -- owner of the schema and its objects
+CREATE ROLE dev_read NOLOGIN;
+
+CREATE SCHEMA app AUTHORIZATION migrator;
+GRANT USAGE ON SCHEMA app TO dev_read;
+-- tables that migrator creates later are readable by dev_read automatically
+ALTER DEFAULT PRIVILEGES FOR ROLE migrator IN SCHEMA app GRANT SELECT ON TABLES TO dev_read;
+
+CREATE ROLE alice LOGIN;
+CREATE ROLE bob   LOGIN;
+GRANT dev_read TO alice, bob;                         -- automatic read access for both
+GRANT migrator TO bob WITH INHERIT FALSE, SET TRUE;   -- only bob, only when he asks for it`},
+{h:'Using SET ROLE'},
+{flow:['bob connects as bob','Normal work: SELECT only (via dev_read)','Change needed: SET ROLE migrator','Run DDL as the owner','RESET ROLE (back to bob)']},
+{code:`-- session as bob
+CREATE TABLE app.t1(id int);        -- ERROR:  permission denied for schema app
+
+SET ROLE migrator;
+SELECT session_user, current_user;  -- bob | migrator
+CREATE TABLE app.t1(id int);        -- works; the new table is owned by migrator
+RESET ROLE;                         -- or SET ROLE NONE
+
+-- alice never could
+SET ROLE migrator;                  -- ERROR:  permission denied to set role "migrator"`},
+{note:'`session_user` is the identity that logged in and never changes (except with `SET SESSION AUTHORIZATION`, superuser only). `current_user` is the identity whose privileges are checked **now** and changes with `SET ROLE`. Log lines show `session_user`; pgAudit records both, which is how you can tell who really did a change.'},
+{h:'Inspecting the effective privileges'},
+{code:`-- three kinds of role test
+SELECT pg_has_role('alice','dev_read','USAGE');   -- true : alice uses dev_read privileges
+SELECT pg_has_role('alice','dev_read','MEMBER');  -- true : alice is a member (direct or indirect)
+SELECT pg_has_role('alice','dev_read','SET');     -- false: alice cannot SET ROLE dev_read
+
+SELECT r.rolname AS role, m.rolname AS member, g.rolname AS grantor,
+       am.admin_option, am.inherit_option, am.set_option
+FROM pg_auth_members am
+JOIN pg_roles r ON r.oid = am.roleid
+JOIN pg_roles m ON m.oid = am.member
+JOIN pg_roles g ON g.oid = am.grantor
+ORDER BY 1,2;`},
+{t:[['pg_has_role mode','Question answered'],['`USAGE`','Does the role use (inherit) the privileges of the other role?'],['`MEMBER`','Is it a member at all, ignoring inherit?'],['`SET`','May it `SET ROLE` to it?']]},
+{h:'Rules and limits'},
+{ul:['Privileges are inherited **through chains**: if `alice` inherits `dev_read` and `dev_read` inherits `base_read`, alice gets both.','**Membership loops** are not allowed. `GRANT a TO b` fails if `b` already contains `a`.','A superuser, `CREATEDB`, `CREATEROLE`, `REPLICATION` and `LOGIN` are **attributes**, never inherited.','Ownership matters: to `ALTER` or `DROP` an object you must act as its owner (`SET ROLE`) or hold the owner role with `INHERIT`. Making the owner a NOLOGIN role that only `SET`-capable members can become is the safest design.','Do not set `NOINHERIT` on application roles. It is meant for **people** who hold powerful roles.']},
+{t:[['Mistake','Result','Better'],['Granting `migrator` to every developer with `INHERIT`','Everyone can drop tables silently','`WITH INHERIT FALSE, SET TRUE`, only to those who deploy'],['One shared superuser for deployments','No individual accountability','Named logins plus `SET ROLE migrator`'],['Tables owned by the application login','SQL injection can `DROP` them','Owner is a NOLOGIN role; application only has DML']]}],
+src:[['Role Membership',D+'role-membership.html'],['GRANT (role membership options)',D+'sql-grant.html'],['SET ROLE',D+'sql-set-role.html'],['pg_auth_members',D+'catalog-pg-auth-members.html'],['Release 16 notes (role membership changes)','https://www.postgresql.org/docs/release/16.0/']]},
+
+/* ---------------------------------------------------------------- 6:6 */
+'pg:6:6':{blocks:[
+{p:'Normal privileges work at the level of a whole table or column. **Row-level security (RLS)** adds a finer layer: it decides **which rows** a role may see or change. The documentation (Row Security Policies) explains that once RLS is enabled on a table, every normal access must be allowed by a **policy**; if no policy exists, a **default-deny** policy applies and no rows are visible or changeable. RLS is the standard PostgreSQL tool for multi-tenant designs where many customers share the same tables.'},
+{svg:rlsSvg},
+{h:'Enabling RLS and creating policies'},
+{flow:['Table privileges granted (GRANT SELECT ...)','ALTER TABLE ... ENABLE ROW LEVEL SECURITY','CREATE POLICY with USING / WITH CHECK','Set the tenant context in the session','Test as the application role']},
+{code:`CREATE POLICY name ON table_name
+    [ AS { PERMISSIVE | RESTRICTIVE } ]
+    [ FOR { ALL | SELECT | INSERT | UPDATE | DELETE } ]
+    [ TO { role_name | PUBLIC | CURRENT_USER | SESSION_USER } [, ...] ]
+    [ USING ( using_expression ) ]
+    [ WITH CHECK ( check_expression ) ];
+
+ALTER TABLE tbl ENABLE  ROW LEVEL SECURITY;
+ALTER TABLE tbl DISABLE ROW LEVEL SECURITY;
+ALTER TABLE tbl FORCE   ROW LEVEL SECURITY;     -- apply policies to the table owner as well
+ALTER POLICY name ON tbl USING (...);
+DROP  POLICY name ON tbl;`},
+{h:'USING versus WITH CHECK'},
+{t:[['Clause','Applies to','Meaning'],['`USING`','Rows that **already exist** (read, update target, delete target)','A row that fails the expression is invisible and cannot be touched'],['`WITH CHECK`','Rows being **created or changed** (`INSERT`, new version in `UPDATE`)','A row that fails the expression raises an error and is rejected']]},
+{t:[['Command','USING used?','WITH CHECK used?'],['`SELECT`','Yes','No'],['`INSERT`','No','Yes'],['`UPDATE`','Yes (which rows can be updated)','Yes (what the new row may look like)'],['`DELETE`','Yes','No'],['`ALL`','Yes','Yes (falls back to `USING` if `WITH CHECK` is omitted)']]},
+{h:'Worked example: tenant isolation by session variable'},
+{code:`CREATE SCHEMA app AUTHORIZATION migrator;
+CREATE TABLE app.orders (
+    order_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    company  text          NOT NULL,
+    item     text          NOT NULL,
+    amount   numeric(12,2) NOT NULL
+);
+INSERT INTO app.orders(company,item,amount) VALUES
+  ('acme','Anvil',120),('acme','Rope',15),('globex','Drill',300),('globex','Saw',80);
+
+GRANT USAGE ON SCHEMA app TO app_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON app.orders TO app_rw;
+
+ALTER TABLE app.orders ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY tenant_isolation ON app.orders
+    FOR ALL TO app_rw
+    USING      (company = current_setting('app.current_company', true))
+    WITH CHECK (company = current_setting('app.current_company', true));`},
+{p:'`current_setting(name, true)` returns NULL (or an empty string after a `RESET`) when the variable is unset, so the comparison matches **no row**: an application that forgets to set the tenant sees nothing instead of everything. This is **fail-closed** behaviour, which is what you want.'},
+{code:`-- connect as app_user (member of app_rw)
+SELECT count(*) FROM app.orders;                   -- 0 : no tenant set, nothing visible
+
+SET app.current_company = 'acme';
+SELECT order_id, item, amount FROM app.orders;     -- only the two acme rows
+
+INSERT INTO app.orders(company,item,amount) VALUES ('acme','Hammer',25);    -- ok
+INSERT INTO app.orders(company,item,amount) VALUES ('globex','Saw',1);
+-- ERROR:  new row violates row-level security policy for table "orders"
+
+UPDATE app.orders SET company = 'globex' WHERE item = 'Rope';
+-- ERROR:  new row violates row-level security policy ... (WITH CHECK stops moving a row to another tenant)
+
+DELETE FROM app.orders WHERE company = 'globex';   -- DELETE 0 : those rows are invisible`},
+{h:'Who is NOT subject to RLS'},
+{t:[['Role','Subject to policies?','Notes'],['Superuser','No','Always bypasses'],['Role with `BYPASSRLS`','No','Give to backup and maintenance roles only'],['Table owner','No, **unless** `FORCE ROW LEVEL SECURITY`','Use `FORCE` when the owner role can also log in or run application SQL'],['Everyone else','Yes','Including members of `pg_read_all_data` unless they also hold `BYPASSRLS`']]},
+{h:'Several policies on one table'},
+{t:[['Type','How combined','Use'],['`PERMISSIVE` (default)','Policies are joined with **OR**: a row is allowed if any permissive policy allows it','Add separate rules, for example "own rows" and "manager sees team rows"'],['`RESTRICTIVE`','Joined with **AND** to the permissive result: every restrictive policy must also pass','Mandatory rules, for example "never show rows flagged as legal hold"']]},
+{code:`-- permissive: staff see their own rows OR rows of their department
+CREATE POLICY own_rows  ON hr.reviews FOR SELECT TO staff USING (employee = current_user);
+CREATE POLICY dept_rows ON hr.reviews FOR SELECT TO managers
+    USING (dept = current_setting('app.dept', true));
+
+-- restrictive: applies on top of everything above
+CREATE POLICY not_sealed ON hr.reviews AS RESTRICTIVE FOR SELECT TO PUBLIC USING (NOT sealed);`},
+{h:'A second pattern: policy on the database role'},
+{p:'When each person has their own login, use `current_user` instead of a session variable. This cannot be bypassed by the user changing a setting.'},
+{code:`CREATE POLICY mine ON app.tickets FOR ALL TO PUBLIC
+    USING (owner_role = current_user) WITH CHECK (owner_role = current_user);`},
+{note:'A session variable such as `app.current_company` is **trusted input from the application**. Any role that can run arbitrary SQL can simply `SET app.current_company = \'globex\'`. Use it only when the application is the sole SQL client, and keep application roles from running ad-hoc SQL. For direct database users, base policies on `current_user` or `pg_has_role`.'},
+{h:'Connection pooling and the session variable'},
+{ul:['With **session pooling** the variable lives for the connection; always set it at checkout and clear it at release.','With **transaction pooling** the next transaction can run on a different connection. Set the value inside the transaction with `SET LOCAL` or `SELECT set_config(\'app.current_company\', \'acme\', true)`; the value then disappears automatically at `COMMIT` or `ROLLBACK`.','Forgetting to reset is the classic cross-tenant leak. The fail-closed policy above limits the damage only if the variable is cleared.']},
+{code:`BEGIN;
+SELECT set_config('app.current_company', 'acme', true);   -- true = local to this transaction
+SELECT * FROM app.orders;
+COMMIT;                                                     -- setting is gone`},
+{h:'Things RLS does not cover'},
+{ul:['**Views** run with the privileges of the view owner, which can bypass RLS on the underlying tables. Create views with `WITH (security_invoker = true)` (PostgreSQL 15+) so policies apply to the caller.','**Foreign key and unique checks** bypass RLS internally, so error messages can reveal that a hidden row exists (a covert channel). Design keys accordingly.','**Functions** that are not marked `LEAKPROOF` may be evaluated after the policy filter to avoid leaking hidden rows through error messages; this can influence plans.','`pg_dump` sets `row_security = off` and **fails** if a policy would filter rows, so a backup never silently loses data. Use a role with `BYPASSRLS` for backups, or `--enable-row-security` when a filtered dump is intended.']},
+{h:'Performance'},
+{ul:['The policy expression is added to **every** query on the table; index the filtered column (here `company`).','Keep expressions simple and stable. `(SELECT current_setting(\'app.current_company\', true))` evaluates the setting once per query instead of once per row.','Check plans with `EXPLAIN`; the policy appears as an added filter or index condition.']},
+{h:'Inspecting policies'},
+{code:`\\d+ app.orders                                       -- lists policies at the bottom
+SELECT schemaname, tablename, policyname, permissive, roles, cmd, qual, with_check FROM pg_policies;
+SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname = 'orders';
+SHOW row_security;                                    -- on by default
+SELECT rolname FROM pg_roles WHERE rolbypassrls;      -- who ignores policies`}],
+src:[['Row Security Policies',D+'ddl-rowsecurity.html'],['CREATE POLICY',D+'sql-createpolicy.html'],['ALTER TABLE (ENABLE / FORCE ROW LEVEL SECURITY)',D+'sql-altertable.html'],['pg_policies view',D+'view-pg-policies.html'],['Server Configuration: row_security',D+'runtime-config-client.html']]},
+
+/* ---------------------------------------------------------------- 6:7 */
+'pg:6:7':{blocks:[
+{p:'Granting `SUPERUSER` to solve a narrow problem (monitoring, reporting, killing a stuck query) is the most common security mistake in PostgreSQL. The documentation (Predefined Roles) provides a set of **ready-made roles** whose names start with `pg_`. They give access to specific privileged capabilities, so a task can be delegated with a single `GRANT` and **no superuser account**. Administrators, including roles with `CREATEROLE`, can grant them like any other role. The documentation also warns that their exact permissions may grow in future releases, so review them after upgrades.'},
+{svg:dg(700,200,[[250,15,200,50,'pg_monitor',2],[30,120,190,50,'pg_read_all_settings',0],[255,120,190,50,'pg_read_all_stats',0],[480,120,190,50,'pg_stat_scan_tables',0]],[[330,65,125,120],[350,65,350,120],[370,65,575,120]])},
+{h:'The predefined roles'},
+{t:[['Role','What it allows','Since'],['`pg_read_all_data`','`SELECT` on all tables, views and sequences and `USAGE` on all schemas. Does **not** include `BYPASSRLS`.','14'],['`pg_write_all_data`','Write all data (tables, views, sequences) as if holding `INSERT`, `UPDATE` and `DELETE`, plus `USAGE` on all schemas. Does not include `BYPASSRLS`.','14'],['`pg_read_all_settings`','Read all configuration parameters, including those normally visible only to superusers','10'],['`pg_read_all_stats`','Read all `pg_stat_*` views and use statistics extension functions, including superuser-only details such as other users\' query text','10'],['`pg_stat_scan_tables`','Run monitoring functions that may take `ACCESS SHARE` locks on tables for a long time','10'],['`pg_monitor`','Read and execute monitoring views and functions. It is a member of the three roles above.','10'],['`pg_signal_backend`','Send `pg_cancel_backend` and `pg_terminate_backend` to sessions of **non-superuser** roles','9.6'],['`pg_signal_autovacuum_worker`','Signal autovacuum workers to cancel the current table vacuum or terminate the session','18'],['`pg_read_server_files`','Read files on the server with `COPY ... FROM`, file functions and file foreign tables','11'],['`pg_write_server_files`','Write files on the server with `COPY ... TO`','11'],['`pg_execute_server_program`','Run programs on the server through `COPY ... PROGRAM`, as the OS user running PostgreSQL','11'],['`pg_checkpoint`','Run the `CHECKPOINT` command','15'],['`pg_maintain`','`VACUUM`, `ANALYZE`, `CLUSTER`, `REFRESH MATERIALIZED VIEW`, `REINDEX`, `LOCK TABLE` on all relations','17'],['`pg_use_reserved_connections`','Use connection slots set aside by `reserved_connections`','16'],['`pg_create_subscription`','`CREATE SUBSCRIPTION` for logical replication (with other required rights)','16'],['`pg_database_owner`','Implicit role that has exactly one member: the **owner of the current database**. Cannot have explicit members. Owns the `public` schema from PostgreSQL 15.','14']]},
+{note:'The names beginning `pg_` are reserved. You cannot create your own role with such a name, and the server refuses it. Run `SELECT rolname FROM pg_roles WHERE rolname ~ \'^pg_\';` to see what your version provides.'},
+{h:'Risk classification'},
+{t:[['Risk level','Roles','Why'],['Low (information)','`pg_read_all_settings`, `pg_read_all_stats`, `pg_stat_scan_tables`, `pg_monitor`','Read-only metadata; but query text in statistics can contain sensitive values'],['Medium (data)','`pg_read_all_data`, `pg_write_all_data`','Cluster-wide data access without per-table grants. RLS still applies unless `BYPASSRLS` is also set'],['Medium (operations)','`pg_signal_backend`, `pg_signal_autovacuum_worker`, `pg_checkpoint`, `pg_maintain`, `pg_use_reserved_connections`','Can disrupt other users or consume maintenance capacity'],['**High (equivalent to superuser)**','`pg_read_server_files`, `pg_write_server_files`, `pg_execute_server_program`','They reach the server file system or run shell commands as the `postgres` OS user, which can be turned into full control of the cluster']]},
+{h:'Typical uses'},
+{code:`-- 1. Monitoring agent (postgres_exporter, Zabbix, Datadog): no superuser needed
+CREATE ROLE exporter LOGIN CONNECTION LIMIT 3 PASSWORD '...';
+GRANT pg_monitor TO exporter;
+
+-- 2. Read-only analyst across every schema, now and in the future
+CREATE ROLE analyst LOGIN;
+GRANT pg_read_all_data TO analyst;
+-- if RLS is used and the analyst must see all rows
+ALTER ROLE analyst BYPASSRLS;
+
+-- 3. Support engineer who may cancel runaway queries of normal users
+CREATE ROLE support LOGIN;
+GRANT pg_signal_backend TO support;
+SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE usename = 'app_user' AND state = 'active';
+
+-- 4. Scheduled maintenance job with no ownership of tables
+CREATE ROLE janitor LOGIN;
+GRANT pg_maintain TO janitor;       -- VACUUM, ANALYZE, REINDEX ... on every table
+
+-- 5. Logical backup role
+CREATE ROLE dumper LOGIN;
+GRANT pg_read_all_data TO dumper;   -- enough for pg_dump of table data`},
+{h:'Choosing the right role'},
+{flow:['Define the task precisely','Does a predefined role cover it?','Grant that role, not SUPERUSER','If not, grant specific privileges to a group role','Review quarterly with pg_auth_members']},
+{h:'What each monitoring role really changes'},
+{t:[['Without the role','With `pg_monitor`'],['`SHOW ALL` hides some settings from non-superusers','`pg_settings` shows every value'],['`pg_stat_activity.query` is blank for other users\' sessions','Query text of all sessions is visible'],['`pg_ls_waldir()` and similar functions are denied','Selected monitoring functions work']]},
+{h:'Checking who holds what'},
+{code:`-- members of predefined roles
+SELECT r.rolname AS predefined_role, m.rolname AS member, am.admin_option, am.inherit_option, am.set_option
+FROM pg_auth_members am
+JOIN pg_roles r ON r.oid = am.roleid
+JOIN pg_roles m ON m.oid = am.member
+WHERE r.rolname ~ '^pg_'
+ORDER BY 1,2;
+
+-- test one account
+SELECT pg_has_role('exporter','pg_monitor','USAGE');`},
+{ul:['Predefined roles are cluster-wide like all roles, so a grant applies to every database.','Prefer granting them to a **group role** (`monitoring`, `readers`) and then adding logins to the group.','Predefined roles cannot be dropped or altered, but memberships can be revoked as usual.','The three **server file/program** roles belong only on a tightly controlled admin account, never on application roles.']}],
+src:[['Predefined Roles',D+'predefined-roles.html'],['Role Membership',D+'role-membership.html'],['Monitoring Database Activity',D+'monitoring.html'],['pg_signal_backend and signalling functions',D+'functions-admin.html#FUNCTIONS-ADMIN-SIGNAL']]},
+
+/* ---------------------------------------------------------------- 6:8 */
+'pg:6:8':{blocks:[
+{p:'Every object in PostgreSQL has exactly one **owner**, normally the role that created it. Ownership is the root of the privilege system: the owner holds all privileges on the object, and only the owner (or a superuser, or a role acting as the owner) can `ALTER` or `DROP` it and decide who else receives access. Ownership also explains why a role cannot be dropped while it still owns something. This lecture covers ownership, **default privileges** for objects created in the future, and the documented procedure for removing a role cleanly.'},
+{h:'Ownership rules'},
+{t:[['Fact','Detail'],['Initial owner','The role that ran `CREATE`, or the role named in `AUTHORIZATION` / `OWNER`'],['Owner rights','All privileges on the object; can revoke them from itself (not recommended)'],['Who can `ALTER` / `DROP`','Owner, a role that acts as the owner (`SET ROLE` or inherited membership), or a superuser. These are **not grantable privileges**.'],['Change owner','`ALTER ... OWNER TO new_owner`: you must own the object, be able to act as the new owner, and the new owner needs `CREATE` on the containing schema (or database)'],['Cluster-level owners','Databases and tablespaces are owned too; `ALTER DATABASE ... OWNER TO ...`'],['Special case','Owner of a schema owns it, but **not** the tables others create inside it']]},
+{code:`ALTER TABLE   app.orders  OWNER TO migrator;
+ALTER SCHEMA  app         OWNER TO migrator;
+ALTER DATABASE sales      OWNER TO sales_owner;
+ALTER FUNCTION app.close_order(bigint) OWNER TO migrator;
+
+-- who owns what
+SELECT schemaname, tablename, tableowner FROM pg_tables WHERE schemaname = 'app';
+SELECT nspname, pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = 'app';
+SELECT datname, pg_get_userbyid(datdba) FROM pg_database;
+\\dt+ app.*      \\dn+      \\l`},
+{note:'Design rule: **objects are owned by a NOLOGIN owner role; applications connect as different roles that only hold DML privileges.** If the application login owns the tables, a single SQL injection can drop or rewrite them, and it can also `GRANT` access to anyone.'},
+{h:'Default privileges'},
+{p:'`GRANT ... ON ALL TABLES IN SCHEMA` only affects tables that exist **now**. Tables created tomorrow start with owner-only access. `ALTER DEFAULT PRIVILEGES` stores a rule that is applied **automatically to future objects**. Per the documentation, it affects only objects created **by the role named in `FOR ROLE`** (by default, the role running the command), optionally limited to one schema. It never changes existing objects.'},
+{code:`ALTER DEFAULT PRIVILEGES [ FOR { ROLE | USER } target_role [, ...] ]
+    [ IN SCHEMA schema_name [, ...] ]
+    { GRANT privileges ON { TABLES | SEQUENCES | FUNCTIONS | ROUTINES | TYPES | SCHEMAS } TO role [, ...]
+    | REVOKE privileges ON ... FROM role [, ...] };
+
+-- every table, sequence and function migrator creates in schema app is usable by the right groups
+ALTER DEFAULT PRIVILEGES FOR ROLE migrator IN SCHEMA app GRANT SELECT ON TABLES TO app_ro;
+ALTER DEFAULT PRIVILEGES FOR ROLE migrator IN SCHEMA app GRANT INSERT, UPDATE, DELETE ON TABLES TO app_rw;
+ALTER DEFAULT PRIVILEGES FOR ROLE migrator IN SCHEMA app GRANT USAGE, SELECT ON SEQUENCES TO app_rw;
+
+-- global: nothing created by migrator is executable by PUBLIC
+ALTER DEFAULT PRIVILEGES FOR ROLE migrator REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;`},
+{t:[['Clause','Effect'],['No `FOR ROLE`','Applies to objects created by the **current** role only'],['`FOR ROLE x`','Applies to objects created by `x`. You must be `x` or a member that can act as `x`.'],['`IN SCHEMA s`','Limits the rule to that schema; schema-level defaults are **added to** global ones and cannot remove them'],['Object types','`TABLES` (includes views and foreign tables), `SEQUENCES`, `FUNCTIONS` / `ROUTINES`, `TYPES`, `SCHEMAS`'],['Existing objects','Untouched. Run `GRANT ... ON ALL ... IN SCHEMA` once for them']]},
+{code:`\\ddp                                                    -- list default privileges
+SELECT pg_get_userbyid(defaclrole) AS for_role,
+       defaclnamespace::regnamespace AS in_schema,       -- 0 = global
+       defaclobjtype AS type,                            -- r table, S sequence, f function, T type, n schema
+       defaclacl
+FROM pg_default_acl;`},
+{note:'The most frequent surprise: you define defaults **for the role you are logged in as**, but a different role (a developer using `SET ROLE migrator`, or a deployment tool) creates the tables. Defaults must be defined **FOR ROLE the creator**, otherwise new tables arrive with no access for the groups.'},
+{h:'Dropping a role safely'},
+{p:'`DROP ROLE` refuses to run while the role owns objects, holds privileges, or appears in default-privilege rules in **any database of the cluster**, because dropping it would leave those objects without an owner. Two commands prepare the role, and both work **per database**.'},
+{t:[['Command','What it does','Scope'],['`REASSIGN OWNED BY old TO new`','Transfers ownership of every object owned by `old` in the current database, **and** of shared objects (databases, tablespaces) owned by it. Privileges (ACL entries) are not moved.','Current database + shared objects'],['`DROP OWNED BY old`','Drops objects owned by `old` in the current database, and revokes privileges granted to `old` on objects in this database and on shared objects. Also removes its default-privilege entries. Databases and tablespaces it owns are **not** dropped.','Current database + shared privileges'],['`DROP ROLE old`','Removes the role and its memberships','Whole cluster']]},
+{flow:['Lock the account: ALTER ROLE old NOLOGIN','Terminate its sessions','In every database: REASSIGN OWNED BY old TO successor','In every database: DROP OWNED BY old','DROP ROLE old','Remove its pg_hba.conf and pg_ident.conf entries and secrets']},
+{code:`-- 1. lock and disconnect
+ALTER ROLE old NOLOGIN;
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'old';
+
+-- 2 and 3: repeat in EVERY database that allows connections (psql -d <db>)
+REASSIGN OWNED BY old TO successor;
+DROP OWNED BY old;
+
+-- 4. finally
+DROP ROLE old;`},
+{code:`# loop over all databases from the shell
+for db in $(psql -Atc "SELECT datname FROM pg_database WHERE datallowconn"); do
+  psql -d "$db" -c "REASSIGN OWNED BY old TO successor" -c "DROP OWNED BY old"
+done
+psql -c "DROP ROLE old"`},
+{t:[['DROP ROLE error','Cause','Fix'],['`role "old" cannot be dropped because some objects depend on it` with DETAIL lines such as `owner of table app.t1`','Still owns objects in the listed database','`REASSIGN OWNED` in that database'],['DETAIL `privileges for table app.orders`','It still holds grants','`DROP OWNED BY old` in that database'],['DETAIL `owner of database sales`','Shared object owner','`REASSIGN OWNED` (it handles databases) or `ALTER DATABASE ... OWNER TO`'],['DETAIL `N objects in database X`','Objects exist in a database you are not connected to','Connect to X and repeat'],['`current user cannot be dropped`','You are connected as that role','Connect as another role']]},
+{ul:['**Never** run `DROP OWNED BY` before deciding who inherits the data: it deletes tables the role owns.','`REASSIGN OWNED` does not copy privileges. If other roles had access through grants made by `old`, check `\\dp` afterwards.','Dropping a role removes its memberships but **not** the roles it contained.','Take a backup (`pg_dumpall --globals-only` plus database dumps) before an offboarding that touches ownership.']}],
+src:[['ALTER DEFAULT PRIVILEGES',D+'sql-alterdefaultprivileges.html'],['REASSIGN OWNED',D+'sql-reassign-owned.html'],['DROP OWNED',D+'sql-drop-owned.html'],['DROP ROLE',D+'sql-droprole.html'],['pg_default_acl',D+'catalog-pg-default-acl.html'],['Privileges (ownership)',D+'ddl-priv.html']]},
+
+/* ---------------------------------------------------------------- 6:9 */
+'pg:6:9':{blocks:[
+{p:'Roles prove their identity with a **password** (or a certificate or external service), and the connection carries data that may be sensitive. This lecture covers how PostgreSQL stores and verifies passwords, why **SCRAM-SHA-256** replaced MD5, how to migrate, how to protect passwords on clients, and how to encrypt the connection with **TLS**. The documentation (Password Authentication, Secure TCP/IP Connections with SSL) is the reference for each point.'},
+{h:'Password storage'},
+{t:[['Format','Stored in `pg_authid.rolpassword` as','Strength'],['SCRAM-SHA-256','`SCRAM-SHA-256$<iterations>:<salt>$<StoredKey>:<ServerKey>`','Salted, iterated; the server never holds the password or anything that can be replayed to log in'],['MD5 (deprecated in 18)','`md5` + md5(password + role name)','Weak: fast hash, salt is the role name, and the stored hash itself can be used to log in over the MD5 protocol'],['Plain text','Never stored','The server always stores a hash']]},
+{ul:['`pg_authid` (hashes) is readable only by superusers; `pg_roles` shows `********` instead.','`password_encryption` chooses the format used when a password is set. Default since PostgreSQL 14: `scram-sha-256`. Value `md5` is **deprecated in PostgreSQL 18**, and `md5_password_warnings` (default on) controls the deprecation warnings.','`scram_iterations` (default 4096, PostgreSQL 16+) sets the cost of new hashes.','A stored password hash cannot be converted between formats. The user must set the password again.']},
+{h:'How SCRAM-SHA-256 authentication works'},
+{svg:dg(700,230,[[10,10,100,210,'Client',0],[590,10,100,210,'Server',0],[160,15,380,40,'1  client-first: user name + random nonce',2],[160,70,380,40,'2  server-first: salt + iteration count + nonce',2],[160,125,380,40,'3  client-final: proof computed from the password',2],[160,180,380,40,'4  server-final: server signature (mutual proof)',2]],[[110,35,160,35],[540,35,590,35],[590,90,540,90],[160,90,110,90],[110,145,160,145],[540,145,590,145],[590,200,540,200],[160,200,110,200]])},
+{t:[['Property','SCRAM-SHA-256','MD5','`password` (clear)'],['Password crosses the network','Never','Never (hash exchange)','**Yes, in the clear**'],['Replay of a captured exchange','Not possible (fresh nonces)','Limited by a salt from the server','Trivial'],['Server proves identity to client','Yes','No','No'],['Stolen `pg_authid` row is enough to log in','No','Yes','n/a'],['Supports channel binding','Yes (`scram-sha-256-plus` over TLS)','No','No'],['Recommendation','Use','Migrate away','Only inside TLS, avoid']]},
+{h:'Migrating from MD5 to SCRAM'},
+{flow:['Check driver and client support for SCRAM','Set password_encryption = scram-sha-256','List roles still on md5','Reset each password','Change pg_hba.conf md5 to scram-sha-256','Reload and test']},
+{code:`-- 1. find the state of every role (requires superuser to read pg_authid)
+SELECT rolname,
+       CASE WHEN rolpassword LIKE 'SCRAM-SHA-256$%' THEN 'scram'
+            WHEN rolpassword LIKE 'md5%'            THEN 'md5'
+            WHEN rolpassword IS NULL                THEN 'no password'
+            ELSE 'other' END AS format
+FROM pg_authid WHERE rolcanlogin ORDER BY 2,1;
+
+-- 2. make sure new passwords are SCRAM
+SHOW password_encryption;                    -- scram-sha-256
+ALTER SYSTEM SET password_encryption = 'scram-sha-256';
+SELECT pg_reload_conf();
+
+-- 3. users set their own password again (psql hashes on the client)
+\\password app_user
+
+-- 4. pg_hba.conf: replace md5 with scram-sha-256 and reload`},
+{note:'A `pg_hba.conf` rule that says `md5` still works for a role whose stored password is SCRAM: the server then performs SCRAM. So you can switch roles to SCRAM first and tighten `pg_hba.conf` last. Old client libraries without SCRAM support will fail after the change, so test every driver.'},
+{h:'Protecting passwords on the client'},
+{t:[['Method','Use','Caution'],['`~/.pgpass`','Line format `host:port:database:user:password`. Wildcards `*` allowed.','File must be `chmod 0600` or libpq ignores it. On Windows: `%APPDATA%\\postgresql\\pgpass.conf`'],['`PGPASSFILE`','Points libpq to another password file','Same permission rule'],['`PGPASSWORD` environment variable','Quick scripts','Not recommended: the environment of a process can be visible to other users'],['`pg_service.conf`','Named connection profiles (host, port, db)','Holds no secrets unless you put them there'],['Certificates or `peer`','Passwordless for services','Needs key management or local OS identity']]},
+{ul:['`passwordcheck` is a sample contrib module (loaded by `shared_preload_libraries`) that rejects weak **clear-text** passwords. It cannot inspect a password that the client already hashed (for example with `\\password`). For real password policy use LDAP, Kerberos or OAuth and let the directory enforce it.','Rotate application passwords with `VALID UNTIL` and automate the change in your secret store.']},
+{h:'Encrypting connections with TLS'},
+{p:'By default PostgreSQL connections are **not encrypted**. SQL text, results and (for `password` authentication) credentials travel in clear text. TLS fixes this and, with certificate verification, also proves the server is the right one. Build the server with OpenSSL (`--with-openssl`; packaged builds have it).'},
+{code:`# 1. certificate (self-signed for testing; use your CA in production)
+openssl req -new -x509 -days 365 -nodes -text -out server.crt -keyout server.key \\
+        -subj "/CN=db1.example.com"
+chmod og-rwx server.key                  # the server refuses a key readable by group/other
+cp server.crt server.key $PGDATA/        # owned by the postgres OS user
+
+# 2. postgresql.conf
+ssl = on
+ssl_cert_file = 'server.crt'
+ssl_key_file  = 'server.key'
+ssl_min_protocol_version = 'TLSv1.2'     # TLSv1.3 where all clients support it
+#ssl_ca_file  = 'root.crt'               # needed to verify client certificates
+
+# 3. pg_hba.conf: force TLS for remote clients
+hostssl  all  all  10.0.0.0/8  scram-sha-256
+
+# 4. apply (ssl parameters need only a reload)
+SELECT pg_reload_conf();`},
+{h:'Client-side sslmode'},
+{t:[['sslmode','Encrypts?','Verifies server certificate?','Protects against'],['`disable`','No','No','Nothing'],['`allow`','Only if server insists','No','Nothing against attackers'],['`prefer` (default)','If server offers','No','Passive listening only; attacker can downgrade'],['`require`','Yes','No','Eavesdropping; not impersonation'],['`verify-ca`','Yes','Certificate chain only','Fake CA'],['`verify-full`','Yes','Chain **and** host name','Man-in-the-middle. **Use for production.**']]},
+{code:`psql "host=db1.example.com dbname=sales user=app_user sslmode=verify-full sslrootcert=root.crt"
+psql "host=db1.example.com dbname=sales user=app_user sslmode=verify-full channel_binding=require"
+
+-- confirm what each session uses
+SELECT a.pid, a.usename, a.client_addr, s.ssl, s.version, s.cipher
+FROM pg_stat_ssl s JOIN pg_stat_activity a USING (pid)
+WHERE a.backend_type = 'client backend';`},
+{h:'Client certificates'},
+{p:'With **mutual TLS** the client also presents a certificate signed by a CA the server trusts. Use it either as the authentication method or as an extra requirement on top of a password.'},
+{code:`# pg_hba.conf
+hostssl  all  app_user  10.0.1.0/24  cert                                   # role = certificate CN
+hostssl  all  all       10.0.9.0/24  scram-sha-256  clientcert=verify-full  # certificate AND password
+
+# postgresql.conf
+ssl_ca_file  = 'root.crt'
+ssl_crl_file = 'root.crl'                # revoked certificates`},
+{ul:['Certificate and key files are re-read on reload; **new** connections use the new certificate.','Keep the CA key off the database server and plan renewal dates: an expired server certificate stops `verify-full` clients.','TLS protects data in transit only. Data on disk needs OS or storage encryption.']}],
+src:[['Password Authentication',D+'auth-password.html'],['Secure TCP/IP Connections with SSL',D+'ssl-tcp.html'],['SSL Support (libpq sslmode)',D+'libpq-ssl.html'],['The Password File (.pgpass)',D+'libpq-pgpass.html'],['Connections and Authentication settings',D+'runtime-config-connection.html'],['pg_stat_ssl',D+'monitoring-stats.html#MONITORING-PG-STAT-SSL-VIEW']]},
+
+/* ---------------------------------------------------------------- 6:10 */
+'pg:6:10':{blocks:[
+{p:'Security is a **process**: configure, verify, record, and repeat. This final lecture brings the section together. It covers three extra privilege tools (column privileges, safe `SECURITY DEFINER` functions, security-invoker views), how to **audit** what roles do (server logging and the pgAudit extension), the queries that check the configuration, and a production **hardening checklist** you can apply to any cluster.'},
+{h:'Column-level privileges'},
+{p:'Give a role access to some columns of a table. This is simpler than a view when the only goal is to hide sensitive fields.'},
+{code:`CREATE TABLE hr.employees (emp_id int PRIMARY KEY, name text, dept text, salary numeric, national_id text);
+
+GRANT SELECT (emp_id, name, dept) ON hr.employees TO hr_read;      -- no salary, no national_id
+GRANT UPDATE (dept)               ON hr.employees TO hr_clerk;
+
+-- as a member of hr_read
+SELECT name, dept FROM hr.employees;          -- works
+SELECT * FROM hr.employees;                   -- ERROR: permission denied for table employees (needs every column)
+SELECT salary FROM hr.employees;              -- ERROR: permission denied for table employees`},
+{h:'SECURITY DEFINER functions'},
+{p:'A function normally runs with the privileges of the **caller** (`SECURITY INVOKER`). A `SECURITY DEFINER` function runs with the privileges of its **owner**, like `sudo` for SQL. It is a controlled way to let a low-privilege role perform one specific privileged action, but it is also the classic privilege-escalation vector. The documentation (CREATE FUNCTION, Writing SECURITY DEFINER Functions Safely) lists the rules below.'},
+{t:[['Rule','Why'],['`SET search_path = pg_catalog, pg_temp` on the function','Prevents callers from substituting their own objects (`pg_temp` last stops temporary-object tricks)'],['Schema-qualify every object in the body','Defence in depth against path changes'],['Owner has only the privileges the function needs','The owner\'s rights are what an exploit gains'],['`REVOKE EXECUTE ... FROM PUBLIC`, then grant to specific roles','New functions are executable by PUBLIC by default'],['Validate arguments; avoid dynamic SQL, or use `format(\'%I\', ...)`','Stops SQL injection inside privileged code']]},
+{code:`CREATE FUNCTION app.force_password_change(p_user text) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+    UPDATE app.users SET must_change = true WHERE username = p_user;
+END $$;
+ALTER FUNCTION app.force_password_change(text) OWNER TO app_admin_owner;   -- minimal-rights owner
+REVOKE ALL ON FUNCTION app.force_password_change(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.force_password_change(text) TO helpdesk;`},
+{h:'Views as a security tool'},
+{ul:['A normal view reads the underlying tables with the **view owner\'s** privileges. This makes views useful to hide columns or rows, but it can also bypass RLS.','`CREATE VIEW v WITH (security_invoker = true) AS ...` (PostgreSQL 15+) checks privileges and RLS as the **caller**.','`WITH (security_barrier = true)` stops user-supplied functions from running before the view\'s own filter, which could leak hidden rows.']},
+{h:'Auditing: what to record'},
+{flow:['Event (login, DDL, DML, role change)','Server log (log_connections, log_statement) or pgAudit','Log file / syslog','Central log store (SIEM)','Alerts and periodic review']},
+{t:[['Mechanism','Records','Notes'],['`log_connections`, `log_disconnections`','Who connected from where, when, and for how long','In PostgreSQL 18 `log_connections` takes a list of stages (`receipt`, `authentication`, `authorization`, `setup_durations`) or `all`; `on` still works'],['`log_statement = ddl` (or `mod`, `all`)','Statement text','`ddl` is a good low-noise default; `all` is heavy and exposes literals'],['`log_line_prefix`','Metadata on each line','Use `%m [%p] %q%u@%d %h` to see user, database and client'],['`log_min_error_statement`, `log_min_messages`','Errors including `permission denied`','Repeated denials point to probing'],['**pgAudit** extension','Session and object audit trail with class, command, object and role','Third-party extension; needs `shared_preload_libraries` and a restart']]},
+{code:`-- built-in baseline
+ALTER SYSTEM SET log_connections = 'authentication,authorization';   -- 18 syntax; on older versions: on
+ALTER SYSTEM SET log_disconnections = on;
+ALTER SYSTEM SET log_statement = 'ddl';
+ALTER SYSTEM SET log_line_prefix = '%m [%p] %q%u@%d %h ';
+SELECT pg_reload_conf();
+
+-- pgAudit
+-- postgresql.conf:  shared_preload_libraries = 'pgaudit'     (restart)
+CREATE EXTENSION pgaudit;
+ALTER SYSTEM SET pgaudit.log = 'ddl, role, write';             -- classes: read, write, function, role, ddl, misc, all
+ALTER SYSTEM SET pgaudit.log_relation = on;
+SELECT pg_reload_conf();
+-- log line example:
+-- AUDIT: SESSION,1,1,ROLE,CREATE ROLE,,,"CREATE ROLE temp_user LOGIN",<not logged>`},
+{h:'Audit queries you can run today'},
+{code:`-- superusers and powerful attributes
+SELECT rolname, rolsuper, rolcreaterole, rolcreatedb, rolreplication, rolbypassrls
+FROM pg_roles WHERE rolsuper OR rolcreaterole OR rolreplication OR rolbypassrls ORDER BY 1;
+
+-- login roles without expiry or connection limit
+SELECT rolname, rolvaliduntil, rolconnlimit FROM pg_roles
+WHERE rolcanlogin AND (rolvaliduntil IS NULL OR rolconnlimit = -1) AND rolname !~ '^pg_';
+
+-- weak password hashes (superuser)
+SELECT rolname FROM pg_authid WHERE rolpassword LIKE 'md5%';
+
+-- dangerous pg_hba rules
+SELECT line_number, type, database, user_name, address, auth_method
+FROM pg_hba_file_rules
+WHERE auth_method IN ('trust','password','md5') OR (type = 'host' AND address = '0.0.0.0');
+
+-- unencrypted client sessions
+SELECT a.usename, a.client_addr FROM pg_stat_activity a
+JOIN pg_stat_ssl s USING (pid) WHERE a.client_addr IS NOT NULL AND NOT s.ssl;
+
+-- tables owned by login roles
+SELECT t.schemaname, t.tablename, t.tableowner FROM pg_tables t
+JOIN pg_roles r ON r.rolname = t.tableowner
+WHERE r.rolcanlogin AND t.schemaname NOT IN ('pg_catalog','information_schema');
+
+-- SECURITY DEFINER functions without a fixed search_path
+SELECT n.nspname, p.proname, pg_get_userbyid(p.proowner) AS owner
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE p.prosecdef AND (p.proconfig IS NULL OR NOT EXISTS (
+        SELECT 1 FROM unnest(p.proconfig) c WHERE c LIKE 'search_path=%'));
+
+-- tables with RLS enabled but no policy (default-deny: confirm it is intended)
+SELECT c.relname FROM pg_class c
+WHERE c.relrowsecurity AND NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid);`},
+{h:'Production hardening checklist'},
+{t:[['Area','Action','Where taught'],['Network','`listen_addresses` only on needed interfaces; firewall allows only application and admin subnets','Remote connection lecture'],['Authentication','No `trust` outside local testing; `scram-sha-256`; final `reject` rule; `hostssl` for remote','Authentication and Authorization'],['Encryption','`ssl = on`, `ssl_min_protocol_version = TLSv1.2`, clients use `verify-full`','Passwords, SCRAM and TLS'],['Accounts','Named logins; no shared accounts; at most a few superusers; `VALID UNTIL` for temporary staff','User Creation'],['Privileges','Group roles; revoke from `PUBLIC`; owner is NOLOGIN; default privileges defined','Public Role, Grant and Revoke, Ownership'],['Duties','`NOINHERIT` / `SET ROLE` for migration roles; predefined roles instead of superuser','INHERIT vs NOINHERIT, Predefined Roles'],['Data','RLS for multi-tenant tables; column privileges for sensitive fields; `security_invoker` views','Row Level Security, this lecture'],['Functions','Every `SECURITY DEFINER` has a fixed `search_path` and restricted `EXECUTE`','This lecture'],['Operating system','Data directory mode `0700`; separate OS user; `unix_socket_permissions`; no shell logins for `postgres`','Installation section'],['Logging','Connections, disconnections, DDL; ship logs off the server','Logging and Parameters'],['Backups','Encrypted, access-controlled, restore-tested; they contain all data and role hashes','Backup and Recovery section'],['Patching','Apply every **minor release** (they carry security fixes); plan major upgrades before end of support','Upgrade section']]},
+{flow:['Inventory roles and ACLs','Run the audit queries','Fix findings (PUBLIC, owners, trust rules)','Enable logging / pgAudit','Re-test with a low-privilege account','Repeat every quarter and after each upgrade']},
+{note:'A security review is only as good as its last re-test. After changes, always try to do the forbidden thing as the low-privilege role and confirm you get `permission denied`.'}],
+src:[['CREATE FUNCTION (security considerations)',D+'sql-createfunction.html'],['CREATE VIEW (security_invoker, security_barrier)',D+'sql-createview.html'],['Error Reporting and Logging',D+'runtime-config-logging.html'],['Client Authentication',D+'client-authentication.html'],['pgAudit','https://github.com/pgaudit/pgaudit'],['Security information functions and views',D+'view-pg-hba-file-rules.html']]}
+
+});
+
+/* ------------------------------------------------------------------
+   Back-fill: notes added to earlier lessons from what Section 07 teaches
+   ------------------------------------------------------------------ */
+const X=(k,blocks,src)=>{const L=window.LESSONS[k];if(!L)return;L.blocks.push(...blocks);if(src)L.src=(L.src||[]).concat(src)};
+
+X('pg:0:2',[
+{h:'Where each security duty is taught (Section 07)'},
+{t:[['DBA duty','What it means in practice','Lecture'],['Control who can connect','Write and test `pg_hba.conf` rules, choose SCRAM, require TLS','Authentication and Authorization; Passwords, SCRAM and TLS'],['Create accounts with least privilege','Minimal attributes, expiry, connection limits, group roles','User Management Introduction; User Creation'],['Grant and review access','`GRANT`/`REVOKE`, default privileges, ownership, offboarding','Grant and Revoke; Ownership, Default Privileges and Dropping Roles'],['Close default exposure','Remove `PUBLIC` privileges and search_path risks','Public Role'],['Separate duties','`NOINHERIT` and `SET ROLE` for powerful roles; predefined roles','INHERIT vs NOINHERIT; Predefined Roles'],['Protect data inside tables','Row-level security, column privileges','Row Level Security; Security Hardening Checklist and Auditing'],['Prove what happened','Connection logging, pgAudit, audit queries','Security Hardening Checklist and Auditing']]}],
+[['Database Roles',D+'user-manag.html']]);
+
+X('pg:1:1',[
+{h:'Secure the cluster at initdb time (see Section 07)'},
+{p:'`initdb` decides the **initial `pg_hba.conf`** and the name of the first superuser. If you do not choose an authentication method, `initdb` warns that `trust` is being enabled for local connections, which means anyone who can reach the socket is accepted without a password. For a source build, set the methods explicitly.'},
+{code:`# local sockets use the OS identity, TCP uses SCRAM, and the superuser gets a password
+sudo -u postgres /usr/local/pgsql/bin/initdb -D /usr/local/pgsql/data \\
+     --auth-local=peer --auth-host=scram-sha-256 --pwprompt`},
+{t:[['initdb option','Effect'],['`--auth-local=METHOD`','Method for Unix-socket connections written into `pg_hba.conf`'],['`--auth-host=METHOD`','Method for TCP connections'],['`-A METHOD` / `--auth`','Sets both at once (avoid `trust`)'],['`-W` / `--pwprompt`, `--pwfile=FILE`','Sets the superuser password during initialisation'],['`-U NAME` / `--username=NAME`','Name of the bootstrap superuser (default: the OS user running `initdb`)']]},
+{note:'After any installation method, open the generated `pg_hba.conf` and confirm there is **no `trust` line for `host` connections**. Section 07 explains every method and how to test the file.'}],
+[['initdb',D+'app-initdb.html']]);
+
+X('pg:1:2',[
+{h:'Check the authentication that the package created'},
+{p:'The package setup script runs `initdb` for you, so the default `pg_hba.conf` depends on packaging. Review it before opening the port: `sudo grep -v "^#" /var/lib/pgsql/18/data/pg_hba.conf | grep -v "^$"`. Look for `trust`, `ident` and `md5` entries and replace them as described in Section 07 (Authentication and Authorization). The administrative account is the `postgres` role, reachable locally with `sudo -u postgres psql` through `peer` authentication.'}],
+[['The pg_hba.conf File',D+'auth-pg-hba-conf.html']]);
+
+X('pg:2:0',[
+{h:'Write the remote-access rule securely (Section 07)'},
+{p:'Opening the port is two separate decisions: `listen_addresses` lets the server **accept** TCP connections, and a `pg_hba.conf` record decides who is **allowed**. Rules are checked top to bottom and the **first matching rule wins**, so a new rule placed below a `reject` is never reached.'},
+{code:`# TYPE   DATABASE  USER      ADDRESS            METHOD
+hostssl  sales     app_user  192.168.10.0/24    scram-sha-256     # one database, one user, one subnet, TLS
+# not:  host all all 0.0.0.0/0 trust             <- accepts anyone, with no password`},
+{ul:['Name the **database**, **user** and **narrow address range** instead of `all` / `0.0.0.0/0`.','Prefer `hostssl` for anything that crosses a network, and `scram-sha-256` as the method.','Run `SELECT * FROM pg_hba_file_rules WHERE error IS NOT NULL;` before `pg_reload_conf()`: a syntax error keeps the old rules active.','pgAdmin connects as an ordinary role, so grant that role only what it needs (Grant and Revoke) rather than registering the server with the `postgres` superuser.']}],
+[['Client Authentication',D+'client-authentication.html'],['pg_hba_file_rules',D+'view-pg-hba-file-rules.html']]);
+
+X('pg:2:1',[
+{h:'Each cluster has its own roles and its own pg_hba.conf'},
+{p:'Roles are **cluster-wide, not machine-wide**. Two clusters on one server (ports `5432` and `5433`) have separate role lists, separate passwords, separate `pg_hba.conf` and `pg_ident.conf` files in their own data directories, and separate `ssl_cert_file` settings. A role created in one cluster does not exist in the other, and a grant in one has no effect on the other. When a login fails with `role "x" does not exist`, first check that you are connected to the intended port.'},
+{code:`psql -p 5432 -c "\\du"
+psql -p 5433 -c "\\du"
+psql -p 5433 -c "SHOW hba_file;"`}],
+[['Database Roles',D+'user-manag.html']]);
+
+X('pg:3:0',[
+{h:'The postmaster and pg_hba.conf'},
+{p:'The postmaster reads `pg_hba.conf` and `pg_ident.conf` at start-up and again whenever it receives **SIGHUP** (`pg_ctl reload` or `pg_reload_conf()`). Each new backend is created by `fork()` and therefore starts with the rule set that the postmaster held at that moment. This is why a rule change affects only **new** connections and never disturbs running sessions. The postmaster itself never authenticates anyone: that job is done by the backend, described in the next lecture.'}],
+[['The pg_hba.conf File',D+'auth-pg-hba-conf.html']]);
+
+X('pg:3:1',[
+{h:'Where authentication fits in a backend\'s life (Section 07)'},
+{flow:['Postmaster accepts the connection','fork() creates the backend','Backend reads the startup packet (user, database)','pg_hba.conf rule matched, method runs','Role checks and CONNECT privilege','ALTER ROLE / DATABASE settings applied','Ready for queries']},
+{t:[['Stage','What is checked','Typical failure'],['Rule match','Connection type, database, user, address','`no pg_hba.conf entry for host ...`'],['Authentication method','Password, certificate, peer identity','`password authentication failed`'],['Role state','`LOGIN`, `VALID UNTIL`, role connection limit','`role is not permitted to log in`, `too many connections for role`'],['Database access','`CONNECT` privilege, database connection limit','`permission denied for database`'],['Session defaults','Per-role and per-database `SET` values','None (silent)']]},
+{p:'The whole sequence must finish within `authentication_timeout` (default 1 minute). A half-open or slow client occupies a backend process, and a connection slot, until the timeout, which is one reason to restrict who can reach the port at all.'}],
+[['Connections and Authentication',D+'runtime-config-connection.html']]);
+
+X('pg:4:0',[
+{h:'Catalogs and functions for security (Section 07)'},
+{t:[['Object','Shows','Notes'],['`pg_roles`','All roles and attributes','Readable by everyone; password column masked'],['`pg_authid`','Roles including password hash','Superuser only'],['`pg_auth_members`','Membership with `admin_option`, `inherit_option`, `set_option`','Join to `pg_roles` twice'],['`pg_db_role_setting`','Per-role and per-database parameter defaults','Created by `ALTER ROLE ... SET`'],['`pg_default_acl`','Default privileges','Also `\\ddp`'],['`pg_hba_file_rules`, `pg_ident_file_mappings`','Parsed authentication files with errors','Check before reload'],['`pg_policies`','Row-level security policies','Also `pg_class.relrowsecurity`'],['`information_schema.table_privileges`','Table grants including PUBLIC','`role_table_grants` hides PUBLIC grants'],['`pg_stat_ssl`','TLS version and cipher per connection','Join on `pid`']]},
+{code:`SELECT has_table_privilege('alice','app.orders','SELECT');
+SELECT has_schema_privilege('alice','app','USAGE');
+SELECT has_database_privilege('alice','sales','CONNECT');
+SELECT pg_has_role('alice','app_ro','USAGE');
+SELECT relname, relacl FROM pg_class WHERE relnamespace = 'app'::regnamespace;   -- raw ACLs`}],
+[['System Catalogs',D+'catalogs.html'],['Privilege inquiry functions',D+'functions-info.html#FUNCTIONS-INFO-ACCESS-TABLE']]);
+
+X('pg:4:1',[
+{h:'Who may connect to and create databases (Section 07)'},
+{ul:['A new database gives `PUBLIC` the `CONNECT` and `TEMPORARY` privileges. The database ACL is **not** copied from the template, so repeat `REVOKE ALL ON DATABASE name FROM PUBLIC` for every new database and grant `CONNECT` to group roles.','Creating a database needs the `CREATEDB` attribute (or superuser). The creator becomes the **owner**; `ALTER DATABASE name OWNER TO owner_role` changes it, and the owner is exposed through the special role `pg_database_owner`.','Objects inside the template (including the `public` schema ACL and function privileges) **are** copied, so harden `template1` once and every new database starts safer.','`ALTER DATABASE name CONNECTION LIMIT n` caps concurrent sessions to one database.']},
+{code:`CREATE DATABASE sales OWNER sales_owner TEMPLATE template0;
+REVOKE ALL ON DATABASE sales FROM PUBLIC;
+GRANT CONNECT ON DATABASE sales TO app_ro, app_rw;`}],
+[['CREATE DATABASE',D+'sql-createdatabase.html']]);
+
+X('pg:4:4',[
+{h:'Delegating session control without superuser (Section 07)'},
+{p:'Cancelling or terminating **other users\'** sessions normally needs superuser. Instead of sharing the `postgres` account, grant the predefined role **`pg_signal_backend`**: its members may cancel or terminate sessions of non-superuser roles. PostgreSQL 18 adds `pg_signal_autovacuum_worker` for autovacuum workers. Both are explained in the Predefined Roles lecture.'},
+{code:`GRANT pg_signal_backend TO support;
+-- support can now run
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'app_user' AND state = 'idle in transaction';`},
+{p:'Terminating a role\'s sessions is also the first step before **locking or dropping** the role: `ALTER ROLE x NOLOGIN` stops new logins, then terminate the existing ones (see Ownership, Default Privileges and Dropping Roles). A per-role `CONNECTION LIMIT` prevents one application from taking all slots in the first place.'}],
+[['Server Signaling Functions',D+'functions-admin.html#FUNCTIONS-ADMIN-SIGNAL']]);
+
+X('pg:4:5',[
+{h:'Schema privileges and the PostgreSQL 15 change (Section 07)'},
+{p:'A schema grants two privileges: `USAGE` (look up objects in it) and `CREATE` (make new objects). Until PostgreSQL 14 the `public` schema gave **CREATE to every role**, which allowed search_path hijacking. From PostgreSQL 15, new clusters give `PUBLIC` only `USAGE` on `public`, and the schema is owned by `pg_database_owner`. A cluster **upgraded** from 14 or earlier keeps its old ACL, so run `REVOKE CREATE ON SCHEMA public FROM PUBLIC;` yourself. The Public Role lecture shows the attack and the three documented usage patterns.'},
+{code:`CREATE SCHEMA hr AUTHORIZATION hr_owner;                      -- one schema per team, owned by a NOLOGIN role
+GRANT USAGE ON SCHEMA hr TO hr_read, hr_rw;
+ALTER DEFAULT PRIVILEGES FOR ROLE hr_owner IN SCHEMA hr GRANT SELECT ON TABLES TO hr_read;
+ALTER ROLE ALL IN DATABASE sales SET search_path = "$user", pg_catalog;   -- optional: drop public from the path`}],
+[['Schemas',D+'ddl-schemas.html']]);
+
+X('pg:5:3',[
+{h:'Security parameters: reload or restart? (Section 07)'},
+{t:[['Parameter or file','Context','Action'],['`pg_hba.conf`, `pg_ident.conf`','file read by postmaster','Reload'],['`ssl`, `ssl_cert_file`, `ssl_key_file`, `ssl_ca_file`, `ssl_min_protocol_version`','`sighup`','Reload; new connections use them'],['`authentication_timeout`, `log_connections`, `log_disconnections`','`sighup`','Reload'],['`password_encryption`, `row_security`','`user`','`SET` for a session, or `ALTER SYSTEM` and reload'],['`listen_addresses`, `max_connections`, `superuser_reserved_connections`, `reserved_connections`','`postmaster`','Restart'],['`shared_preload_libraries` (for `pgaudit`)','`postmaster`','Restart']]},
+{p:'Role-level defaults set with `ALTER ROLE ... SET` take effect for **new sessions** of that role; existing sessions keep their old values.'}],
+[['Setting Parameters',D+'config-setting.html']]);
+
+X('pg:5:4',[
+{h:'Per-role settings and parameter privileges (Section 07)'},
+{p:'`ALTER SYSTEM` changes the whole cluster. Two related mechanisms narrow the scope: **per-role / per-database defaults**, and, since PostgreSQL 15, **privileges on parameters** so that a non-superuser can change selected settings.'},
+{code:`ALTER ROLE app_user SET statement_timeout = '30s';                  -- every session of app_user
+ALTER DATABASE sales SET work_mem = '32MB';                         -- every session in sales
+ALTER ROLE app_user IN DATABASE sales SET search_path = app;        -- most specific wins
+
+GRANT SET          ON PARAMETER log_statement TO auditor;           -- may SET it in a session
+GRANT ALTER SYSTEM ON PARAMETER log_min_duration_statement TO dba;  -- may ALTER SYSTEM that one parameter
+SELECT * FROM pg_db_role_setting;`},
+{t:[['Level','Command','Precedence (low to high)'],['File','`postgresql.conf`, `postgresql.auto.conf`','1'],['Database','`ALTER DATABASE ... SET`','2'],['Role','`ALTER ROLE ... SET`','3'],['Role in database','`ALTER ROLE ... IN DATABASE ... SET`','4'],['Session','`SET` / `PGOPTIONS`','5 (subject to the parameter\'s context)']]}],
+[['ALTER ROLE',D+'sql-alterrole.html'],['GRANT (parameters)',D+'sql-grant.html']]);
+
+X('pg:5:7',[
+{h:'Security events to capture (Section 07)'},
+{t:[['Want to see','Setting','Example log evidence'],['Logins and their stages','`log_connections` (PostgreSQL 18: list of stages or `all`)','`connection authorized: user=app_user database=sales`'],['Session end and duration','`log_disconnections = on`','`disconnection: session time: 0:12:03 user=app_user`'],['Failed logins','Always logged as FATAL','`password authentication failed for user "app_user"`'],['Rejected by `pg_hba.conf`','Always logged','`no pg_hba.conf entry for host "x", user "u", database "d"`'],['Privilege failures','Errors logged by default','`permission denied for table orders` (with STATEMENT line)'],['Schema and role changes','`log_statement = ddl`','`CREATE ROLE`, `GRANT`, `DROP TABLE`']]},
+{p:'Include `%u` (user), `%d` (database) and `%h` (client host) in `log_line_prefix` so that each of these lines shows who and from where. For a complete audit trail with object and role detail, the pgAudit extension is covered in Security Hardening Checklist and Auditing.'}],
+[['Error Reporting and Logging',D+'runtime-config-logging.html']]);
+
+})();
+
+/* ================================================================
+   PART: Section 08 - Tablespaces & Storage  (was lessons7.js)
+   ================================================================ */
+/* LearnSphere: Section 08 - Tablespaces & Storage (lectures 1-4 + bonus lectures 5-9)
+   Load AFTER lessons6.js. Docs links target PostgreSQL 18. Also back-fills notes into earlier lessons. */
+(function(){
+const D='https://www.postgresql.org/docs/18/';
+const dg=window.LS_DG;
+
+/* ---------- diagrams ---------- */
+const walFmtSvg=dg(700,290,[
+[10,10,210,50,'000000010000000000000003|segment file, 16 MB',2],[245,10,210,50,'000000010000000000000004|segment file, 16 MB',0],[480,10,210,50,'000000010000000000000005|segment file, 16 MB',0],
+[10,100,110,60,'Page 0|long header|8 KB',2],[135,100,110,60,'Page 1|short header|8 KB',0],[260,100,110,60,'Page 2|short header|8 KB',0],[385,100,60,60,'...',0],[460,100,110,60,'Page 2047|short header|8 KB',0],
+[10,200,135,75,'XLogRecord header|24 bytes: xid,|prev, rmgr, CRC',2],[155,200,125,75,'Block references|ts OID/db/rel,|fork, block no.',0],[290,200,115,75,'Block data or|full-page image|(FPI)',0],[415,200,125,75,'Main data|resource-manager|specific payload',0],[555,200,135,75,'Next record|starts at the next|8-byte boundary',0]],
+[[115,60,65,100],[190,160,75,200]]);
+const lsnSvg=dg(700,240,[
+[10,45,140,60,'LSN|0/3000148',2],[210,10,170,50,'High 32 bits|0x00000000',0],[210,100,170,50,'Low 32 bits|0x03000148',0],
+[440,70,240,40,'Segment no = Low / 16 MB = 0x03',2],[440,120,240,40,'Offset = Low mod 16 MB = 0x000148',0],
+[10,170,140,50,'Timeline|00000001',0],[210,180,470,45,'File name = 00000001 + 00000000 + 00000003|000000010000000000000003',2]],
+[[150,65,210,35],[150,85,210,125],[380,115,440,92],[380,135,440,140],[150,195,210,200]]);
+const tsDirSvg=dg(700,235,[
+[10,20,150,55,'PGDATA|data directory',0],[200,20,170,55,'pg_tblspc/16400|symbolic link',2],[410,20,280,55,'/pgdata/ts_fast/app|LOCATION (your directory)',2],
+[410,100,280,45,'PG_18_<catalog version>|version subdirectory',0],[410,170,135,50,'16384|database OID dir',0],[555,170,135,50,'16401|relfilenode file',0],
+[10,110,370,110,'Built-in tablespaces|pg_default: PGDATA/base (OID 1663)|pg_global: PGDATA/global (OID 1664)|user tablespaces: pg_tblspc/OID',0]],
+[[160,47,200,47],[370,47,410,47],[550,75,550,100],[477,145,477,170],[545,195,555,195]]);
+const moveSvg=dg(700,210,[
+[10,70,140,60,'Table orders|files in ts_old',0],[190,70,170,60,'ALTER TABLE SET|TABLESPACE ts_new|ACCESS EXCLUSIVE lock',2],[400,70,140,60,'New files in|ts_new (copied)',0],[580,70,110,60,'Old files|removed at|COMMIT',0],
+[190,150,170,40,'Readers and writers wait',0],[400,150,290,40,'Catalog updated:|reltablespace, relfilenode',0]],
+[[150,100,190,100],[360,100,400,100],[540,100,580,100],[275,130,275,150],[470,130,470,150]]);
+const offSvg=dg(700,250,[
+[10,15,320,220,'BEFORE (server stopped)',1],[25,50,290,50,'pg_tblspc/16400|symlink to /ts_old/data',0],[25,125,290,45,'/ts_old/data/PG_18_.../',2],[25,185,290,35,'Files are consistent: clean shutdown',0],
+[370,15,320,220,'AFTER (still stopped)',1],[385,50,290,50,'pg_tblspc/16400|same link, new target /ts_new/data',2],[385,125,290,45,'/ts_new/data/PG_18_.../',2],[385,185,290,35,'Old copy kept until verified',0]],
+[[170,100,170,125],[530,100,530,125],[330,147,385,147]]);
+const pageSvg=dg(700,215,[
+[10,10,680,30,'One heap page: 8 KB by default',1],
+[10,60,100,85,'Page header|24 bytes|LSN, checksum|lower, upper',2],[120,60,130,85,'Line pointers|4 bytes each|grow rightwards',0],[260,60,170,85,'Free space|pd_lower to pd_upper',0],[440,60,150,85,'Tuples|grow leftwards|from the page end',0],[600,60,90,85,'Special|index pages|only',0],
+[10,160,680,45,'Each line pointer gives the offset of one tuple. The 23-byte tuple header holds|xmin, xmax, ctid and flags that MVCC uses. pd_lsn ties the page to the WAL.',0]],
+[[250,102,440,102]]);
+const holdSvg=dg(700,260,[
+[10,10,200,45,'Checkpoint distance|max_wal_size',0],[10,65,200,45,'Archive backlog|failing archive_command',0],[10,120,200,45,'wal_keep_size|extra segments retained',0],[10,175,200,45,'Replication slots|restart_lsn far behind',2],
+[290,70,150,110,'pg_wal/|segments cannot be|recycled or removed|while any holder|still needs them',2],
+[520,30,170,60,'Directory grows|toward the disk limit',0],[520,150,170,60,'Disk full: PANIC,|server shuts down',0]],
+[[210,32,290,100],[210,87,290,115],[210,142,290,135],[210,197,290,155],[440,110,520,62],[440,140,520,178]]);
+
+window.EXTRA_LECTURES=window.EXTRA_LECTURES||{};
+window.EXTRA_LECTURES[7]=[
+['Storage Layout: Pages, Forks, TOAST and Tablespace Files','0:00','How a table becomes files: relfilenode, forks, 1 GB segments, the 8 KB page layout, TOAST and checksums, and how to map any object to its file.'],
+['Using Tablespaces: Defaults, Temporary Files, Privileges and Planning','0:00','default_tablespace, temp_tablespaces, per-tablespace cost settings, the CREATE privilege, hot/warm/cold placement and monitoring tablespace usage.'],
+['WAL Lifecycle: Archiving, Retention, Recycling and pg_wal Troubleshooting','0:00','What keeps WAL files on disk, how archiving and slots affect pg_wal, how to diagnose a growing or full pg_wal, and how to relocate it.'],
+['Inspecting WAL: pg_waldump, pg_walinspect and pg_controldata','0:00','Read WAL records and cluster control data to see what the server wrote, find large WAL producers and verify checkpoint and timeline state.'],
+['Tablespaces in Backup, Replication and Upgrade','0:00','How pg_basebackup, pg_dump, pg_dumpall, standbys and pg_upgrade treat tablespaces, tablespace_map, path mapping and a restore checklist.']];
+
+Object.assign(window.LESSONS,{
+
+/* ---------------------------------------------------------------- 7:0 */
+'pg:7:0':{blocks:[
+{p:'**Write-Ahead Logging (WAL)** is the standard method PostgreSQL uses to keep data intact. Its central rule, stated in the documentation, is that a change to a data file (a table or index page) may be written to disk only **after** the WAL record describing that change has been flushed to permanent storage. Because the log already holds everything needed to repeat the change, the server does not have to flush every modified data page at commit time; it only flushes the log, which is written **sequentially** and is therefore fast. Section 04 introduced WAL as an architecture component; this lecture opens the files and explains the **format**: how the log is divided into segments, pages and records, how positions (LSNs) and file names are calculated, and which helper files appear next to the segments.'},
+{h:'What WAL gives you'},
+{t:[['Capability','How WAL provides it','Section where used'],['Crash recovery','After a crash the server replays (redoes) WAL from the last checkpoint, restoring every committed change and ignoring uncommitted ones','04 Architecture'],['Durability (the D in ACID)','`COMMIT` returns only after its WAL is flushed (default `synchronous_commit = on`)','04, 06'],['Point-in-time recovery (PITR)','A base backup plus an archive of WAL segments can be replayed to any chosen moment','09 Backup & Recovery'],['Physical replication','A standby receives the primary WAL stream and replays it (needs `wal_level = replica` or higher)','10 Replication'],['Logical replication and decoding','With `wal_level = logical` extra detail is logged so changes can be decoded into row changes','10 Replication'],['Performance','One sequential flush per commit instead of many random data-page writes; dirty pages are written later by the checkpointer and background writer','06 Parameters']]},
+{h:'Where WAL lives: the pg_wal directory'},
+{t:[['Item in `pg_wal/`','Meaning'],['Segment files, for example `000000010000000000000003`','The log itself, 16 MB each by default, 24 hexadecimal characters in the name'],['`archive_status/`','Small marker files (`.ready`, `.done`) that tell the archiver which segments still need to be copied away'],['`summaries/`','WAL summary files written by the WAL summarizer when `summarize_wal = on` (used for incremental backups, PostgreSQL 17+)'],['`*.history`','Timeline history files, created when a standby is promoted or recovery ends on a new timeline'],['`*.backup`','Backup history label written at the end of a base backup'],['`*.partial`','Last segment of an old timeline, saved when a standby is promoted']]},
+{note:'In a default installation `pg_wal` is a real directory inside `PGDATA`. For performance and safety it is often moved to its own disk and replaced by a symbolic link (shown in the WAL Lifecycle bonus lecture).'},
+{h:'The logical structure: segments, pages, records'},
+{svg:walFmtSvg},
+{p:'The WAL is conceptually one endless byte stream. For storage it is cut into **segment files** of equal size, each segment is cut into **pages**, and the stream is filled with variable-length **records**. A record is the smallest unit that describes a change.'},
+{t:[['Level','Default size','How to see or change it','Notes'],['Segment file','16 MB','`SHOW wal_segment_size;` Chosen at `initdb --wal-segsize=N` (power of two from 1 to 1024 MB). `pg_resetwal --wal-segsize` can change it on a stopped cluster','Cannot be changed with `postgresql.conf`; the parameter is read-only'],['WAL page (block)','8 KB','Compile-time option `--with-wal-blocksize`; `pg_controldata` shows `WAL block size`','Unit in which WAL is written to the OS'],['Record','Variable (tens of bytes to several KB, more with full-page images)','`pg_waldump` prints `len (rec/tot)`','May span page and segment boundaries']]},
+{p:'A larger segment size means fewer files for archiving and replication to handle on write-heavy systems, but a coarser unit for archiving: with `archive_timeout` unset, a quiet server holds a partly filled 1 GB segment before it is archived. For most installations the 16 MB default is fine.'},
+{h:'Page headers'},
+{t:[['Header','Where','Important fields'],['Long page header','First page of every segment','`xlp_magic` (format version), `xlp_info` flags, `xlp_tli` (timeline), `xlp_pageaddr` (LSN of the page), `xlp_rem_len` (bytes of a record continued from the previous page), plus the **system identifier**, segment size and block size'],['Short page header','Every other page','The same first fields without the system identifier and sizes']]},
+{p:'The system identifier stored in the long header is the same 64-bit number that `pg_controldata` shows as `Database system identifier`. A standby refuses WAL from a server with a different identifier, which prevents mixing logs of unrelated clusters.'},
+{h:'Anatomy of a WAL record'},
+{t:[['Part','Size','Content'],['`xl_tot_len`','4 bytes','Total record length including header and data'],['`xl_xid`','4 bytes','Transaction ID that made the change'],['`xl_prev`','8 bytes','LSN of the previous record (chains the log and helps detect corruption)'],['`xl_info`','1 byte','Record-type flags, meaning depends on the resource manager'],['`xl_rmid`','1 byte','**Resource manager** that created and will replay the record (Heap, Btree, Transaction, ...)'],['`xl_crc`','4 bytes','CRC-32C checksum of the record; a mismatch stops replay at that point'],['Block references','per block','Which relation (tablespace OID, database OID, relfilenode), fork and block number the record touches'],['Block data / full-page image','variable','Data needed to redo the change on that block, or the whole page'],['Main data','variable','Resource-manager specific payload, for example the new tuple']]},
+{p:'The header is 24 bytes (the fields above plus padding). Every record starts on an 8-byte boundary. Because a block reference names the **tablespace OID, database OID and relfilenode**, WAL can be replayed on a standby without any knowledge of table names, which is also why a standby needs matching tablespace directories (see the last lecture of this section).'},
+{h:'Resource managers'},
+{t:[['Resource manager','Replays changes to'],['`XLOG`','Checkpoints, WAL switches, parameter changes, full-page images'],['`Transaction`','Commit and abort records, two-phase commit'],['`Storage`','Creation and truncation of relation files'],['`Database`, `Tablespace`','`CREATE`/`DROP DATABASE`, `CREATE`/`DROP TABLESPACE`'],['`Heap`, `Heap2`','Table row inserts, updates, deletes, vacuum, freezing'],['`Btree`, `Hash`, `Gin`, `Gist`, `SPGist`, `BRIN`','Index changes by access method'],['`Sequence`, `CLOG`, `MultiXact`, `CommitTs`','Sequences and transaction status data'],['`Standby`','Locks and running-transaction snapshots needed by hot standbys'],['`LogicalMessage`, `ReplicationOrigin`','Logical decoding and replication metadata']]},
+{note:'`CREATE TABLESPACE` is itself a WAL record in the `Tablespace` resource manager. It stores the **absolute path**, so a standby replaying it tries to create the same path. That is why tablespace layouts must match on primary and standby.'},
+{h:'Full-page images (FPI)'},
+{p:'A disk may write only part of an 8 KB page if the machine crashes during the write (a **torn page**). To be able to repair such a page, PostgreSQL writes the **entire page** into WAL the first time the page is modified after a checkpoint (parameter `full_page_writes`, default `on`; unused space inside the page is skipped). Later changes to the same page before the next checkpoint log only the small delta.'},
+{t:[['Effect','Consequence for the DBA'],['Right after a checkpoint WAL volume is high, then falls','Very frequent checkpoints inflate WAL because each page is logged in full again'],['`wal_compression` (`off`, `pglz`, `lz4`, `zstd`) compresses FPIs','Trades CPU for less WAL volume, less disk and network use for replicas'],['`pg_waldump --stats` reports `FPI` bytes separately','High FPI share suggests checkpoints are too frequent: raise `max_wal_size` and `checkpoint_timeout`']]},
+{h:'LSN: the address of a byte in the WAL'},
+{p:'A **Log Sequence Number (LSN)** is a 64-bit unsigned integer, the byte offset in the WAL stream. It is printed as two hexadecimal numbers separated by a slash: the high 32 bits and the low 32 bits. Every data page stores the LSN of the last WAL record that changed it (`pd_lsn`), and the server will not write that page to disk until WAL has been flushed at least up to that LSN. That single rule is the Write-Ahead guarantee.'},
+{svg:lsnSvg},
+{t:[['Function or operator','Returns'],['`pg_current_wal_lsn()`','Current WAL **write** position'],['`pg_current_wal_insert_lsn()`','Current WAL **insert** position (data placed in WAL buffers)'],['`pg_current_wal_flush_lsn()`','Position flushed to permanent storage'],['`pg_walfile_name(lsn)`','Name of the segment file that holds the LSN'],['`pg_walfile_name_offset(lsn)`','File name and byte offset inside it'],['`pg_split_walfile_name(name)`','Segment number and timeline of a file name (PostgreSQL 16+)'],['`pg_wal_lsn_diff(a, b)`','Number of bytes between two LSNs; the same as `a - b` for `pg_lsn` values'],['`pg_switch_wal()`','Close the current segment and start a new one'],['`pg_last_wal_receive_lsn()`, `pg_last_wal_replay_lsn()`','On a standby: how far WAL has been received and replayed']]},
+{h:'How the file name is built'},
+{t:[['Characters','Meaning','Example for LSN `0/3000148`'],['1-8','**Timeline ID** (hex)','`00000001`'],['9-16','High 32 bits of the LSN (the "log" number)','`00000000`'],['17-24','Segment number: low 32 bits divided by segment size, within that log','`00000003`']]},
+{p:'With 16 MB segments there are 256 segments (`00` to `FF`) per high-32-bit value, so after `...000000FF` the name continues as `000000010000000100000000`. With a different segment size the count per log changes (1 GB segments give only 4 per log), but the 24-character layout stays the same.'},
+{t:[['Segment size','Segments per high-32-bit value','Last name before the counter rolls over'],['16 MB','256','`...000000FF`'],['64 MB','64','`...0000003F`'],['256 MB','16','`...0000000F`'],['1 GB','4','`...00000003`']]},
+{h:'Timelines'},
+{p:'A **timeline** is a branch of WAL history. A new cluster starts on timeline 1. Whenever archive recovery finishes or a standby is promoted, the server starts a **new timeline** (2, 3, ...) so that WAL written after the recovery point can never be confused with WAL of the old branch that continued past it. The new timeline is recorded in a small `.history` file (for example `00000002.history`) that lists where it branched off. Segment names carry the timeline in their first eight characters, so `000000020000000000000007` is different from `000000010000000000000007`.'},
+{h:'Hands-on: watch the WAL move'},
+{code:`SHOW wal_segment_size;
+SHOW wal_level;
+
+-- three positions of the same stream
+SELECT pg_current_wal_lsn()       AS write_lsn,
+       pg_current_wal_insert_lsn() AS insert_lsn,
+       pg_current_wal_flush_lsn()  AS flush_lsn;
+
+-- which file, and where inside it
+SELECT * FROM pg_walfile_name_offset(pg_current_wal_lsn());
+
+-- measure the WAL produced by one statement
+SELECT pg_current_wal_lsn() AS before \\gset
+CREATE TABLE wal_demo AS SELECT g AS id, md5(g::text) AS txt FROM generate_series(1, 200000) g;
+SELECT pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), :'before')) AS wal_generated;
+
+-- WAL files on disk
+SELECT name, pg_size_pretty(size) AS size, modification
+FROM pg_ls_waldir() ORDER BY name DESC LIMIT 5;
+
+-- cumulative WAL statistics (records, full-page images, bytes)
+SELECT wal_records, wal_fpi, pg_size_pretty(wal_bytes) AS wal_bytes, wal_buffers_full FROM pg_stat_wal;
+
+SELECT pg_switch_wal();      -- force a new segment (for example before a test archive)
+DROP TABLE wal_demo;`},
+{code:`# the same from the operating system (as the postgres user)
+ls -l $PGDATA/pg_wal
+# -rw------- 1 postgres postgres 16777216 Oct  8 10:12 000000010000000000000003
+# drwx------ 2 postgres postgres     4096 Oct  8 10:10 archive_status
+
+pg_controldata $PGDATA | egrep "WAL block size|Bytes per WAL segment|TimeLineID|REDO"`},
+{note:'On PostgreSQL 18 the counters for WAL write and sync calls and times are reported in `pg_stat_io` (rows with object `wal`); `pg_stat_wal` keeps the record, FPI, byte and buffer-full counters.'},
+{h:'Operational rules'},
+{ul:['**Never delete or edit files in `pg_wal` by hand.** The server decides which segments are still needed (checkpoint, archiver, standbys, slots). Removing a needed file can make crash recovery impossible.','Segment files are created with mode `0600` and owned by the OS user that runs PostgreSQL.','If the disk holding `pg_wal` becomes full the server cannot write new WAL: it raises a **PANIC** and shuts down. Size and monitor this disk first (see WAL Lifecycle).','New segments are zero-filled by default (`wal_init_zero`) and old ones are renamed and reused (`wal_recycle`), which avoids file-creation cost on busy systems.','`pg_resetwal` can discard WAL to start a damaged cluster, but it may leave inconsistent data. Treat it as a last resort after a backup of the data directory.']}],
+src:[['Write-Ahead Logging (WAL)',D+'wal.html'],['WAL Internals',D+'wal-internals.html'],['Reliability',D+'wal-reliability.html'],['WAL Configuration',D+'wal-configuration.html'],['pg_waldump',D+'pgwaldump.html'],['System administration functions (WAL)',D+'functions-admin.html'],['pg_resetwal',D+'app-pgresetwal.html']]},
+
+/* ---------------------------------------------------------------- 7:1 */
+'pg:7:1':{blocks:[
+{p:'A **tablespace** is a named location in the file system where PostgreSQL stores the files of database objects. The documentation describes tablespaces as a way for the administrator to define where those files live: once a tablespace exists, you refer to it **by name** when you create a table, index or database, and you never repeat the physical path in SQL. Tablespaces separate the **logical** name used by applications from the **physical** directory chosen by the DBA, so storage can be reorganised without changing application code.'},
+{h:'Why use tablespaces'},
+{t:[['Reason','Example','Remarks'],['Disk is running out of space','The partition holding `PGDATA` is full; create a tablespace on a new disk and move large tables there','Cheaper than rebuilding the cluster'],['Match data to hardware','Hot indexes on NVMe or SSD, rarely used history on large slow disks','Combine with per-tablespace planner costs (see Using Tablespaces)'],['Isolate I/O','Put one busy database or its indexes on a separate volume so it does not compete with others','Also consider `temp_tablespaces` and a separate disk for `pg_wal`'],['Administrative grouping','Per-application or per-tier storage with its own size monitoring','`pg_tablespace_size()` reports usage'],['Different file-system features','A tablespace on a compressed or snapshot-capable volume','Backups still must capture all tablespaces']]},
+{note:'Tablespaces are a placement tool, not a security or sharding feature. They do not partition data across servers, they have no quota, and they must be included in every physical backup. If one large volume (LVM, RAID, cloud disk) is enough, you may not need any.'},
+{h:'The two built-in tablespaces'},
+{t:[['Tablespace','OID','Physical location','Used for'],['`pg_default`','1663','`PGDATA/base/`','Default tablespace of `template1` and `template0`, so every database created from them uses it unless told otherwise'],['`pg_global`','1664','`PGDATA/global/`','Shared system catalogs such as `pg_database` and `pg_authid`']]},
+{p:'Neither can be dropped. Every object in a database lives in **one** tablespace: either the tablespace named when it was created, or the default tablespace of the database. A single tablespace may hold objects from **many databases**, and a database may spread its objects over many tablespaces.'},
+{h:'How a tablespace is built on disk'},
+{svg:tsDirSvg},
+{t:[['Path element','Created by','Meaning'],['`LOCATION` directory','You, before the command','Must exist, be empty and be owned by the PostgreSQL operating-system user'],['`PGDATA/pg_tblspc/<OID>`','`CREATE TABLESPACE`','A **symbolic link** whose name is the tablespace OID and whose target is the `LOCATION`'],['`PG_18_<catalog version>`','`CREATE TABLESPACE`','Version subdirectory inside the location. It identifies the server major version and catalog version, so data of different major versions never clash'],['`<database OID>/`','First object created for that database in the tablespace','Each database gets its own subdirectory'],['`<relfilenode>[.N]` and forks','Object creation','The files of tables and indexes (see the Storage Layout bonus lecture)']]},
+{p:'Since PostgreSQL 9.2 the path is **not stored in a catalog column**. It is read from the symbolic link by `pg_tablespace_location(oid)`. This is why a tablespace can be relocated offline by moving the directory and re-pointing the link (next lectures). On Windows the link is a directory junction.'},
+{h:'Prerequisites checklist'},
+{t:[['Requirement','Why','How to check or set'],['Superuser to create','Creating a tablespace creates a file-system link; PostgreSQL restricts it to superusers','Connect as `postgres`'],['Directory exists and is **empty**','`CREATE TABLESPACE` does not create the directory itself','`mkdir`, `ls -A`'],['Owned by the PostgreSQL OS user, mode `0700`','The server must read and write it and refuses a directory others can access','`chown postgres:postgres`, `chmod 700`'],['Absolute path, no single quote in it','Relative paths are rejected','`/pgdata/ts_fast/app`'],['**Outside** `PGDATA`','A location inside the data directory triggers a warning and confuses backups and `pg_upgrade`','Use a different mount point'],['Use a **subdirectory** of a mount point, not the mount point','A mount point contains `lost+found` and has permissions of the file system root','`/pgdata/ts_fast/app` rather than `/pgdata/ts_fast`'],['Enough free space and the right mount options','Data and WAL for moves are written here','`df -h`, `mount`'],['SELinux context (RHEL family)','A wrong label makes the server fail with permission denied even though Unix permissions are right','`semanage fcontext`, `restorecon`']]},
+{h:'Procedure to create a tablespace'},
+{flow:['Prepare the disk and directory','Set owner, mode and SELinux label','CREATE TABLESPACE (as superuser)','GRANT CREATE to the roles that need it','Create or move objects into it','Verify location, size and objects']},
+{code:`# 1. directory on the new volume (as root)
+sudo mkdir -p /pgdata/ts_fast/app
+sudo chown postgres:postgres /pgdata/ts_fast/app
+sudo chmod 700 /pgdata/ts_fast/app
+
+# 2. SELinux label for PostgreSQL data (RHEL family)
+sudo semanage fcontext -a -t postgresql_db_t "/pgdata/ts_fast(/.*)?"
+sudo restorecon -Rv /pgdata/ts_fast`},
+{code:`-- 3. create (superuser)
+CREATE TABLESPACE ts_fast LOCATION '/pgdata/ts_fast/app';
+
+-- with planner cost hints for fast storage and a different owner
+CREATE TABLESPACE ts_ssd OWNER app_owner LOCATION '/pgdata/ts_ssd/app'
+  WITH (random_page_cost = 1.1, effective_io_concurrency = 200);
+
+-- 4. allow a role to create objects there
+GRANT CREATE ON TABLESPACE ts_fast TO app_rw;`},
+{h:'CREATE TABLESPACE syntax'},
+{t:[['Clause','Meaning'],['`name`','Tablespace name; cannot start with `pg_` (reserved)'],['`OWNER new_owner`','Role that owns it; default is the creating superuser'],['`LOCATION \'directory\'`','Absolute path of the prepared directory'],['`WITH (option = value, ...)`','`seq_page_cost`, `random_page_cost`, `effective_io_concurrency`, `maintenance_io_concurrency`: override the global planner and I/O settings for objects in this tablespace']]},
+{note:'`CREATE TABLESPACE` and `DROP TABLESPACE` cannot run inside a transaction block.'},
+{h:'Placing objects in a tablespace'},
+{t:[['Way','Syntax','Scope'],['Explicit clause','`CREATE TABLE t (...) TABLESPACE ts_fast;` `CREATE INDEX i ON t(c) TABLESPACE ts_fast;`','That object only (TOAST data follows its table)'],['Session default','`SET default_tablespace = ts_fast;`','Tables and indexes created later in the session without a clause'],['Role or database default','`ALTER ROLE app_rw SET default_tablespace = ts_fast;`','New sessions of that role'],['Database default','`CREATE DATABASE sales TABLESPACE ts_fast;`','All objects of `sales` without an explicit clause, including its system catalogs'],['Partitioned table','`CREATE TABLE ... PARTITION OF p ... TABLESPACE ts_hot;`','Each partition may use its own tablespace']]},
+{flow:['TABLESPACE clause given?','Else default_tablespace set and not empty?','Else database default (pg_database.dattablespace)','Which is normally pg_default']},
+{h:'Verify'},
+{code:`-- psql meta-commands
+\\db                 -- tablespaces and locations
+\\db+                -- plus owner privileges, options, size
+
+-- catalog and functions
+SELECT oid, spcname, pg_get_userbyid(spcowner) AS owner,
+       pg_tablespace_location(oid) AS location, spcoptions
+FROM pg_tablespace;
+
+SELECT pg_size_pretty(pg_tablespace_size('ts_fast'));
+
+-- create something and see where it went
+CREATE TABLE t_fast (id int, note text) TABLESPACE ts_fast;
+INSERT INTO t_fast SELECT g, 'row' || g FROM generate_series(1, 100000) g;
+SELECT pg_relation_filepath('t_fast');
+-- pg_tblspc/16400/PG_18_<catversion>/16384/16401
+
+SELECT tablename, tablespace FROM pg_tables WHERE tablename = 't_fast';  -- NULL means the database default`},
+{code:`# on the operating system
+ls -l $PGDATA/pg_tblspc
+# lrwxrwxrwx 1 postgres postgres 19 Oct  8 10:30 16400 -> /pgdata/ts_fast/app
+ls /pgdata/ts_fast/app            # PG_18_<catalog version>
+du -sh /pgdata/ts_fast/app`},
+{h:'Changing a tablespace'},
+{code:`ALTER TABLESPACE ts_fast RENAME TO ts_hot;
+ALTER TABLESPACE ts_hot OWNER TO dba_admin;
+ALTER TABLESPACE ts_hot SET (random_page_cost = 1.1, seq_page_cost = 1.0);
+ALTER TABLESPACE ts_hot RESET (random_page_cost);`},
+{p:'`ALTER TABLESPACE` can rename it, change its owner and set options, but it **cannot change the location**. Relocation is done by moving objects (online) or by moving the directory (offline), covered in the next two lectures.'},
+{h:'Dropping a tablespace'},
+{p:'`DROP TABLESPACE` removes the tablespace from the system, but only when it is **empty**. "Empty" means that **no database** in the cluster has any object in it, and that no database uses it as its default. Only the owner or a superuser can drop it. The command removes the symbolic link and the `PG_18_...` subdirectory; the `LOCATION` directory you created is left in place for you to remove with operating-system tools.'},
+{flow:['Find which databases use it','In each database list the objects','Move or drop the objects (and move default of databases)','Verify it is empty','DROP TABLESPACE','Remove the empty directory and update documentation']},
+{code:`-- 1. which databases have anything in it? (includes databases whose default it is)
+SELECT d.datname
+FROM pg_database d
+WHERE d.oid IN (SELECT pg_tablespace_databases(oid) FROM pg_tablespace WHERE spcname = 'ts_hot');
+
+-- databases using it as their default tablespace
+SELECT datname FROM pg_database
+WHERE dattablespace = (SELECT oid FROM pg_tablespace WHERE spcname = 'ts_hot');
+
+-- 2. inside EACH such database: objects stored there (connect with \\c first)
+SELECT n.nspname, c.relname, c.relkind
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.reltablespace = (SELECT oid FROM pg_tablespace WHERE spcname = 'ts_hot')
+ORDER BY 1, 2;
+
+-- 3. move or drop them (examples)
+ALTER TABLE t_fast SET TABLESPACE pg_default;
+ALTER DATABASE sales SET TABLESPACE pg_default;     -- needs no other connections
+
+-- 4. drop
+DROP TABLESPACE ts_hot;`},
+{note:'Objects that live in the **default** tablespace of their database have `reltablespace = 0`, so a query on `pg_class.reltablespace` does not show them. That is why you also check `pg_database.dattablespace` and `pg_tablespace_databases()` before dropping.'},
+{h:'Common errors'},
+{t:[['Message (abridged)','Cause','Fix'],['`permission denied to create tablespace`','Not a superuser','Run as superuser'],['`directory ... does not exist`','`LOCATION` was not created first','`mkdir`, then retry'],['`could not set permissions on directory` / `Permission denied`','Directory not owned by the PostgreSQL OS user, or SELinux label wrong','`chown`, `chmod 700`, `restorecon`'],['`directory ... is not empty` / `tablespace location must be empty`','Directory still holds files (for example `lost+found`)','Use a clean subdirectory'],['`tablespace location must be an absolute path`','Relative path used','Give the full path'],['`tablespace location should not be inside the data directory`','Warning: location is under `PGDATA`','Choose a path outside `PGDATA`'],['`tablespace "x" is not empty`','Objects or database defaults still reference it','Follow the drop procedure above'],['`... cannot run inside a transaction block`','Command issued after `BEGIN`','Run it in autocommit mode']]},
+{note:'Tablespace creation and removal are WAL-logged, so a streaming standby repeats them. Make sure the same directory path exists and is writable on every standby before you run `CREATE TABLESPACE` on the primary.'}],
+src:[['Tablespaces',D+'manage-ag-tablespaces.html'],['CREATE TABLESPACE',D+'sql-createtablespace.html'],['DROP TABLESPACE',D+'sql-droptablespace.html'],['ALTER TABLESPACE',D+'sql-altertablespace.html'],['pg_tablespace catalog',D+'catalog-pg-tablespace.html'],['Database physical storage',D+'storage.html']]},
+
+/* ---------------------------------------------------------------- 7:2 */
+'pg:7:2':{blocks:[
+{p:'**Online moving** means relocating tables, indexes or materialized views to another tablespace while the PostgreSQL server keeps running: no shutdown and no restart. The word "online" refers to the **instance**, not to the object. The standard command `ALTER TABLE ... SET TABLESPACE` copies the relation files and holds an **ACCESS EXCLUSIVE** lock on the table for the whole copy, so sessions that need that table wait. The art of an online move is to keep each locked window short, to schedule it, and to use the lighter alternatives (`REINDEX ... CONCURRENTLY`, `pg_repack`) where available.'},
+{h:'Commands for moving objects'},
+{t:[['What you move','Command','Lock held','Notes'],['One table','`ALTER TABLE t SET TABLESPACE ts_new;`','ACCESS EXCLUSIVE on the table','Moves the heap and its **TOAST** table. **Indexes stay behind**'],['One index','`ALTER INDEX i SET TABLESPACE ts_new;`','ACCESS EXCLUSIVE on the index','Index is unusable while it moves'],['Index, rebuilt in the new place','`REINDEX (TABLESPACE ts_new) INDEX CONCURRENTLY i;`','SHARE UPDATE EXCLUSIVE (reads and writes continue)','PostgreSQL 14+. Needs space for the old and the new index at once'],['All indexes of a table','`REINDEX (TABLESPACE ts_new) TABLE CONCURRENTLY t;`','SHARE UPDATE EXCLUSIVE','Moves every index of the table'],['Materialized view','`ALTER MATERIALIZED VIEW mv SET TABLESPACE ts_new;`','ACCESS EXCLUSIVE','Its indexes move separately'],['All tables in a tablespace','`ALTER TABLE ALL IN TABLESPACE ts_old SET TABLESPACE ts_new [OWNED BY role] [NOWAIT];`','ACCESS EXCLUSIVE, table by table','Current database only; **system catalogs are not moved**; `NOWAIT` fails at once if a lock is unavailable'],['All indexes / materialized views in a tablespace','`ALTER INDEX ALL IN TABLESPACE ...`, `ALTER MATERIALIZED VIEW ALL IN TABLESPACE ...`','as above','Same options'],['A partitioned table','`ALTER TABLE p SET TABLESPACE ts_new;`','Brief','Moves **no data**; only sets the tablespace for partitions created later. Move each existing partition separately'],['Database default tablespace','`ALTER DATABASE db SET TABLESPACE ts_new;`','Database must have **no other connections**','Moves everything stored in the old default tablespace; effectively offline for that database']]},
+{note:'`VACUUM FULL` and `CLUSTER` rewrite a table but keep it in its current tablespace. Only the commands above change the tablespace.'},
+{h:'What happens inside an online move'},
+{svg:moveSvg},
+{ul:['PostgreSQL takes an **ACCESS EXCLUSIVE** lock, so no query can read or write the table.','It creates a **new file** (a new relfilenode) in the target tablespace and copies the data block by block.','When `wal_level` is `replica` or `logical` the copy is **written to WAL**, so the move produces WAL about the size of the table and a streaming standby copies it too.','It updates `pg_class` (`reltablespace`, `relfilenode`) and commits. Only at commit are the **old files deleted**.','If the session or server fails midway, the transaction rolls back and the half-built new file is removed; the table remains intact in the old place.']},
+{h:'Impact of an online move'},
+{t:[['Aspect','Effect','What to do'],['Locking','All access to the table blocks for the whole copy','Move small objects first, off-peak; set `lock_timeout`'],['Disk space','Destination needs **table size** free; the source frees space only at commit','Check `pg_relation_size` against `df`'],['WAL and replication','WAL volume about equal to the data moved; replicas must apply it and need the **same tablespace** path','Watch `pg_wal` size and replica lag; raise `max_wal_size` temporarily if needed'],['I/O','Sequential read of the source and write of the target','Run when I/O is quiet'],['Statistics and plans','Row statistics are preserved; the table gets a new file','Usually no `ANALYZE` needed'],['Indexes','Not moved with the table','Move them as well, preferably with `REINDEX ... CONCURRENTLY`'],['Triggers, constraints, privileges, ownership','Unchanged','None']]},
+{h:'Procedure'},
+{flow:['Inventory objects and sizes','Check free space in the target and WAL headroom','Pick the window; announce it','SET lock_timeout and move small objects first','Move indexes (REINDEX CONCURRENTLY)','Verify and monitor','Optionally drop the old tablespace']},
+{code:`-- 1. what is in the old tablespace (run in each database), largest first
+SELECT n.nspname, c.relname, c.relkind,
+       pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.reltablespace = (SELECT oid FROM pg_tablespace WHERE spcname = 'ts_old')
+  AND c.relkind IN ('r', 'm', 'i')
+ORDER BY pg_relation_size(c.oid) DESC;
+
+-- 2. headroom
+SELECT pg_size_pretty(pg_tablespace_size('ts_old')) AS source_size;
+-- and on the OS:  df -h /pgdata/ts_new  /var/lib/pgsql/18/data/pg_wal`},
+{code:`-- 3. move one table safely: give up quickly instead of queueing behind long transactions
+SET lock_timeout = '5s';
+ALTER TABLE public.orders SET TABLESPACE ts_new;
+
+-- 4. move its indexes without blocking readers and writers
+REINDEX (TABLESPACE ts_new) TABLE CONCURRENTLY public.orders;
+
+-- 5. new default for the objects you create from now on
+ALTER ROLE app_rw SET default_tablespace = ts_new;`},
+{code:`-- generate the statements for every ordinary table and run them with psql \\gexec
+SELECT format('ALTER TABLE %I.%I SET TABLESPACE ts_new;', n.nspname, c.relname)
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r', 'm')
+  AND c.reltablespace = (SELECT oid FROM pg_tablespace WHERE spcname = 'ts_old')
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+ORDER BY pg_relation_size(c.oid)
+\\gexec`},
+{note:'Materialized views have `relkind = \'m\'` and need `ALTER MATERIALIZED VIEW`, not `ALTER TABLE`. Adjust the generated command for them, or run a second pass.'},
+{h:'Monitoring a move in progress'},
+{code:`-- who waits for whom
+SELECT pid, state, wait_event_type, wait_event, now() - query_start AS running,
+       pg_blocking_pids(pid) AS blocked_by, left(query, 60) AS query
+FROM pg_stat_activity
+WHERE datname = current_database() AND pid <> pg_backend_pid()
+ORDER BY query_start;
+
+-- how big is the target so far
+SELECT pg_size_pretty(pg_tablespace_size('ts_new'));
+
+-- confirm after the move
+SELECT pg_relation_filepath('public.orders');          -- now under pg_tblspc/<new OID>/...
+SELECT tablename, tablespace FROM pg_tables WHERE tablename = 'orders';`},
+{h:'Moving the default tablespace of a database'},
+{code:`-- connect to another database (for example postgres), not to the one being moved
+ALTER DATABASE sales SET TABLESPACE ts_new;`},
+{ul:['You must own the database and have `CREATE` on the new tablespace.','No other session may be connected to `sales`; terminate them first (see Kill Sessions).','Objects stored in tablespaces other than the old default are not touched.','The command copies the database files and cannot run inside a transaction block.']},
+{h:'Choosing a method for minimum downtime'},
+{t:[['Method','Downtime for the table','Source','Notes'],['`ALTER TABLE ... SET TABLESPACE`','Full copy time (no reads or writes)','PostgreSQL core','Simplest. Fine for small and medium tables or a maintenance window'],['`REINDEX (TABLESPACE ...) CONCURRENTLY`','None (indexes only)','PostgreSQL core (14+)','Best way to move indexes online'],['`pg_repack` with the tablespace option','Short exclusive locks at start and end','Third-party extension, not part of PostgreSQL','Needs a primary key or unique index on the table and roughly the table size in extra space; install and test it first'],['Logical replication to a new table or cluster','Seconds at cut-over','PostgreSQL core','Most work; use for very large tables'],['Offline directory move','Whole instance stopped','Operating system','Next lecture: best for moving an entire tablespace']]},
+{h:'Pitfalls'},
+{ul:['**Forgetting indexes.** After `ALTER TABLE SET TABLESPACE` the indexes still occupy the old tablespace, so it cannot be dropped yet.','**Queueing behind a long transaction.** The `ACCESS EXCLUSIVE` request waits for older transactions, and new queries then queue behind your request. Use `lock_timeout` and retry.','**Filling the target.** If the target fills during the copy, the statement fails and rolls back; the old copy is still intact.','**Replica without the path.** The standby must have the target directory; otherwise WAL replay stops on the standby.','**Counting space too early.** Free space on the source appears only after commit, and after a checkpoint for dropped files.']},
+{note:'Rollback is simply the reverse command: `ALTER TABLE t SET TABLESPACE ts_old;`. Keep the old tablespace until the application has run for a full business cycle.'}],
+src:[['ALTER TABLE',D+'sql-altertable.html'],['ALTER INDEX',D+'sql-alterindex.html'],['REINDEX',D+'sql-reindex.html'],['ALTER DATABASE',D+'sql-alterdatabase.html'],['Explicit Locking',D+'explicit-locking.html'],['pg_tablespace_size and related functions',D+'functions-admin.html']]},
+
+/* ---------------------------------------------------------------- 7:3 */
+'pg:7:3':{blocks:[
+{p:'**Offline moving** relocates an entire tablespace directory while the PostgreSQL instance is **stopped**. Because the location of a tablespace is stored only as a **symbolic link** in `PGDATA/pg_tblspc/`, you can move the directory to another disk or path and then **re-point the link**; no SQL and no catalog change is needed. This is the method to use when a disk is full or must be replaced, when thousands of objects must move together, or when the long locks and large WAL volume of an online move are not acceptable. The price is **downtime** for the whole instance.'},
+{h:'How PostgreSQL finds a tablespace'},
+{svg:offSvg},
+{ul:['`pg_tablespace` stores the name, owner, ACL and options. It stores **no path**.','The path is the target of the symbolic link `PGDATA/pg_tblspc/<tablespace OID>`; `pg_tablespace_location(oid)` reads it.','Every relation path (`pg_relation_filepath`) is resolved through that link, so changing the target relocates every object in the tablespace at once.','The directory content must be **byte-for-byte identical** and consistent, which is guaranteed only after a clean shutdown.']},
+{note:'This is an operational procedure, not an SQL feature: `ALTER TABLESPACE` has no option to change the location. Always take a verified backup first and rehearse the steps on a test copy.'},
+{h:'Online or offline? Choosing the method'},
+{t:[['Question','Online move (previous lecture)','Offline move (this lecture)'],['Instance availability','Stays up; each table is locked while it moves','**Down** for the whole operation'],['Granularity','Object by object','The whole tablespace directory'],['Typical use','Rebalance a few large objects, tiering, cleanup','Replace or enlarge a disk, change a mount path, emergency when the disk is full'],['WAL generated','About the size of the data moved','None'],['Risk','Low, rolls back on failure','Human error with files; needs a good backup'],['Replicas','Replay the moves automatically','Must be repeated by hand on every standby, or rebuilt'],['Speed','Depends on object sizes and locks','Speed of the file copy']]},
+{h:'Pre-flight checklist'},
+{t:[['Check','Command or action'],['Which tablespace and OID','`SELECT oid, spcname, pg_tablespace_location(oid) FROM pg_tablespace;`'],['Size to move','`SELECT pg_size_pretty(pg_tablespace_size(\'ts_data\'));`'],['Free space on the new disk','`df -h /ts_new` (at least the tablespace size plus margin)'],['Verified backup exists','`pg_basebackup` or a storage snapshot taken and tested; plus `pg_dumpall --globals-only`'],['Standbys and archive','Know which standbys use the same path; pause or plan to repeat the move there'],['New directory prepared','Owned by the PostgreSQL OS user, mode `0700`, SELinux label set, mounted at boot (`/etc/fstab`)'],['Applications told','Maintenance window announced; connections will be refused'],['Rollback plan','Old directory is kept untouched until the new one is verified']]},
+{h:'Procedure'},
+{flow:['Record the OID and current location','Back up','Clean shutdown','Confirm the cluster state is shut down','Copy the directory (rsync) and verify','Re-point the symbolic link','Set owner, mode and SELinux label','Start and verify','Remove the old copy after a retention period']},
+{code:`-- 1. while the server is still running: note what you have
+SELECT oid, spcname, pg_tablespace_location(oid) AS location
+FROM pg_tablespace WHERE spcname = 'ts_data';
+--   oid  | spcname |  location
+-- -------+---------+-------------
+--  16400 | ts_data | /ts_old/data`},
+{code:`# 2. stop PostgreSQL cleanly (fast mode checkpoints and disconnects clients)
+sudo systemctl stop postgresql-18
+#    or: sudo -u postgres /usr/pgsql-18/bin/pg_ctl -D /var/lib/pgsql/18/data stop -m fast
+
+# 3. confirm the shutdown was clean
+sudo -u postgres /usr/pgsql-18/bin/pg_controldata /var/lib/pgsql/18/data | grep "cluster state"
+#    Database cluster state:               shut down
+
+# 4. copy to the new location, keeping owner, mode, hard links, ACLs and xattrs
+sudo mkdir -p /ts_new/data
+sudo chown postgres:postgres /ts_new/data && sudo chmod 700 /ts_new/data
+sudo rsync -aHAX /ts_old/data/ /ts_new/data/
+
+# 5. verify: a dry run with checksums must list no differences
+sudo rsync -aHAXcn --delete --itemize-changes /ts_old/data/ /ts_new/data/
+
+# 6. re-point the link (-n: treat the existing link as a file, -f: replace it)
+cd /var/lib/pgsql/18/data/pg_tblspc
+ls -l 16400                                   # -> /ts_old/data
+sudo -u postgres ln -sfn /ts_new/data 16400
+ls -l 16400                                   # -> /ts_new/data
+
+# 7. SELinux label on the new location (RHEL family)
+sudo semanage fcontext -a -t postgresql_db_t "/ts_new(/.*)?"
+sudo restorecon -Rv /ts_new
+
+# 8. start and verify
+sudo systemctl start postgresql-18
+sudo -u postgres psql -c "SELECT spcname, pg_tablespace_location(oid) FROM pg_tablespace WHERE spcname = 'ts_data';"
+sudo -u postgres psql -c "SELECT count(*) FROM app.orders;"      -- a table in that tablespace`},
+{code:`# 9. keep the old data for a retention period, but make it impossible to use by accident
+sudo mv /ts_old/data /ts_old/data.moved_20261008
+# after the application has run cleanly for days and a new backup is verified:
+sudo rm -rf /ts_old/data.moved_20261008`},
+{note:'If both locations are on the **same file system**, `mv` is an instant rename and needs no copy. Across file systems `mv` is copy-then-delete and cannot be resumed after an interruption, so prefer `rsync`, which can be re-run, and delete the source only after verification.'},
+{h:'Copy tools compared'},
+{t:[['Tool','Strength','Weakness'],['`mv` on the same file system','Atomic and instant','Not possible across disks'],['`mv` across file systems','Simple','Copy then delete; not resumable; no verification'],['`rsync -aHAX`','Resumable, preserves attributes, verifiable with `-c -n`','Slower than a rename'],['`cp -a`','Always available','No resume or verification'],['Storage snapshot / volume swap','Very fast for large data','Needs storage tooling and a clean, consistent snapshot']]},
+{h:'If something goes wrong'},
+{t:[['Symptom after start','Likely cause','Remedy'],['`could not open file "pg_tblspc/16400/PG_18_.../..." : No such file or directory`','Link points to the wrong place or the copy is incomplete','Stop, fix the link or re-run `rsync`, start again'],['`Permission denied` for the tablespace files','Owner, mode, or SELinux label wrong on the new path','`chown -R postgres:postgres`, `chmod 700`, `restorecon -Rv`'],['`PANIC` or errors about missing WAL-logged files after crash recovery','Server was not shut down cleanly before the copy','Restore the old copy and link, start once, shut down cleanly, repeat'],['Server starts but queries on moved tables fail','Link points to a **different** tablespace OID','Check `ls -l pg_tblspc` against `SELECT oid, spcname FROM pg_tablespace`'],['Disk of the new path is not mounted at boot','Missing `/etc/fstab` entry','Fix the mount, then restart']]},
+{p:'Because the old directory is untouched until you delete it, rollback is simply: stop the server, set the link back (`ln -sfn /ts_old/data 16400`) and start.'},
+{h:'Standbys, backups and the Windows variant'},
+{ul:['**Standby servers** keep their own `pg_tblspc` links. Moving the primary does not change them. If you also want the new layout there, repeat the procedure on each standby while it is stopped, or rebuild it with `pg_basebackup -T old=new`.','**Backups** taken before the move still contain the old paths. Take a new base backup after the move and keep the `tablespace_map` information with it (see the last lecture).','**Windows** uses junction points: stop the service, copy the directory, then delete and recreate the junction with `mklink /J "C:\\Program Files\\PostgreSQL\\18\\data\\pg_tblspc\\16400" "E:\\ts_new\\data"`.']},
+{h:'Offline move versus creating a new tablespace'},
+{p:'When the aim is only to **reclaim space on a full disk**, an alternative is to create a new tablespace on another disk and move objects with the online commands (previous lecture), then drop the old tablespace. That is online but slow for large data. The offline move shown here is the fastest way to relocate a **whole** tablespace and is the usual choice when the instance is already stopped, for example after the disk filled up and the server shut itself down.'},
+{note:'Free-space rule of thumb: after the move, the old directory still holds the data until you delete it. Do not delete it before the new one has been verified and backed up.'}],
+src:[['Tablespaces',D+'manage-ag-tablespaces.html'],['pg_tablespace_location and size functions',D+'functions-admin.html'],['pg_controldata',D+'app-pgcontroldata.html'],['pg_ctl: shutdown modes',D+'app-pg-ctl.html'],['pg_basebackup',D+'app-pgbasebackup.html']]},
+
+/* ---------------------------------------------------------------- 7:4 (bonus) */
+'pg:7:4':{blocks:[
+{p:'The earlier lectures treat a tablespace as a directory. To plan storage, diagnose bloat or understand WAL records you also need to know **what is inside** those directories: which files a table becomes, how a data page is organised, and where large values go. This lecture follows one table from its SQL name down to bytes on disk, using the documentation chapter "Database Physical Storage".'},
+{h:'From object to file'},
+{t:[['Step','Catalog or function','Example'],['Object name to OID','`pg_class.oid`','`\'orders\'::regclass`'],['OID to **relfilenode** (file name)','`pg_class.relfilenode`, `pg_relation_filenode(rel)`','16401'],['Tablespace','`pg_class.reltablespace` (0 = database default)','16400 or 0'],['Database','`pg_database.oid`','16384'],['Full relative path','`pg_relation_filepath(rel)`','`pg_tblspc/16400/PG_18_.../16384/16401`'],['File back to object','`pg_filenode_relation(tablespace_oid, filenode)`','`orders`']]},
+{ul:['**OID** is permanent; **relfilenode** changes whenever the table is rewritten (`TRUNCATE`, `VACUUM FULL`, `CLUSTER`, `REINDEX`, `ALTER TABLE ... SET TABLESPACE`).','Some system catalogs are **mapped**: their `relfilenode` column is 0 and the real number is in a `pg_filenode.map` file. Use `pg_relation_filenode()`, which handles both.','Files are named by number only. Use `oid2name` (contrib) or the functions above to translate them to names.']},
+{h:'Forks and segments'},
+{t:[['File','Fork','Content','Created for'],['`16401`','main','The data pages (rows or index entries)','Every table and index'],['`16401_fsm`','free space map','How much free space each page has, so inserts find room fast','Tables and most indexes'],['`16401_vm`','visibility map','Two bits per page: all-visible and all-frozen; enables index-only scans and speeds vacuum','Tables'],['`16401_init`','initialization','An empty copy of the relation used to reset it after a crash','**Unlogged** tables and their indexes only'],['`16401.1`, `16401.2`, ...','main (segments)','Next 1 GB pieces of a relation that exceeds 1 GB','Large relations']]},
+{p:'A relation is split into **1 GB segment files** (a compile-time default) so that file systems with size limits and backup tools handle it easily. All forks and segments of one relation are stored in the **same tablespace**.'},
+{h:'The 8 KB page'},
+{svg:pageSvg},
+{t:[['Part','Size','Purpose'],['Page header','24 bytes','`pd_lsn` (LSN of the last WAL record that changed the page), `pd_checksum`, `pd_flags`, `pd_lower`, `pd_upper`, `pd_special`, page size and layout version, `pd_prune_xid`'],['Line pointers (item identifiers)','4 bytes each','Array growing from the front; each gives offset, length and state of one tuple. States: normal, redirect, dead, unused'],['Free space','between `pd_lower` and `pd_upper`','Room for new line pointers and tuples'],['Tuples (rows)','variable','Stored from the **end** of the page backwards. Each starts with a 23-byte header: `t_xmin`, `t_xmax`, `t_cid`, `t_ctid`, `t_infomask`, `t_infomask2`, `t_hoff`'],['Special space','0 for tables','Used by index access methods (for example B-tree sibling pointers)']]},
+{ul:['A row that does not fit in one page is not split: large values are moved to the **TOAST** table (below).','`pd_lsn` is the link between data and WAL: the page may be written only after WAL is flushed up to this LSN.','Since PostgreSQL 18 `initdb` enables **data checksums** by default (`--no-data-checksums` disables them). `SHOW data_checksums;` tells you; checksum failures are counted in `pg_stat_database`.','The table property `fillfactor` leaves free space in each page for updates, reducing page splits and enabling HOT updates.']},
+{h:'TOAST: storing large values'},
+{p:'**TOAST** (The Oversized-Attribute Storage Technique) handles values too large for a page. When a row grows beyond about **2 KB**, PostgreSQL first tries to compress the largest variable-length columns and, if still too big, moves them **out of line** into a separate TOAST table (`pg_toast.pg_toast_<table OID>`) in chunks of roughly 2 KB. The main row keeps only a small pointer. A single value can be up to 1 GB. The TOAST table is stored in the **same tablespace** as its parent table and moves with it.'},
+{t:[['Column storage strategy','Compress','Out of line','Typical use'],['`PLAIN`','No','No','Fixed-length types'],['`EXTENDED` (default for text, bytea, jsonb ...)','Yes','Yes','General'],['`EXTERNAL`','No','Yes','Large values with frequent substring access (no decompression)'],['`MAIN`','Yes','Only as last resort','Keep in the row if possible']]},
+{code:`ALTER TABLE docs ALTER COLUMN body SET STORAGE EXTERNAL;
+ALTER TABLE docs ALTER COLUMN body SET COMPRESSION lz4;      -- or pglz; default_toast_compression sets the default
+SELECT reltoastrelid::regclass FROM pg_class WHERE relname = 'docs';   -- pg_toast.pg_toast_16410`},
+{h:'Size functions'},
+{t:[['Function','Counts'],['`pg_relation_size(rel [, fork])`','One fork only; default is the main fork'],['`pg_table_size(rel)`','Table + TOAST + free space map + visibility map (no indexes)'],['`pg_indexes_size(rel)`','All indexes of the table'],['`pg_total_relation_size(rel)`','Everything above together'],['`pg_database_size(db)`, `pg_tablespace_size(ts)`','Whole database or tablespace']]},
+{h:'Hands-on'},
+{code:`CREATE TABLE st_demo (id int PRIMARY KEY, note text);
+INSERT INTO st_demo SELECT g, repeat('x', 100) FROM generate_series(1, 50000) g;
+VACUUM st_demo;
+
+SELECT pg_relation_filepath('st_demo');
+SELECT pg_relation_filenode('st_demo');
+
+SELECT pg_size_pretty(pg_relation_size('st_demo', 'main')) AS main,
+       pg_size_pretty(pg_relation_size('st_demo', 'fsm'))  AS fsm,
+       pg_size_pretty(pg_relation_size('st_demo', 'vm'))   AS vm,
+       pg_size_pretty(pg_total_relation_size('st_demo'))   AS total;
+
+-- name of the file for a given object and the reverse lookup
+SELECT pg_filenode_relation(0, pg_relation_filenode('st_demo'));   -- 0 = database default tablespace
+
+-- look inside a page (superuser; extension from contrib)
+CREATE EXTENSION IF NOT EXISTS pageinspect;
+SELECT lsn, checksum, lower, upper, special, pagesize FROM page_header(get_raw_page('st_demo', 0));
+SELECT lp, lp_off, lp_len, t_xmin, t_xmax, t_ctid FROM heap_page_items(get_raw_page('st_demo', 0)) LIMIT 5;
+
+-- free space and data checksums
+CREATE EXTENSION IF NOT EXISTS pg_freespacemap;
+SELECT * FROM pg_freespace('st_demo') LIMIT 3;
+SHOW data_checksums;
+DROP TABLE st_demo;`},
+{code:`# on the OS: all files that belong to one relation (default tablespace)
+ls -l $PGDATA/base/16384/ | grep 16401
+# 16401   16401_fsm   16401_vm      (and 16401.1 once the table passes 1 GB)
+
+# data checksum tool (cluster must be shut down)
+pg_checksums --check -D $PGDATA`},
+{note:'Do not edit relation files by hand. The tools above are read-only helpers for diagnosis. `get_raw_page()` reads through shared buffers, so it shows what the server currently sees.'}],
+src:[['Database Physical Storage',D+'storage.html'],['Database File Layout',D+'storage-file-layout.html'],['TOAST',D+'storage-toast.html'],['Free Space Map',D+'storage-fsm.html'],['Visibility Map',D+'storage-vm.html'],['The Initialization Fork',D+'storage-init.html'],['Database Page Layout',D+'storage-page-layout.html'],['pageinspect',D+'pageinspect.html'],['Data Checksums',D+'checksums.html']]},
+
+/* ---------------------------------------------------------------- 7:5 (bonus) */
+'pg:7:5':{blocks:[
+{p:'Creating a tablespace is only the start. Day-to-day use depends on where **new** objects go by default, where **temporary** files are written, who may use the tablespace, how the planner treats its speed, and how you monitor and plan capacity. This lecture covers those settings, taken from the documentation chapters on tablespaces and client-connection defaults.'},
+{h:'Where does a new object go?'},
+{flow:['TABLESPACE clause in the command','Else non-empty default_tablespace','Else dattablespace of the current database','Normally pg_default']},
+{t:[['Setting','Context','Default','Effect'],['`default_tablespace`','`user` (session, role, database, file)','empty string','Tablespace for tables, indexes and materialized views created without a `TABLESPACE` clause. Empty means the database default. Ignored for temporary objects'],['`temp_tablespaces`','`user`','empty','List of tablespaces for temporary tables, their indexes and **temporary files** (sorts, hash joins, spilling queries)'],['`temp_file_limit`','`superuser`','`-1` (no limit)','Maximum temporary-file space per process; a query exceeding it is cancelled'],['`log_temp_files`','`superuser`','`-1` (off)','Log every temporary file at or above this size; `0` logs all']]},
+{ul:['`default_tablespace` only affects objects created **afterwards**. Existing objects stay where they are.','An invalid or inaccessible name in `default_tablespace` makes `CREATE TABLE` fail, unless the command names a tablespace itself.','When `temp_tablespaces` lists several names, PostgreSQL picks **at random** for each new temporary object, but within one transaction successive objects go to successive list entries. This spreads load over several disks. A name for which the role lacks `CREATE` is skipped.','Temporary files are placed in a `pgsql_tmp` directory: `base/pgsql_tmp` for the default tablespace, or `pg_tblspc/<OID>/PG_18_.../pgsql_tmp` for a user tablespace. They are removed at server start.']},
+{code:`-- sorts and hash joins that spill to disk go to a dedicated fast disk
+CREATE TABLESPACE ts_temp LOCATION '/pgdata/ts_temp/app';
+GRANT CREATE ON TABLESPACE ts_temp TO PUBLIC;           -- temp use needs CREATE
+ALTER SYSTEM SET temp_tablespaces = 'ts_temp';
+SELECT pg_reload_conf();
+
+-- watch temporary-file use per database
+SELECT datname, temp_files, pg_size_pretty(temp_bytes) AS temp_bytes
+FROM pg_stat_database WHERE datname = current_database();
+ALTER SYSTEM SET log_temp_files = '10MB';`},
+{h:'Per-tablespace planner and I/O settings'},
+{p:'The planner assumes the same cost for every page unless told otherwise. If one tablespace is on SSD and another on spinning disks, tell the planner. The four options below can be set on a tablespace and **override** the global values for objects stored in it.'},
+{t:[['Option','Global default','Meaning','Typical value on SSD'],['`seq_page_cost`','`1.0`','Cost of reading a page sequentially','`1.0`'],['`random_page_cost`','`4.0`','Cost of a non-sequential page read; lower values make index scans more attractive','`1.1`'],['`effective_io_concurrency`','server setting','Number of concurrent I/O requests to prefetch','higher on SSD'],['`maintenance_io_concurrency`','server setting','Same for maintenance work such as index builds','higher on SSD']]},
+{code:`ALTER TABLESPACE ts_ssd SET (random_page_cost = 1.1, effective_io_concurrency = 200);
+SELECT spcname, spcoptions FROM pg_tablespace;`},
+{h:'Privileges on tablespaces'},
+{t:[['Aspect','Rule'],['Who can create or drop','Creation: superuser only. Drop, rename, change options: owner or superuser'],['Using a tablespace','The `CREATE` privilege on it. Needed to create objects there, to move objects there, and to use it in `temp_tablespaces`'],['Default','A new user tablespace can be used only by its owner and superusers until `CREATE` is granted. `pg_default` is open to every role, which is why ordinary users can create tables without any grant'],['Existing objects','Reading and writing data does not need any tablespace privilege; only creating or moving does'],['Ownership matters','A role that owns a tablespace cannot be dropped until `REASSIGN OWNED` or an owner change']]},
+{code:`GRANT CREATE ON TABLESPACE ts_ssd TO app_rw;
+REVOKE CREATE ON TABLESPACE ts_ssd FROM app_rw;
+SELECT has_tablespace_privilege('app_rw', 'ts_ssd', 'CREATE');
+\\db+                                    -- the Access privileges column shows the ACL`},
+{h:'Planning placement'},
+{t:[['Workload','Placement idea','Remarks'],['OLTP with a small hot set','Hot tables and **all indexes** on SSD or NVMe; large rarely read tables on cheaper disks','Indexes are read randomly, so they benefit most from fast storage'],['Time-series or log data','Recent partitions on fast storage, old partitions moved to a cold tablespace','Move a partition with `ALTER TABLE ... SET TABLESPACE` as it ages'],['Heavy sorting, reporting','`temp_tablespaces` on a dedicated disk','Avoids competing with data and WAL I/O'],['Write-heavy system','Separate disk for **`pg_wal`** (it is not a tablespace; use `initdb --waldir` or a symbolic link)','Sequential WAL writes do not disturb random data I/O'],['Several applications in one cluster','One tablespace per application or tier, named by purpose','Makes ownership and growth visible']]},
+{code:`CREATE TABLESPACE ts_hot  LOCATION '/pgdata/ts_hot/app';
+CREATE TABLESPACE ts_cold LOCATION '/pgdata/ts_cold/app';
+
+CREATE TABLE events (id bigint, created date NOT NULL, payload text) PARTITION BY RANGE (created);
+CREATE TABLE events_2026_10 PARTITION OF events
+  FOR VALUES FROM ('2026-10-01') TO ('2026-11-01') TABLESPACE ts_hot;
+CREATE TABLE events_2025 PARTITION OF events
+  FOR VALUES FROM ('2025-01-01') TO ('2026-01-01') TABLESPACE ts_cold;
+
+-- when a month ages, move its partition (and rebuild its indexes there)
+ALTER TABLE events_2026_09 SET TABLESPACE ts_cold;
+REINDEX (TABLESPACE ts_cold) TABLE CONCURRENTLY events_2026_09;`},
+{h:'Monitoring tablespaces'},
+{code:`-- size per tablespace (cluster-wide)
+SELECT spcname, pg_size_pretty(pg_tablespace_size(oid)) AS size
+FROM pg_tablespace ORDER BY pg_tablespace_size(oid) DESC;
+
+-- objects and size per tablespace in the CURRENT database
+SELECT ts.spcname, count(*) AS objects,
+       pg_size_pretty(sum(pg_relation_size(c.oid))) AS size
+FROM pg_class c
+JOIN pg_tablespace ts ON ts.oid = COALESCE(NULLIF(c.reltablespace, 0),
+     (SELECT dattablespace FROM pg_database WHERE datname = current_database()))
+WHERE c.relkind IN ('r', 'i', 'm', 't')
+GROUP BY ts.spcname ORDER BY sum(pg_relation_size(c.oid)) DESC;`},
+{p:'Also monitor the **operating system**: `df -h` on each tablespace volume, inode use, and mount state. PostgreSQL itself has no per-tablespace quota; when a tablespace volume fills, writes to objects in it fail with `No space left on device`, while other tablespaces keep working.'},
+{h:'Limits and good practice'},
+{ul:['No SQL command sets a size limit on a tablespace; use file-system or volume quotas.','A tablespace is **cluster-wide** while objects belong to one database: always check every database before dropping or moving.','Tablespaces are not independent: a database cannot be restored from only some of its tablespaces. Back up all of them together.','Keep the same directory layout on primary, standbys, test and disaster-recovery servers.','Name tablespaces by **purpose** (`ts_hot`, `ts_cold`, `ts_temp`), not by disk (`ts_sdb1`), because disks change.','Avoid network file systems for data directories unless you fully understand the consistency and locking guarantees; the documentation lists the risks.','Document the mapping tablespace to path to purpose in your runbook.']}],
+src:[['Tablespaces',D+'manage-ag-tablespaces.html'],['Client Connection Defaults: Statement Behavior',D+'runtime-config-client.html'],['Resource Consumption',D+'runtime-config-resource.html'],['Query Planning: planner cost constants',D+'runtime-config-query.html'],['GRANT',D+'sql-grant.html'],['Creating a Database Cluster (file systems)',D+'creating-cluster.html']]},
+
+/* ---------------------------------------------------------------- 7:6 (bonus) */
+'pg:7:6':{blocks:[
+{p:'A WAL segment goes through a **lifecycle**: it is created or reused, filled, closed, optionally archived, and finally recycled or removed. PostgreSQL keeps a segment only while something still needs it. When the directory `pg_wal` grows unexpectedly, one of a small number of **retention holders** is almost always the cause. This lecture explains the lifecycle, the holders, how to diagnose each one and how to relocate `pg_wal`. Checkpoint tuning itself is covered in Section 06 (WAL and Checkpoint Parameters).'},
+{h:'Lifecycle of a segment'},
+{flow:['Current segment is filled with records','Segment is full or pg_switch_wal / archive_timeout closes it','archive_mode on: .ready marker, archive_command copies it, marker becomes .done','Checkpoint finishes: older segments are no longer needed for crash recovery','Needed by a slot, wal_keep_size or a standby? Then it stays','Otherwise it is recycled (renamed as a future segment) or removed']},
+{p:'**Recycling** means renaming an old file to a future segment number instead of deleting it and creating a new one, which saves file-system work. The number of segments kept for reuse is estimated from recent activity and bounded by `min_wal_size` and `max_wal_size`. The `checkpoint complete` log line reports how many files were added, removed and recycled.'},
+{h:'What keeps WAL in pg_wal'},
+{svg:holdSvg},
+{t:[['Holder','Setting','How to check','How to release'],['Distance since the last checkpoint','`max_wal_size` (soft limit), `checkpoint_timeout`','`log_checkpoints`, `pg_stat_checkpointer`','Normal. Tune the settings (Section 06)'],['Archiving not keeping up or failing','`archive_mode`, `archive_command` or `archive_library`','`pg_stat_archiver`, `ls pg_wal/archive_status/*.ready`','Fix the command, the target disk or network; segments are removed after they are archived'],['Extra segments kept for standbys','`wal_keep_size` (default 0)','`SHOW wal_keep_size;`','Lower the value; takes effect at the next checkpoint'],['Replication slots','`max_slot_wal_keep_size` (default `-1`, unlimited)','`pg_replication_slots`: `active`, `restart_lsn`, `wal_status`, `safe_wal_size`','Reconnect the consumer, or drop an abandoned slot; set `max_slot_wal_keep_size` as a safety cap'],['Long-running base backup','none','`pg_stat_progress_basebackup`','Finish or cancel the backup'],['Heavy write burst','workload','`pg_stat_wal`, `pg_ls_waldir()`','Wait; consider larger `max_wal_size`']]},
+{note:'`max_wal_size` is a **soft** limit. It is exceeded when archiving fails, when slots or `wal_keep_size` retain files, or under extreme load. It does not protect the disk by itself.'},
+{h:'Archiving: configuration and checks'},
+{code:`# postgresql.conf
+wal_level = replica
+archive_mode = on                               # restart required
+archive_command = 'test ! -f /backup/wal_archive/%f && cp %p /backup/wal_archive/%f'
+archive_timeout = 15min                         # optional: force a segment switch on quiet systems
+# %p = path of the segment, %f = file name only
+# PostgreSQL 15+ also offers archive_library for a shared module instead of a shell command`},
+{ul:['The command must return **exit status 0 only if the file was safely archived**. Any other status makes PostgreSQL retry and keep the segment.','It must not overwrite an existing archive file; the `test ! -f` guard prevents silent loss.','`archive_mode` needs a **restart**; `archive_command` only a reload.','Test it by hand as the postgres user, and monitor `pg_stat_archiver`.']},
+{code:`SELECT archived_count, last_archived_wal, last_archived_time,
+       failed_count,   last_failed_wal,   last_failed_time
+FROM pg_stat_archiver;
+
+SELECT slot_name, slot_type, active, restart_lsn, wal_status,
+       pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS retained,
+       pg_size_pretty(safe_wal_size) AS safe_wal_size
+FROM pg_replication_slots;`},
+{t:[['`wal_status` of a slot','Meaning'],['`reserved`','Within `max_wal_size`; WAL is safe'],['`extended`','Beyond `max_wal_size` but still kept by the slot or `wal_keep_size`'],['`unreserved`','About to be removed at the next checkpoint (when `max_slot_wal_keep_size` is set)'],['`lost`','Required WAL is gone; the consumer must be rebuilt']]},
+{h:'Troubleshooting a growing or full pg_wal'},
+{flow:['Alert: pg_wal growing','Measure: pg_ls_waldir() size and df','Archiver failing? Fix archive_command','Inactive slot? Reconnect or drop it','wal_keep_size too high? Lower it','Checkpoints too rare or load too high? Tune and add disk','Confirm: size falls after next checkpoint']},
+{code:`-- how much WAL is on disk
+SELECT count(*) AS files, pg_size_pretty(sum(size)) AS total FROM pg_ls_waldir();
+
+-- segments waiting to be archived (run in a shell)
+--   ls $PGDATA/pg_wal/archive_status | grep -c '\\.ready$'
+
+-- drop an abandoned slot (it must be inactive)
+SELECT pg_drop_replication_slot('old_standby_slot');
+
+-- cap what a slot may retain, then reload
+ALTER SYSTEM SET max_slot_wal_keep_size = '50GB';
+SELECT pg_reload_conf();
+CHECKPOINT;       -- lets PostgreSQL remove or recycle segments that are no longer held`},
+{h:'When the disk is already full'},
+{t:[['Situation','Symptoms','Action'],['Almost full, server still running','Alerts, `pg_wal` near the disk size','Free space elsewhere on the same volume (old logs, dumps); fix the holder (archiver, slot); never remove WAL by hand'],['Full','`PANIC: could not write to file "pg_wal/xlogtemp.NNNN": No space left on device`; server stops','Add space or move `pg_wal` to a larger volume (below), then start; crash recovery runs automatically'],['Damaged WAL, server will not start','Errors about missing or invalid WAL records','Restore from backup. `pg_resetwal` is the last resort and may leave inconsistent data']]},
+{h:'Sizing the pg_wal volume'},
+{t:[['Component','Contribution'],['`max_wal_size`','Normal ceiling between checkpoints (soft)'],['`wal_keep_size`','Added on top'],['Archive backlog','Seconds or minutes of WAL if the archive target is slow, more if it is down'],['Slot retention','Unlimited unless `max_slot_wal_keep_size` is set'],['Safety margin','At least 20-30 percent free']]},
+{h:'Moving pg_wal to another disk'},
+{code:`# at cluster creation
+initdb -D /var/lib/pgsql/18/data --waldir=/walvol/pg_wal
+
+# on an existing cluster (short downtime)
+sudo systemctl stop postgresql-18
+sudo mkdir -p /walvol && sudo mv /var/lib/pgsql/18/data/pg_wal /walvol/pg_wal
+sudo ln -s /walvol/pg_wal /var/lib/pgsql/18/data/pg_wal
+sudo chown -h postgres:postgres /var/lib/pgsql/18/data/pg_wal
+sudo chmod 700 /walvol/pg_wal
+sudo restorecon -Rv /walvol                      # SELinux (RHEL family)
+sudo systemctl start postgresql-18
+ls -ld /var/lib/pgsql/18/data/pg_wal`},
+{note:'`pg_wal` is not a tablespace. It is moved with `initdb --waldir` or a symbolic link as shown, and a physical backup must capture it (`pg_basebackup -X stream` does).'},
+{h:'Monitoring checklist'},
+{ul:['Free space on the `pg_wal` volume (alert at 70 percent and 85 percent).','`pg_stat_archiver.failed_count` increasing, or `last_archived_time` older than your target.','Slots with `active = false` or `wal_status` other than `reserved`.','`pg_stat_checkpointer.num_requested` much larger than `num_timed`.','Replication lag on every standby.']}],
+src:[['WAL Configuration',D+'wal-configuration.html'],['Continuous Archiving and PITR',D+'continuous-archiving.html'],['Replication Slots',D+'warm-standby.html'],['pg_replication_slots',D+'view-pg-replication-slots.html'],['pg_stat_archiver',D+'monitoring-stats.html'],['Write Ahead Log settings',D+'runtime-config-wal.html'],['initdb',D+'app-initdb.html'],['pg_resetwal',D+'app-pgresetwal.html']]},
+
+/* ---------------------------------------------------------------- 7:7 (bonus) */
+'pg:7:7':{blocks:[
+{p:'WAL is not a black box. Three tools let you **read** what the server wrote and what state it recorded: **`pg_waldump`** prints WAL records from segment files, the **`pg_walinspect`** extension does the same through SQL, and **`pg_controldata`** shows the control file (checkpoint position, timeline, segment size). They answer questions such as "what generates so much WAL?", "where did the last checkpoint start?" and "which timeline is this cluster on?". All three are read-only.'},
+{h:'pg_waldump'},
+{p:'`pg_waldump` is a command-line program that decodes WAL files and displays one line per record. It works on files, so it can read the live `pg_wal` directory, an archive, or a copy. It does not need the server running, but it must run as an OS user that can read the files (normally `postgres`). A record that is still being written at the end of the log may appear as incomplete; this is normal.'},
+{code:`# records of one segment
+pg_waldump -p $PGDATA/pg_wal 000000010000000000000003
+
+# a range of LSNs, only 20 records
+pg_waldump -p $PGDATA/pg_wal -s 0/3000148 -e 0/3010000 -n 20
+
+# typical output
+# rmgr: Heap        len (rec/tot):     59/    59, tx:        742, lsn: 0/03000148, prev 0/03000110, desc: INSERT off: 1, flags: 0x00, blkref #0: rel 1663/16384/16401 blk 0
+# rmgr: Transaction len (rec/tot):     34/    34, tx:        742, lsn: 0/03000188, prev 0/03000148, desc: COMMIT 2026-10-08 10:31:02.114516 IST`},
+{t:[['Field in the output','Meaning'],['`rmgr`','Resource manager that owns the record (Heap, Btree, Transaction, XLOG ...)'],['`len (rec/tot)`','Record data length / total length including full-page images'],['`tx`','Transaction ID (0 for records not tied to a transaction)'],['`lsn`, `prev`','Position of this record and of the previous one'],['`desc`','Human-readable description (`INSERT`, `COMMIT`, `CHECKPOINT_ONLINE` ...)'],['`blkref #0: rel 1663/16384/16401 blk 0`','Block touched: **tablespace OID / database OID / relfilenode**, block number. 1663 is `pg_default`; a user tablespace shows its own OID']]},
+{t:[['Option','Purpose'],['`-p path`','Directory with the WAL files'],['`-s`, `-e`','Start and end LSN'],['`-n N`','Stop after N records'],['`-t N`','Timeline to read'],['`-r rmgr`','Only records of one resource manager; `-r list` shows names'],['`-x xid`','Only records of one transaction'],['`-R tblspc/db/rel`, `-B`, `-F`','Only records touching one relation, block or fork'],['`-b`','Show block references in detail'],['`-w` / `--fullpage`','Only records with full-page images'],['`-f`','Follow: keep reading as new WAL arrives'],['`--stats[=record]` (or `-z`)','Summary table instead of records']]},
+{code:`# who generates the WAL? summary by resource manager
+pg_waldump -p $PGDATA/pg_wal --stats 000000010000000000000003 000000010000000000000008
+# Type            N   (%)   Record size  (%)   FPI size  (%)   Combined size (%)
+# Heap       120045 (61.2)     9604620 (58.1)  4096000 (71.0)  13700620 (61.4)
+# Btree       41000 (20.9)     ...
+
+# every change to one table: tablespace/database/relfilenode from pg_relation_filepath
+pg_waldump -p $PGDATA/pg_wal -R 1663/16384/16401 000000010000000000000003`},
+{ul:['A large **FPI size** share means checkpoints are frequent: raise `max_wal_size` and `checkpoint_timeout`, consider `wal_compression`.','Many `Btree` and `Heap` records for one table point to an update-heavy table with many indexes.','Use the **three-part relation number** to connect a WAL record to a table: that is the link between WAL format and tablespaces.']},
+{h:'pg_walinspect (SQL access to WAL)'},
+{p:'The contrib extension **`pg_walinspect`** (PostgreSQL 15 and later) exposes similar information as SQL functions. It reads the WAL of the **running server**. Execute permission is limited to superusers and members of the predefined role `pg_read_server_files`.'},
+{t:[['Function','Returns'],['`pg_get_wal_record_info(lsn)`','One record at or after the LSN'],['`pg_get_wal_records_info(start_lsn, end_lsn)`','All records in the range (type, length, FPI length, description, block references)'],['`pg_get_wal_stats(start_lsn, end_lsn [, per_record])`','Statistics by resource manager or record type'],['`pg_get_wal_block_info(start_lsn, end_lsn [, show_data])`','One row per block reference; useful to find which relation a record touched']]},
+{code:`CREATE EXTENSION pg_walinspect;
+
+SELECT pg_current_wal_flush_lsn() AS start_lsn \\gset
+-- ... run some workload, then:
+SELECT resource_manager, record_type, count(*) AS records,
+       pg_size_pretty(sum(record_length)) AS bytes, pg_size_pretty(sum(fpi_length)) AS fpi_bytes
+FROM pg_get_wal_records_info(:'start_lsn', pg_current_wal_flush_lsn())
+GROUP BY 1, 2 ORDER BY sum(record_length) DESC LIMIT 10;
+
+SELECT * FROM pg_get_wal_stats(:'start_lsn', pg_current_wal_flush_lsn())
+WHERE count > 0 ORDER BY combined_size DESC;`},
+{h:'pg_controldata and pg_control_* functions'},
+{p:'The **control file** `global/pg_control` is a small file that the server updates at every checkpoint. It tells startup where crash recovery must begin. `pg_controldata` prints it, and it works even when the server is stopped.'},
+{code:`pg_controldata $PGDATA
+# pg_control version number:            1800
+# Database system identifier:           <64-bit number>
+# Database cluster state:               in production
+# Latest checkpoint location:           0/3000110
+# Latest checkpoint's REDO location:    0/30000D8
+# Latest checkpoint's REDO WAL file:    000000010000000000000003
+# Latest checkpoint's TimeLineID:       1
+# Latest checkpoint's full_page_writes: on
+# Time of latest checkpoint:            Thu 08 Oct 2026 10:25:41 AM IST
+# Bytes per WAL segment:                16777216
+# WAL block size:                       8192
+# Data page checksum version:           1`},
+{t:[['Field','What it tells you'],['`Database cluster state`','`in production`, `shut down`, `in crash recovery`, `in archive recovery`, `shut down in recovery`'],['`Latest checkpoint location` / `REDO location`','Where crash recovery starts replaying WAL'],['`REDO WAL file`','The oldest segment crash recovery needs'],['`TimeLineID`','Current timeline (changes after promotion or point-in-time recovery)'],['`Minimum recovery ending location`','Non-zero on a standby or during recovery; the point to reach for consistency'],['`Bytes per WAL segment`, `WAL block size`','Confirm the sizes chosen at `initdb`'],['`Data page checksum version`','`1` when data checksums are enabled'],['`Database system identifier`','Unique cluster ID; must match across primary and standbys']]},
+{code:`-- the same information from SQL (works while the server runs)
+SELECT checkpoint_lsn, redo_lsn, redo_wal_file, timeline_id, checkpoint_time FROM pg_control_checkpoint();
+SELECT system_identifier, pg_control_last_modified FROM pg_control_system();
+SELECT bytes_per_wal_segment, wal_block_size, data_page_checksum_version FROM pg_control_init();
+SELECT * FROM pg_control_recovery();`},
+{note:'Use these tools to **observe**. Never edit `pg_control` or WAL files; `pg_resetwal` is the only supported way to rewrite control data and it is a last-resort recovery tool.'}],
+src:[['pg_waldump',D+'pgwaldump.html'],['pg_walinspect',D+'pgwalinspect.html'],['pg_controldata',D+'app-pgcontroldata.html'],['Control data functions',D+'functions-info.html'],['WAL Internals',D+'wal-internals.html'],['pg_resetwal',D+'app-pgresetwal.html']]},
+
+/* ---------------------------------------------------------------- 7:8 (bonus) */
+'pg:7:8':{blocks:[
+{p:'A tablespace lives **outside** `PGDATA`, so every tool that copies, restores, replicates or upgrades a cluster must handle it explicitly. Forgetting a tablespace is a classic cause of failed restores and broken standbys. This lecture is the bridge to Section 09 (Backup & Recovery) and Section 10 (Upgrade & Replication): it shows how each tool treats tablespaces and what to check beforehand.'},
+{h:'Behaviour of each tool'},
+{t:[['Tool or feature','What it does with tablespaces','What you must do'],['`pg_basebackup` (plain format)','Copies `PGDATA` and every tablespace directory to the **same absolute paths** by default','On the same host or when paths differ use `-T OLD=NEW` for each tablespace'],['`pg_basebackup` (tar format `-Ft`)','Writes `base.tar` plus one `<tablespace OID>.tar` per tablespace','Keep all tar files together; extract each to its target path'],['File-system / snapshot backup with `pg_backup_start` and `pg_backup_stop`','`pg_backup_stop` returns `backup_label` **and** `tablespace_map`','Store both with the backup; at restore place them in `PGDATA`'],['`pg_dump`','Logical dump of one database. Emits `SET default_tablespace = ...` for objects outside the default tablespace; does **not** create tablespaces','Create the tablespaces on the target first, or use `--no-tablespaces`'],['`pg_dumpall`','Also dumps global objects, including `CREATE TABLESPACE ... LOCATION ...` with the original paths','Edit the paths for a different server, or use `--globals-only` / `--no-tablespaces`'],['Physical standby','Replays `CREATE TABLESPACE` from WAL using the **same path**','Prepare identical directories on the standby before creating tablespaces on the primary'],['Logical replication','Replicates table data only, not tablespaces or DDL','Create tablespaces and tables on the subscriber yourself'],['`pg_upgrade`','Reuses tablespace directories; each major version gets its own `PG_<ver>_<catversion>` subdirectory','Check free space on every tablespace volume when using copy mode']]},
+{h:'pg_basebackup with tablespaces'},
+{code:`# plain format, tablespace /ts_old/data restored to /restore/ts_data
+pg_basebackup -h primary -U replicator -D /restore/pgdata \\
+  -Fp -X stream -P \\
+  -T /ts_old/data=/restore/ts_data
+
+# several tablespaces: repeat -T
+pg_basebackup -D /restore/pgdata -X stream -T /ts_a=/restore/ts_a -T /ts_b=/restore/ts_b
+
+# tar format: one tar per tablespace
+pg_basebackup -D /backup/b1 -Ft -z -X stream -P
+ls /backup/b1
+# base.tar.gz  16400.tar.gz  16401.tar.gz  pg_wal.tar.gz`},
+{ul:['In plain format on the **same host** as the source, a backup without `-T` would try to write into the live tablespace directory and fails, which protects you from overwriting data.','The OLD path in `-T` must match the location exactly as shown by `pg_tablespace_location()`. Use `-T` once per tablespace.','`base.tar` contains the `tablespace_map` file. When the restored server starts, it creates the symbolic links named in it. To restore to **different paths**, edit `tablespace_map` before the first start.']},
+{h:'Logical backups'},
+{code:`pg_dump -Fc -d sales -f sales.dump                         # SET default_tablespace statements inside
+pg_dump -Fc --no-tablespaces -d sales -f sales_nots.dump   # everything goes to the target default
+
+pg_dumpall --globals-only -f globals.sql                    # roles and CREATE TABLESPACE lines
+pg_dumpall --tablespaces-only -f tablespaces.sql            # only CREATE TABLESPACE (edit the paths)
+
+pg_restore --no-tablespaces -d sales_new sales_nots.dump`},
+{h:'Standby servers'},
+{flow:['Plan identical tablespace paths on primary and standby','Create the directories on the standby, owned by postgres','Build the standby with pg_basebackup -R (and -T if paths differ)','Run CREATE TABLESPACE on the primary','Standby replays it from WAL','Check pg_tablespace_location on both']},
+{note:'If the directory for a new tablespace cannot be created on a standby, WAL replay on that standby stops with an error. Fix the directory permissions or path and replay resumes; do not skip the record.'},
+{h:'pg_upgrade'},
+{ul:['The new cluster **reuses** the tablespace locations of the old one. Because each major version has its own `PG_<version>_<catalog version>` subdirectory, old and new data coexist, so in `--copy` mode every tablespace volume needs room for a second copy; `--link`, `--clone` and `--swap` need much less.','Take a backup of every tablespace volume before upgrading. In `--link` and `--swap` modes the old cluster cannot be started again once the new one has run.','After a successful upgrade the generated delete script removes the old cluster, including the old-version subdirectories inside the tablespaces.','Compare `\\db+` and the object counts before and after.']},
+{h:'Restore checklist for clusters with tablespaces'},
+{t:[['Step','Check'],['1','Inventory: `SELECT oid, spcname, pg_tablespace_location(oid) FROM pg_tablespace;` saved with every backup'],['2','Target server has the same (or mapped) directories, owned by postgres, mode 0700, SELinux label set'],['3','Backup includes **all** tablespaces (tar files or `-T` mappings) and `tablespace_map`'],['4','After restore: `ls -l pg_tblspc` links point where you expect; `\\db` shows the right locations'],['5','Run a count or checksum query on a table from each tablespace'],['6','Confirm standbys and monitoring use the same layout']]},
+{note:'Section 09 shows complete backup and restore runs. Keep the inventory query in every backup job so the paths are recorded next to the data.'}],
+src:[['pg_basebackup',D+'app-pgbasebackup.html'],['Continuous Archiving and PITR (tablespace_map)',D+'continuous-archiving.html'],['pg_dump',D+'app-pgdump.html'],['pg_dumpall',D+'app-pg-dumpall.html'],['pg_restore',D+'app-pgrestore.html'],['pg_upgrade',D+'pgupgrade.html'],['Log-Shipping Standby Servers',D+'warm-standby.html']]}
+
+});
+
+/* ---------- back-fill notes into earlier lessons (Section 08) ---------- */
+const X=(k,blocks,src)=>{const L=window.LESSONS[k];if(!L)return;L.blocks.push(...blocks);if(src)L.src=(L.src||[]).concat(src)};
+
+X('pg:0:2',[
+{h:'Where storage and WAL duties are taught (Section 08)'},
+{t:[['DBA duty','Where to learn it'],['Capacity: a disk is filling up','Tablespace Creation and Drop, Tablespace Online Moving, Tablespace Offline Moving'],['Availability: crash recovery and WAL disk space','WAL Format, WAL Lifecycle (bonus)'],['Performance: hot data, indexes and temporary files on fast storage','Using Tablespaces (bonus), Storage Layout (bonus)'],['Recoverability: every tablespace must be in every backup','Tablespaces in Backup, Replication and Upgrade (bonus)'],['Diagnosis: what is the server writing?','Inspecting WAL (bonus)']]}],
+[['Tablespaces',D+'manage-ag-tablespaces.html']]);
+
+X('pg:1:5',[
+{h:'Tablespace directories are not in PGDATA (Section 08)'},
+{p:'Removing the packages or deleting `PGDATA` does **not** remove the directories of user-defined tablespaces. They live elsewhere (for example `/pgdata/ts_fast/app`), keep occupying disk space, and still contain `PG_18_...` subdirectories with data files. Before an uninstall, list them, include them in the backup and decide explicitly what happens to them.'},
+{code:`-- while the server is still running: record every tablespace and its path
+SELECT oid, spcname, pg_tablespace_location(oid) AS location
+FROM pg_tablespace WHERE spcname NOT LIKE 'pg\\_%';
+
+# offline equivalent (server stopped): the links name the locations
+ls -l $PGDATA/pg_tblspc`},
+{ul:['`pg_dumpall` records `CREATE TABLESPACE` statements, but not the files; a physical backup (`pg_basebackup`) copies the files of every tablespace as well.','After the uninstall, remove each tablespace directory yourself, only once the backup has been restored and verified.','A forgotten tablespace directory is a common reason why a later reinstall refuses to create a tablespace at the same path.']}],
+[['Tablespaces',D+'manage-ag-tablespaces.html']]);
+
+X('pg:2:1',[
+{h:'Tablespaces on a host with several clusters (Section 08)'},
+{ul:['Each cluster has its own `pg_tblspc` and its own tablespace OIDs. The same OID (for example 16400) can mean different tablespaces in different clusters; identify a tablespace by the **link target**, not by the number alone.','Never let two clusters of the **same major version** share one `LOCATION`. Both would write into the same `PG_18_<catalog version>` subdirectory and overwrite each other\'s files. Clusters of different major versions have different subdirectory names, but separate directories are still the safe rule.','Use a naming convention that contains the cluster, for example `/pgdata/c5433/ts_fast/app` and `/pgdata/c5434/ts_fast/app`, and give each cluster its own SELinux label rule and mount.','`CREATE TABLESPACE` in one cluster is not visible to another cluster. Document tablespaces per cluster.']}],
+[['Tablespaces',D+'manage-ag-tablespaces.html']]);
+
+X('pg:3:4',[
+{h:'WAL files, names and LSNs in detail (Section 08)'},
+{p:'The summary above is expanded in Section 08. The key facts: WAL is cut into segment files of `wal_segment_size` (16 MB default, fixed at `initdb`), each made of 8 KB pages holding variable-length records; every record carries a CRC and a resource-manager ID. A file name is **timeline + high 32 bits of the LSN + segment number**, so LSN `0/3000148` lives in `000000010000000000000003` at offset `0x148`. Each data page remembers the LSN of its last change (`pd_lsn`) and may be written only after WAL has been flushed up to it.'},
+{t:[['Topic','Lecture in Section 08'],['Segment, page and record layout, full-page images, timelines','WAL Format'],['Archiving, retention, slots, a full `pg_wal`','WAL Lifecycle (bonus)'],['Reading WAL with `pg_waldump` and `pg_walinspect`','Inspecting WAL (bonus)']]},
+{note:'`CREATE TABLESPACE` and `DROP TABLESPACE` are WAL-logged with the absolute path, so a standby must have the same directory layout.'}],
+[['WAL Internals',D+'wal-internals.html']]);
+
+X('pg:3:6',[
+{h:'Directories that point outside PGDATA (Section 08)'},
+{t:[['Entry','What it really is'],['`pg_tblspc/<OID>`','Symbolic link to a user tablespace directory **outside** `PGDATA`. A copy of `PGDATA` alone does not contain this data'],['`pg_wal/`','Normally a directory, but often a symbolic link to a dedicated disk'],['`pg_wal/archive_status/`','`.ready` and `.done` markers for the archiver'],['`pg_wal/summaries/`','WAL summary files (PostgreSQL 17+, used for incremental backups)'],['`global/pg_control`','The control file read by `pg_controldata`; names the last checkpoint']]},
+{p:'Inside each tablespace location the layout is `PG_18_<catalog version>/<database OID>/<relfilenode>`. A backup or restore plan must therefore cover `PGDATA` **plus** every directory reachable from `pg_tblspc` and from `pg_wal`.'}],
+[['Database File Layout',D+'storage-file-layout.html']]);
+
+X('pg:4:1',[
+{h:'Databases and tablespaces (Section 08)'},
+{code:`CREATE DATABASE sales TABLESPACE ts_fast;                   -- default tablespace of the new database
+CREATE DATABASE sales_copy TEMPLATE sales STRATEGY = wal_log; -- PostgreSQL 15+: wal_log (default) or file_copy
+ALTER DATABASE sales SET TABLESPACE pg_default;            -- needs no other connections
+SELECT datname, pg_tablespace.spcname AS default_tablespace
+FROM pg_database JOIN pg_tablespace ON pg_tablespace.oid = pg_database.dattablespace;`},
+{ul:['`TABLESPACE` in `CREATE DATABASE` sets the database default; objects without an explicit clause go there, including the new database\'s system catalogs.','When a template contains objects in other tablespaces, the copy keeps them in the **same tablespaces**, so the target server must have those tablespaces.','`STRATEGY = file_copy` copies files directly and issues checkpoints before and after; `wal_log` copies block by block through WAL, which is cheaper for small templates and friendlier to replicas.','A tablespace cannot be dropped while any database uses it as its default tablespace.']}],
+[['CREATE DATABASE',D+'sql-createdatabase.html']]);
+
+X('pg:4:3',[
+{h:'Tablespaces in the hierarchy (Section 08)'},
+{t:[['Question','Answer'],['Scope of a tablespace','**Cluster-wide**, like roles. One tablespace may hold objects of many databases'],['Scope of an object','One database; stored in one tablespace (plus its TOAST table and forks)'],['Where is the object\'s file?','`pg_tblspc/<tablespace OID>/PG_18_<catversion>/<database OID>/<relfilenode>`, or `base/<database OID>/<relfilenode>` for the default'],['What does `reltablespace = 0` mean?','The object is in the **default tablespace of its database**, not necessarily `pg_default`'],['How do I find the tablespace of a table?','`SELECT tablename, tablespace FROM pg_tables;` (NULL means the database default) or `pg_relation_filepath()`']]},
+{p:'Section 08 describes how to create, move and drop tablespaces and how pages, forks and TOAST tables appear in these files.'}],
+[['Tablespaces',D+'manage-ag-tablespaces.html']]);
+
+X('pg:5:3',[
+{h:'Tablespace, temporary-file and WAL retention parameters (Section 08)'},
+{t:[['Parameter','Context','Action'],['`default_tablespace`, `temp_tablespaces`','`user`','`SET` in a session, `ALTER ROLE ... SET`, or file plus reload'],['`temp_file_limit`, `wal_compression`','`superuser`','`SET` by a superuser or reload'],['`wal_keep_size`, `max_slot_wal_keep_size`, `archive_command`, `summarize_wal`','`sighup`','Reload'],['`archive_mode`, `wal_log_hints`','`postmaster`','Restart'],['`wal_segment_size`','`internal`','Read-only; chosen at `initdb` (see WAL Format)']]}],
+[['Setting Parameters',D+'config-setting.html']]);
+
+X('pg:5:6',[
+{h:'More WAL parameters: retention, archiving and recycling (Section 08)'},
+{t:[['Parameter','Default','Context','Purpose'],['`wal_segment_size`','16MB','internal','Segment size, fixed at `initdb --wal-segsize`; shown by `SHOW`'],['`wal_keep_size`','0','sighup','Minimum WAL kept in `pg_wal` for standbys that do not use slots'],['`max_slot_wal_keep_size`','-1','sighup','Cap on WAL a replication slot may retain; protects the disk from abandoned slots'],['`wal_recycle`','on','sighup','Rename old segments for reuse instead of deleting them'],['`wal_init_zero`','on','superuser','Zero-fill new segment files'],['`archive_mode`, `archive_command`, `archive_timeout`','off, empty, 0','postmaster, sighup, sighup','Copy completed segments away; force a segment switch on quiet servers'],['`summarize_wal`','off','sighup','Write WAL summaries needed for incremental backups (PostgreSQL 17+)']]},
+{p:'Why a segment stays or goes, and how to diagnose a growing `pg_wal`, is covered in WAL Lifecycle in Section 08.'}],
+[['Write Ahead Log settings',D+'runtime-config-wal.html']]);
+
+X('pg:6:4',[
+{h:'Privileges on tablespaces (Section 08)'},
+{t:[['Object','Privilege','Command','Effect'],['Tablespace','`CREATE`','`GRANT CREATE ON TABLESPACE ts_fast TO app_rw;`','May create tables, indexes and temporary files there, and move objects into it'],['Tablespace','`CREATE`','`REVOKE CREATE ON TABLESPACE ts_fast FROM app_rw;`','Existing objects keep working; no new objects there']]},
+{p:'A new tablespace is usable only by its owner and superusers until you grant `CREATE`. `pg_default` is open to all roles. `\\db+` shows the **Access privileges** column, and `has_tablespace_privilege(role, tablespace, \'CREATE\')` tests it.'}],
+[['GRANT',D+'sql-grant.html']]);
+
+})();
+
+/* ================================================================
+   PART: Section 09 - Backup & Recovery  (was lessons8.js)
+   ================================================================ */
+/* LearnSphere: Section 09 - Backup & Recovery (lectures 1-8 + bonus lectures 9-14)
+   Load AFTER lessons7.js. Docs links target PostgreSQL 18. Also back-fills notes into earlier lessons. */
+(function(){
+const D='https://www.postgresql.org/docs/18/';
+const dg=window.LS_DG;
+
+/* ---------- diagrams ---------- */
+const methodsSvg=dg(700,250,[
+[10,95,170,60,"PostgreSQL cluster|PGDATA + databases",2],
+[260,10,230,60,"1. SQL dump (logical)|pg_dump, pg_dumpall",0],[260,95,230,60,"2. File system level (physical)|pg_basebackup, snapshots, cp",0],[260,180,230,60,"3. Continuous archiving|base backup plus WAL archive",2],
+[530,10,160,60,"SQL script or archive|selective, portable",0],[530,95,160,60,"Copy of data files|whole cluster only",0],[530,180,160,60,"Restore to any point|PITR, standby seed",2]],
+[[180,115,260,40],[180,125,260,125],[180,135,260,210],[490,40,530,40],[490,125,530,125],[490,210,530,210]]);
+
+const formatSvg=dg(700,285,[
+[10,115,120,60,"pg_dump|-F p, c, d, t",2],
+[190,10,200,50,"plain (p)|SQL script, default",0],[190,80,200,50,"custom (c)|one compressed file",0],[190,150,200,50,"directory (d)|toc.dat + file per table",0],[190,220,200,50,"tar (t)|uncompressed archive",0],
+[470,10,220,50,"psql -f|single process",0],[470,80,220,50,"pg_restore|-j parallel, selective",2],[470,150,220,50,"pg_restore|-j parallel, selective",2],[470,220,220,50,"pg_restore|no -j gain, no reorder",0]],
+[[130,135,190,35],[130,140,190,105],[130,150,190,175],[130,160,190,245],[390,35,470,35],[390,105,470,105],[390,175,470,175],[390,245,470,245]]);
+
+const connSvg=dg(700,230,[
+[5,2,690,105,"Which host, port, user and database?",1],
+[20,25,150,70,"Connection string|-d connstr|highest priority",2],[195,25,150,70,"Command-line options|-h -p -U -d",0],[370,25,150,70,"Environment variables|PGHOST, PGPORT,|PGUSER",0],[545,25,140,70,"Compiled defaults|socket, 5432, OS user",0],
+[5,115,690,108,"Where does the password come from?",1],
+[20,138,150,70,"PGPASSWORD|visible to others|avoid",0],[195,138,150,70,".pgpass file|mode 0600|recommended",2],[370,138,150,70,"pg_service.conf|PGSERVICE|shared settings",0],[545,138,140,70,"Interactive prompt|off with -w|fails in cron",0]],
+[[170,60,195,60],[345,60,370,60],[520,60,545,60]]);
+
+const secSvg=dg(700,225,[
+[10,30,200,100,"pre-data|CREATE TABLE, TYPE,|FUNCTION, SCHEMA|definitions",0],[250,30,200,100,"data|COPY rows, large objects,|sequence values|slowest, parallel",2],[490,30,200,100,"post-data|indexes, constraints,|triggers, rules|built after the data",0],
+[10,150,200,50,"--section=pre-data",0],[250,150,200,50,"--section=data",0],[490,150,200,50,"--section=post-data",0]],
+[[210,80,250,80],[450,80,490,80]]);
+
+const listSvg=dg(700,205,[
+[10,70,130,60,"db.dump|archive with TOC",0],[190,70,150,60,"pg_restore -l|list the items",2],[390,70,130,60,"db.list|edit this file",2],[560,70,130,60,"pg_restore -L|only listed items",0],
+[190,150,330,45,"Remove a line, comment it with ; or reorder it",0]],
+[[140,100,190,100],[340,100,390,100],[520,100,560,100],[455,130,455,150]]);
+
+const allSvg=dg(700,250,[
+[10,95,150,70,"pg_dumpall|connects to every|database",2],
+[220,10,220,55,"Global objects|roles, tablespaces, grants",0],[220,85,220,55,"pg_dump db1|CREATE DATABASE + data",0],[220,160,220,55,"pg_dump db2|one run per database",0],
+[500,85,190,70,"One SQL script|restore with psql",2]],
+[[160,115,220,37],[160,130,220,112],[160,145,220,187],[440,37,500,105],[440,112,500,120],[440,187,500,135]]);
+
+const pbSvg=dg(700,340,[
+[10,10,330,45,"1. Replication connection|REPLICATION role + pg_hba.conf entry",0],[10,65,330,45,"2. Server enters backup mode|waits for a checkpoint: spread or fast",0],[10,120,330,45,"3. Data directory and tablespaces sent|plus backup_label and tablespace_map",2],[10,175,330,45,"4. WAL streamed on a second connection|-X stream, the default",0],[10,230,330,45,"5. Backup mode ends, WAL segment switched|last required segment is closed",0],[10,285,330,45,"6. backup_manifest sent, files synced|check later with pg_verifybackup",2],
+[380,10,310,45,"Checked: wal_level, max_wal_senders",0],[380,65,310,45,"Phase: waiting for checkpoint to finish",0],[380,120,310,45,"Phase: streaming database files",2],[380,175,310,45,"Second walsender streams pg_wal",0],[380,230,310,45,"Phase: waiting for wal archiving to finish",0],[380,285,310,45,"Result: directory or tar files + manifest",2]],
+[[340,32,380,32],[340,87,380,87],[340,142,380,142],[340,197,380,197],[340,252,380,252],[340,307,380,307]]);
+
+const planSvg=dg(700,200,[
+[10,20,150,55,"Weekly|full base backup",2],[180,20,150,55,"Daily|incremental backup",0],[350,20,150,55,"Continuous|WAL archiving",2],[520,20,170,55,"Nightly|pg_dump + globals",0],
+[10,115,200,55,"RPO: minutes|set by WAL archiving",0],[250,115,200,55,"RTO: hours|set by restore speed",0],[490,115,200,55,"Offsite copy and|monthly restore test",2]],
+[[425,75,350,115],[85,75,110,115],[605,75,590,115]]);
+
+const lowSvg=dg(700,195,[
+[10,45,125,60,"pg_backup_start|label, fast?",2],[165,45,130,60,"Copy files|tar, rsync, snapshot",0],[325,45,130,60,"pg_backup_stop|same session",2],[485,45,100,60,"Save files|backup_label|tablespace_map",0],[615,45,75,60,"Archive|last WAL",0],
+[165,130,290,45,"Leave out pg_wal, postmaster.pid, pg_replslot, temp files",0]],
+[[135,75,165,75],[295,75,325,75],[455,75,485,75],[585,75,615,75]]);
+
+const archSvg=dg(700,200,[
+[10,20,120,55,"Backends|write WAL",0],[170,20,130,55,"pg_wal segment|16 MB, filled",2],[340,20,130,55,"archive_status|.ready marker",0],[510,20,180,55,"archiver process|runs archive_command",2],
+[510,115,180,55,"Archive directory|file copied, exit 0",2],[340,115,130,55,".done marker|segment recyclable",0],[170,115,130,55,"pg_stat_archiver|counts, last WAL",0],[10,115,120,55,"Exit not 0|retry later",0]],
+[[130,47,170,47],[300,47,340,47],[470,47,510,47],[600,75,600,115],[510,142,470,142],[340,142,300,142]]);
+
+const pitrSvg=dg(700,255,[
+[10,20,130,50,"Base backup|taken at T0",2],[170,20,150,50,"WAL archive|keeps growing",0],[350,20,140,50,"Mistake|DROP TABLE 14:30",0],[520,20,170,50,"Timeline 1 continues|abandoned branch",0],
+[10,130,130,50,"Restore files|recovery.signal",0],[170,130,150,50,"Replay WAL|restore_command",0],[350,130,140,50,"Target 14:29|recovery stops",2],[520,130,170,50,"Timeline 2 starts|WAL 00000002...",2],
+[10,205,680,40,"00000002.history records the branch point. WAL names begin with the timeline ID.",0]],
+[[140,45,170,45],[320,45,350,45],[490,45,520,45],[75,70,75,130],[140,155,170,155],[320,155,350,155],[490,155,520,155]]);
+
+const incSvg=dg(700,200,[
+[10,20,130,55,"Full backup|backup_manifest",2],[170,20,150,55,"Incremental 1|changed blocks|manifest",0],[350,20,150,55,"Incremental 2|changed blocks|manifest",0],[530,20,160,55,"pg_combinebackup|oldest to newest",2],
+[10,115,130,55,"WAL summaries|summarize_wal = on",0],[170,115,150,55,"Recovery|recovery.signal + WAL",0],[350,115,150,55,"pg_verifybackup|check the result",0],[530,115,160,55,"Synthetic full|backup + manifest",2]],
+[[140,47,170,47],[320,47,350,47],[500,47,530,47],[610,75,610,115],[530,142,500,142],[350,142,320,142],[75,115,75,75]]);
+
+const drSvg=dg(700,250,[
+[10,95,130,55,"Incident|what was lost?",2],
+[200,10,230,55,"Data changed or deleted|PITR or logical restore",0],[200,95,230,55,"Server or disk lost|base backup + WAL, or standby",0],[200,180,230,55,"Site or account lost|offsite or immutable copy",0],
+[490,10,200,55,"Scratch instance|copy rows back",0],[490,95,200,55,"New host, restore|repoint applications",0],[490,180,200,55,"Rebuild from the|remote repository",0]],
+[[140,115,200,37],[140,122,200,122],[140,130,200,207],[430,37,490,37],[430,122,490,122],[430,207,490,207]]);
+
+window.EXTRA_LECTURES=window.EXTRA_LECTURES||{};
+window.EXTRA_LECTURES[8]=[
+['Backup Strategy: RPO, RTO, Retention and Automation','0:00','Turn tools into a strategy: recovery objectives, the 3-2-1 rule, backup layers, retention and storage sizing, a production backup script, monitoring and backup security.'],
+['File System Level Backups, Snapshots and the Low-Level API','0:00','Cold copies, rsync two-pass, LVM/ZFS/cloud snapshots and the pg_backup_start / pg_backup_stop API: what must be copied, what must be left out, and where it goes wrong.'],
+['Continuous Archiving: Setting Up WAL Archiving','0:00','archive_mode, archive_command and archive modules, safe archive scripts, testing, monitoring with pg_stat_archiver, archive_timeout and cleaning the archive.'],
+['Point-in-Time Recovery (PITR) and Timelines','0:00','Recover to a time, a named restore point, a transaction or an LSN: recovery settings, recovery.signal, timelines and a complete DROP TABLE recovery run.'],
+['Incremental Backups, Manifests and Backup Verification','0:00','PostgreSQL 17+ incremental backups with WAL summaries and pg_combinebackup, the backup manifest, pg_verifybackup, checksums and restore testing.'],
+['Backup Tools, Troubleshooting and the Disaster Recovery Runbook','0:00','pgBackRest, Barman and WAL-G compared, failure scenarios and the right recovery for each, a runbook, version compatibility rules and an error-message troubleshooting matrix.']];
+
+Object.assign(window.LESSONS,{
+
+/* ---------------------------------------------------------------- 8:0 */
+'pg:8:0':{blocks:[
+{p:"A **backup** is a copy of data, kept somewhere else, from which the data can be rebuilt after a loss. A **restore** is the act of putting that copy back, and **recovery** is the wider process of bringing a damaged system to a usable, consistent state, which for PostgreSQL may include replaying WAL after the files are copied back. The PostgreSQL documentation (Chapter 25, *Backup and Restore*) stresses that the procedures themselves are simple, but that you must understand the techniques and their assumptions before you rely on them. This lecture builds that understanding: the three official backup approaches, how each one achieves a consistent copy, what each one does and does not contain, and how to choose between them. The remaining lectures of this section then work through each tool in detail."},
+{h:"The three backup approaches in the official documentation"},
+{svg:methodsSvg},
+{t:[["Approach","Tools","What you get","Scope","Point-in-time recovery","Cross-version restore"],["**SQL dump** (logical)","`pg_dump`, `pg_dumpall`","SQL commands or an archive that re-creates objects and data","One database, one schema or table, or the whole cluster (`pg_dumpall`)","No: only the moment the dump started","Yes: a dump normally loads into the same or a newer major version"],["**File system level backup** (physical)","`pg_basebackup`, `tar`, `rsync`, storage snapshots","A binary copy of the data directory and tablespaces","Whole cluster only","No (a plain copy is one moment in time)","No: same major version, same CPU architecture and OS family"],["**Continuous archiving**","Base backup plus archived WAL (`archive_command`)","A base backup and every WAL segment written after it","Whole cluster only","**Yes**: any moment after the base backup ended","No: same major version"]]},
+{h:"Logical versus physical: the core idea"},
+{t:[["","Logical backup","Physical backup"],["What is copied","The **meaning** of the data: `CREATE TABLE`, `COPY` rows, `CREATE INDEX` statements","The **bytes** of the data files, WAL and control files exactly as stored"],["Restore work","The server re-inserts every row and rebuilds every index, so it is slow on large databases","Files are copied back and WAL is replayed, so it is as fast as the disk and network allow"],["Size","Often smaller (no index data, no bloat, compressible text)","About the size of the cluster, including indexes and bloat"],["Selective restore","Yes: one table, one schema, one function","No: the whole cluster comes back"],["Portability","Across major versions, architectures and operating systems","Only to the same major version on a compatible platform"],["Consistency source","A single MVCC snapshot taken when the dump starts","Crash recovery from a checkpoint plus WAL replay"],["Typical use","Migrations, refreshing test data, small and medium databases, per-database protection","Large databases, fast full restore, PITR, building standby servers"]]},
+{note:"Neither type replaces the other. A mature setup uses a physical backup with WAL archiving for fast, point-in-time recovery of the whole cluster, **and** regular logical dumps for selective restores, cross-version moves and protection against logical corruption that a physical copy would faithfully preserve."},
+{h:"How consistency is achieved"},
+{p:"A backup that mixes data from different moments is worthless, because rows would reference parents that do not exist yet. PostgreSQL gets a consistent copy in two different ways, and knowing the difference explains most of the rules in this section."},
+{ul:["**pg_dump** is an ordinary client. It opens one transaction with a single snapshot and reads every table inside it. Thanks to MVCC (Section 01), concurrent writers are neither blocked nor visible to the dump, so the result is a consistent picture of the database **as it was when the dump started**. It takes only `ACCESS SHARE` locks, so `SELECT`, `INSERT`, `UPDATE` and `DELETE` continue, but a statement that needs an exclusive lock (for example `ALTER TABLE` or `TRUNCATE`) waits behind the dump.","**Physical backups** copy files while they change, so the copy alone is internally inconsistent. This is acceptable because every change is also in WAL. The backup records the checkpoint at which it started (`backup_label`), and at restore time the server replays WAL from that checkpoint until it reaches the end of the backup. That is the same mechanism as crash recovery (Section 04), so no file system snapshot is required for a base backup."]},
+{h:"What is, and is not, inside each backup"},
+{t:[["Item","`pg_dump`","`pg_dumpall`","`pg_basebackup`"],["Table data and definitions","Yes (one database)","Yes (all databases)","Yes (all databases, as files)"],["Indexes","Definitions only; rebuilt on restore","Definitions only","Yes, the index files themselves"],["Roles and their passwords","No","Yes (global objects)","Yes (in the shared catalogs)"],["Tablespace definitions","Only the `TABLESPACE` clause of objects","Yes, as `CREATE TABLESPACE` with paths","Yes, and the tablespace **files**"],["Tablespace directories on disk","No","No: the directories must already exist","Yes"],["Large objects","Yes, by default for a whole-database dump","Yes","Yes"],["`postgresql.conf`, `pg_hba.conf`","No","No","Only if they live inside `PGDATA`. Files kept elsewhere (for example `/etc/postgresql`) are not copied"],["Optimizer statistics","Only with `--statistics`","Only with `--statistics`","Yes (they are table data in the catalogs)"],["Unlogged table data","Dumped, unless `--no-unlogged-table-data`","Same","Copied, but unlogged tables are emptied by recovery when the backup is restored"],["Replication slots","No","No","Not useful; slots are better left out of copies"],["Extension **code** (.so, control files)","No: only `CREATE EXTENSION`","No","Not files outside `PGDATA`; the packages must be installed on the new host"]]},
+{p:"The table explains two classic surprises: a restored dump needs the **roles** and **extensions** to exist already (see the Restore lecture), and a restored physical backup does not bring back configuration files that were stored outside the data directory."},
+{h:"Key terms every DBA must use precisely"},
+{t:[["Term","Meaning"],["**RPO** (Recovery Point Objective)","The maximum amount of data loss, measured in time, that the business accepts. A nightly dump gives an RPO of up to 24 hours; continuous WAL archiving gives minutes"],["**RTO** (Recovery Time Objective)","The maximum time the service may stay down. It is set by restore speed, not by backup speed, so you must measure it"],["**Hot backup**","Taken while the server runs and accepts connections (`pg_dump`, `pg_basebackup`)"],["**Cold backup**","Taken with the server stopped; consistent by construction"],["**Base backup**","A physical copy of the cluster that is the starting point for archive recovery or a standby"],["**WAL archive**","A store of completed WAL segments, copied away by `archive_command`"],["**Restore point**","A named position in WAL created with `pg_create_restore_point()` that recovery can stop at"],["**Retention**","How long backups, and the WAL needed for them, are kept before deletion"]]},
+{h:"Choosing a method"},
+{t:[["If you need to ...","Use","Why"],["Restore one table, one schema or one database","Logical: `pg_dump -Fc` or `-Fd`","Archive formats allow selective restore"],["Move data to a newer major version or another architecture","Logical dump, or `pg_upgrade` (Section 10)","Only logical dumps are portable across versions"],["Bring the whole cluster back as fast as possible","Physical: `pg_basebackup`","Files are copied back; no row-by-row reload"],["Return to an exact moment (for example just before a bad `DELETE`)","Base backup plus WAL archive (PITR)","Only WAL replay can stop at a chosen point"],["Protect roles and tablespace definitions","`pg_dumpall --globals-only`","`pg_dump` does not save global objects"],["Build a standby server","`pg_basebackup -R`","Gives a ready-to-start replica (Section 10)"]]},
+{h:"A sound backup programme in seven steps"},
+{flow:["Define RPO and RTO","Choose methods","Automate with scripts or a tool","Store a copy off the server","Verify with real restores","Monitor and alert","Document the runbook"]},
+{h:"Before you design anything: inspect the cluster"},
+{code:`-- version, size and layout drive the choice of method
+SELECT version();
+SELECT datname, pg_size_pretty(pg_database_size(datname)) AS size
+FROM pg_database WHERE NOT datistemplate ORDER BY pg_database_size(datname) DESC;
+
+-- tablespaces outside PGDATA must be part of a physical backup
+SELECT spcname, pg_tablespace_location(oid) FROM pg_tablespace;
+
+-- can this server support WAL archiving and base backups right now?
+SHOW wal_level;         -- replica or logical needed for archiving
+SHOW archive_mode;      -- on / always for PITR
+SHOW max_wal_senders;   -- pg_basebackup needs at least 1 (2 with -X stream)
+SHOW data_checksums;    -- on lets pg_basebackup verify pages`},
+{note:"The golden rule from Section 01 still applies: a backup that has never been restored is only a hope. Every lecture in this section ends with a way to **verify** the backup, and the last bonus lecture turns that into a runbook."}],
+src:[["Chapter 25: Backup and Restore",D+"backup.html"],["25.1 SQL Dump",D+"backup-dump.html"],["25.2 File System Level Backup",D+"backup-file.html"],["25.3 Continuous Archiving and PITR",D+"continuous-archiving.html"]]},
+
+/* ---------------------------------------------------------------- 8:1 */
+'pg:8:1':{blocks:[
+{p:"`pg_dump` can write its output in four **formats**, chosen with `-F` (`--format`). The choice decides how the dump can be restored, how fast, whether single objects can be picked out, whether the work can be parallelised and how big the files are. The documentation describes two groups: the **script** format (plain), which is a text file of SQL for `psql`, and the **archive** formats (custom, directory, tar), which must be restored with `pg_restore`. This lecture compares them and explains how `pg_dump` and `pg_dumpall` differ in scope."},
+{svg:formatSvg},
+{h:"The four formats side by side"},
+{t:[["","Plain (`-Fp`)","Custom (`-Fc`)","Directory (`-Fd`)","Tar (`-Ft`)"],["Output","One SQL text file (default)","One binary archive file","A directory: `toc.dat` plus one file per table and large object","One tar file"],["Restore tool","`psql`","`pg_restore`","`pg_restore`","`pg_restore`"],["Compressed by default","No (`-Z` compresses the whole file)","Yes, gzip at a moderate level","Yes, gzip at a moderate level","No, and compression is not supported"],["Parallel **dump** (`-j`)","No","No","**Yes**, the only format that supports it","No"],["Parallel **restore** (`pg_restore -j`)","No (psql runs one session)","Yes","Yes","No"],["Select or reorder objects at restore","No (edit the text)","Yes (`-l`, `-L`, `-t`, `-n` ...)","Yes","Selection yes; the order of table data cannot be changed"],["Readable by humans and editable","Yes","No","Partly: `toc.dat` is binary, data files are not text","Extract it to get a directory archive"],["Restore into old servers or other products","Easiest (with editing)","No","No","No"],["Best for","Small databases, migrations, code review, non-PostgreSQL targets","General-purpose backups of one database","Large databases: fastest dump and restore","Special cases, legacy scripts"]]},
+{note:"Tar and directory formats are compatible: extracting a tar archive yields a valid directory archive. Tar has an inherent limit of 8 GB for a single member file, so a table larger than that cannot be dumped in tar format. For this reason and because it cannot compress, prefer custom or directory."},
+{h:"Why archive formats exist: selective restore"},
+{p:"An archive contains a **table of contents** (TOC). `pg_restore -l` prints it, `-L` restores only the listed items in the listed order, and `-t`, `-n`, `-I`, `-P` and `-T` pick tables, schemas, indexes, functions or triggers. With a plain dump you can only restore everything, or cut the text file apart by hand. The TOC also lets `pg_restore` run the slow steps (loading data, building indexes, adding constraints) in parallel."},
+{h:"Compression"},
+{p:"Compression is controlled by `-Z` (`--compress`). It accepts a level (`-Z 6`) or a method with optional detail (`-Z zstd:5`, `-Z lz4`, `-Z gzip:9`, `-Z none`). Without a method a positive level means gzip and `0` means no compression."},
+{t:[["Method","Strength","Weakness","Note"],["`gzip`","Available everywhere; universal tools can read it","Slowest, mediocre ratio at high levels","Default for custom and directory"],["`lz4`","Very fast, light on CPU","Lower compression ratio","Good when the dump is CPU-bound"],["`zstd`","Best balance of speed and ratio; level and `long` mode tunable","Needs a PostgreSQL build with zstd support","Good default for new setups"],["`none`","Fastest dump; lets you compress later with external tools","Largest files","Useful when the storage layer compresses (ZFS, dedup appliance)"]]},
+{ul:["For **custom** and **directory** formats the compression applies to each table-data segment inside the archive. For **plain** output a non-zero level compresses the whole file as if piped through the compressor.","`lz4` and `zstd` depend on how the server and client tools were built. If your `pg_dump` reports that the method is unsupported, use `gzip` or install the PGDG packages.","Do not compress an already compressed archive a second time: you save almost nothing and spend CPU."]},
+{h:"pg_dump versus pg_dumpall"},
+{t:[["","`pg_dump`","`pg_dumpall`"],["Scope","**One database**","**All databases** of the cluster plus global objects"],["Global objects (roles, tablespace definitions, role privilege grants)","Not saved","Saved"],["Output formats","Plain, custom, directory, tar","Plain SQL script only"],["Parallelism and selective restore","Yes (archive formats)","No"],["Connections","One (or `-j` + 1)","Reconnects once per database, so use `~/.pgpass`"],["Typical role in a backup plan","The main tool for each database","Used with `--globals-only` for roles and tablespaces, or for small clusters"]]},
+{h:"Production considerations"},
+{t:[["Question","Guidance"],["How big will the dump be?","Plan disk space for the largest dump plus the retention you keep. Measure with `pg_size_pretty(pg_database_size(...))`; a compressed dump is often 10-40% of the database size, depending on content"],["How much load does it add?","`pg_dump` reads every table. `-j N` makes it faster but opens N+1 connections, so raise `max_connections` if needed and expect more I/O and CPU on the server"],["Which format for restore speed?","Directory (parallel dump and restore) is fastest. Custom allows parallel restore, but the dump itself is one process. Plain is slowest to restore because indexes are built one at a time"],["Will DDL collide with the dump?","The dump holds `ACCESS SHARE` locks, so schema changes wait. With `-j`, an exclusive-lock request in the middle of the run can make the dump **abort** rather than deadlock. Schedule dumps outside deployment windows and use `--lock-wait-timeout`"],["Where does the file go?","Not on the same disk as the database. Copy it off the server and encrypt it if it leaves your network"],["Which pg_dump version?","Use the newest client available. It can read older servers (the 18 documentation supports servers back to 9.2) but refuses a newer server"]]},
+{h:"Hands-on: one database, four formats"},
+{code:`# 1. plain SQL script (compressed, here with gzip level 6)
+pg_dump -U postgres -d shopdb -f /backup/shopdb.sql
+pg_dump -U postgres -d shopdb -Z 6 -f /backup/shopdb.sql.gz
+
+# 2. custom archive
+pg_dump -U postgres -d shopdb -Fc -f /backup/shopdb.dump
+
+# 3. directory archive with 4 parallel jobs (the directory must not exist)
+pg_dump -U postgres -d shopdb -Fd -j 4 -f /backup/shopdb_dir
+
+# 4. tar archive
+pg_dump -U postgres -d shopdb -Ft -f /backup/shopdb.tar
+
+# look at what you got
+ls -lh /backup
+file /backup/shopdb.dump          # PostgreSQL custom database dump
+head -n 25 /backup/shopdb.sql      # header, SET statements, CREATE statements
+pg_restore -l /backup/shopdb.dump | head -n 20
+ls /backup/shopdb_dir | head       # toc.dat, 1234.dat.gz, ...`},
+{h:"Decision flow"},
+{t:[["Your situation","Choose"],["Large database, short backup window, many CPU cores","`-Fd -j N` (parallel dump and parallel restore)"],["Medium database, selective or parallel restore wanted, single file is convenient","`-Fc`"],["You must read, review or edit the SQL, or load into another DBMS","`-Fp` (with `--inserts` only for non-PostgreSQL targets)"],["You are unsure","`-Fc`, add `-Z zstd:5` if available"]]},
+{h:"Converting between formats"},
+{ul:["Archive to script: `pg_restore -f out.sql db.dump` (no database connection needed; this is also the safe way to **inspect** an untrusted dump).","Directory to tar or the reverse: the layouts are compatible, so `tar` and `pg_restore` accept both.","Plain to archive: not possible directly; load the script into a scratch database and dump that in the desired format."]},
+{note:"The documentation warns that restoring a dump executes SQL chosen by whoever could write the dump. Inspect dumps from untrusted superusers before loading them; non-plain dumps can be inspected with `pg_restore --file`."}],
+src:[["pg_dump",D+"app-pgdump.html"],["pg_restore",D+"app-pgrestore.html"],["pg_dumpall",D+"app-pg-dumpall.html"],["25.1 SQL Dump",D+"backup-dump.html"]]},
+
+/* ---------------------------------------------------------------- 8:2 */
+'pg:8:2':{blocks:[
+{p:"`pg_dump` is a normal PostgreSQL client. It uses the same connection library (libpq) as `psql`, so the options that say **where to connect and who to be** work the same way, and the same authentication rules in `pg_hba.conf` (Section 07) decide whether the connection is allowed. `pg_dump` does not run with special privileges: it can only dump what the connecting role may read. This lecture covers the connection options (`-d`, `-h`, `-p`, `-U`, `-w`, `-W`), the ways to supply a password safely in scripts, and the output options (`-f`, `-F`, `-j`, `-a`, `-s`, `-c`, `-Z`, `-v`) that are used together with them."},
+{svg:connSvg},
+{h:"Connection options"},
+{t:[["Option","Long form","Meaning","Default if omitted","Environment variable"],["`-d dbname`","`--dbname`","Database to dump. May be a **connection string** (`\"host=db1 dbname=sales sslmode=require\"`); string parameters override conflicting options","`PGDATABASE`, else the user name","`PGDATABASE`"],["`-h host`","`--host`","Server host name or IP. A value starting with `/` is a Unix socket **directory**","Unix socket on the local machine","`PGHOST`"],["`-p port`","`--port`","TCP port, or the socket file extension","`5432` (or the compiled-in default)","`PGPORT`"],["`-U user`","`--username`","Role to connect as","The operating-system user name","`PGUSER`"],["`-w`","`--no-password`","Never prompt. Fails if the server wants a password and none is available from `.pgpass` or the environment. Required in cron and batch jobs","Prompt when the server asks","none"],["`-W`","`--password`","Force a prompt before connecting. Rarely needed because `pg_dump` prompts automatically","Off","none"],["`--role=name`","","Issues `SET ROLE name` after connecting. Lets a login role without enough privileges dump as a role that has them, without logging in as a superuser","None","none"]]},
+{note:"The first positional argument that is not an option is the database name, so `pg_dump shopdb` and `pg_dump -d shopdb` are equivalent. If you give neither and `PGDATABASE` is unset, `pg_dump` dumps the database whose name equals the connecting user, a frequent source of the message `database \"postgres\" does not exist` style errors."},
+{h:"Providing the password in a script"},
+{t:[["Method","How","Assessment"],["`~/.pgpass`","One line per target: `host:port:database:user:password`. Wildcards `*` allowed. File must be mode `0600` or libpq ignores it. `PGPASSFILE` selects another file","**Recommended.** Not visible in process lists; works for `pg_dumpall`, which reconnects once per database"],["`pg_service.conf` and `PGSERVICE`","Named connection profiles (`[prod]` with host, port, dbname, user)","Good for many servers; combine with `.pgpass`"],["`PGPASSWORD` environment variable","`PGPASSWORD=secret pg_dump ...`","**Discouraged.** Can be seen by other users of the system on some platforms and ends up in shell history"],["Password inside the connection string","`\"host=db dbname=x password=...\"`","Avoid: visible in `ps` output"],["Peer or `trust` authentication on the local socket","`pg_hba.conf` rule `local all backup peer`, run the job as that OS user","Passwordless and safe if the OS account is protected (Section 07)"],["Client certificates","`sslmode=verify-full sslcert=... sslkey=...`","Strongest for remote jobs"]]},
+{code:`# ~/.pgpass  (chmod 0600)
+# hostname:port:database:username:password
+db1.example.com:5432:*:backup_user:S3cr3t-from-a-vault
+localhost:5432:shopdb:backup_user:another-secret
+
+chmod 0600 ~/.pgpass
+pg_dump -h db1.example.com -p 5432 -U backup_user -d shopdb -w -Fc -f shopdb.dump`},
+{h:"What the connecting role needs"},
+{ul:["`pg_dump` runs `SELECT` statements, so the role needs `SELECT` on every table and sequence to be dumped and `USAGE` on the schemas. The simplest least-privilege setup is a dedicated login role that is a member of the predefined role **`pg_read_all_data`** (PostgreSQL 14+).","A superuser can read everything, but granting superuser to a backup job is a larger risk than needed (Section 07).","Tables protected by **row-level security**: `pg_dump` sets `row_security = off` so that all rows are dumped; if the role cannot bypass it, `pg_dump` fails rather than produce a partial dump. `--enable-row-security` dumps only the rows the role can see (use with `--inserts`).","`pg_dumpall` also reads global objects. Dumping role **password hashes** needs access to `pg_authid` (superuser); with `--no-role-passwords` it reads `pg_roles` instead."]},
+{code:`CREATE ROLE backup_user LOGIN PASSWORD 'change-me' CONNECTION LIMIT 4;
+GRANT pg_read_all_data TO backup_user;
+
+-- pg_hba.conf: allow it only from the backup host, with SCRAM
+-- host  shopdb  backup_user  10.0.0.20/32  scram-sha-256`},
+{h:"Output and behaviour options used with the connection"},
+{t:[["Option","Meaning","Notes"],["`-f file`","Write to a file instead of standard output","**Required** for `-Fd`; the directory must not exist"],["`-F p|c|d|t`","Output format","See the previous lecture"],["`-j N`","Dump N tables in parallel","Directory format only; opens N+1 connections; needs synchronized snapshots (primary since 9.2, standby since 10)"],["`-a` / `--data-only`","Data only, no definitions","Includes large objects and sequence values"],["`-s` / `--schema-only`","Definitions only, no data","Cannot be combined with `-a`"],["`-c` / `--clean`","Emit `DROP` commands before `CREATE`","**Plain format only**; for archives give `--clean` to `pg_restore`. Add `--if-exists` to hide missing-object errors"],["`-C` / `--create`","Start the output with `CREATE DATABASE` and a reconnect","Also stores database-level settings and privileges"],["`-Z spec`","Compression method and level","`-Z zstd:5`, `-Z 6`, `-Z none`"],["`-v` / `--verbose`","Progress messages on standard error; start and end times in the output","Repeat for debug output"],["`-n` / `-N`, `-t` / `-T`","Include or exclude schemas and tables by pattern","Patterns follow the `psql` `\\d` rules; quote them against the shell"],["`-O`, `-x`","Skip ownership commands, skip privileges (`GRANT`/`REVOKE`)","For archives, give them to `pg_restore`"],["`--lock-wait-timeout=ms`","Fail instead of waiting forever for table locks","Recommended in automated jobs"],["`--no-sync`","Do not wait for files to reach disk","Only for tests; an OS crash could leave the dump damaged"]]},
+{h:"Examples"},
+{code:`# local, over the Unix socket, as the current OS user (peer authentication)
+pg_dump shopdb -Fc -f shopdb.dump
+
+# remote, explicit parameters
+pg_dump -h db1.example.com -p 5432 -U backup_user -d shopdb -w -Fc -f shopdb.dump
+
+# connection string with TLS verification (parameters here override other options)
+pg_dump -d "host=db1.example.com port=5432 dbname=shopdb user=backup_user sslmode=verify-full sslrootcert=/etc/ssl/certs/ca.pem" -Fc -f shopdb.dump
+
+# service file entry [prod] in ~/.pg_service.conf
+PGSERVICE=prod pg_dump -w -Fd -j 4 -f /backup/shopdb_dir
+
+# several clusters on one host (Section 03): choose by port
+pg_dump -p 5433 -U postgres -d testdb -Fc -f testdb.dump
+
+# the role has no rights, but may switch to one that does
+pg_dump -U alice --role=backup_role -d shopdb -Fc -f shopdb.dump`},
+{h:"Troubleshooting connection problems"},
+{t:[["Message","Likely cause","Fix"],["`connection to server ... failed: Connection refused`","Server not running, wrong host or port, `listen_addresses` or firewall","Check `pg_isready -h host -p port`, `listen_addresses`, firewall (Section 03)"],["`FATAL: no pg_hba.conf entry for host ...`","No rule matches host, database, user and SSL state","Add a rule and reload; check order, first match wins"],["`FATAL: password authentication failed for user ...`","Wrong password, or a different method than expected","Verify `.pgpass` line matches host, port, database **and** user exactly; check file mode `0600`"],["`fe_sendauth: no password supplied`","`-w` used but no password source available","Provide `.pgpass`, a service file or switch to peer auth"],["`pg_dump: error: aborting because of server version mismatch`","The client is **older** than the server","Install and use a `pg_dump` of the same or a newer major version (for example `/usr/pgsql-18/bin/pg_dump`)"],["`pg_dump: error: query failed: ERROR: permission denied for table ...`","The role cannot read an object","Grant `pg_read_all_data` or use a role that can read everything"],["`FATAL: remaining connection slots are reserved ...` during `-j`","`-j N` needs N+1 connections","Lower `-j` or raise `max_connections`"]]},
+{note:"With several PostgreSQL versions installed side by side (Section 02), `which pg_dump` may point at an older client. Call the binary by full path, or put the newest `bin` directory first in `PATH`."}],
+src:[["pg_dump (options and connection parameters)",D+"app-pgdump.html"],["Connection Strings",D+"libpq-connect.html#LIBPQ-CONNSTRING"],["The Password File",D+"libpq-pgpass.html"],["Environment Variables (libpq)",D+"libpq-envars.html"],["The Connection Service File",D+"libpq-pgservice.html"]]},
+
+/* ---------------------------------------------------------------- 8:3 */
+'pg:8:3':{blocks:[
+{p:"**Restore** is the reverse of a logical backup: the dump is turned back into a working database. The tool depends on the **format** (Section 09, Backup Formats): a plain SQL script goes to `psql`, and every archive format (custom, directory, tar) goes to `pg_restore`. `pg_restore` can work in two modes. If you name a database with `-d`, it connects and restores directly into it. If you do not, it writes the SQL script that would have been executed to a file or to standard output, which is useful for review. In both modes it can be selective, can reorder items and, for custom and directory archives, can run the heavy steps in parallel."},
+{h:"Which tool for which file"},
+{t:[["Dump file","Tool","Command","Parallel","Selective"],["Plain `.sql`, `.sql.gz`","`psql`","`psql -X -d newdb -f db.sql`","No","No"],["Custom `.dump`","`pg_restore`","`pg_restore -d newdb db.dump`","`-j N`","Yes"],["Directory","`pg_restore`","`pg_restore -d newdb -j 4 dumpdir`","`-j N`","Yes"],["Tar `.tar`","`pg_restore`","`pg_restore -d newdb db.tar`","No","Yes"]]},
+{note:"Running `pg_restore` on a plain-text file stops with a message that the input appears to be a text format dump and that `psql` must be used. The reverse mistake, feeding a custom archive to `psql`, floods the terminal with binary text. If you are unsure, run `file dumpfile`."},
+{h:"The restore procedure"},
+{flow:["Check the target server and prerequisites","Create an empty database (from template0) or use -C","Restore with psql or pg_restore","Read the errors, fix, repeat if needed","Run ANALYZE","Verify counts and objects","Re-enable access"]},
+{h:"Step 1: prerequisites on the target"},
+{t:[["Prerequisite","Why","How to prepare"],["Same or **newer** PostgreSQL major version","A dump normally loads into a newer server; loading into an older one may need manual edits","Use `pg_restore` and `psql` of the newer version"],["The **roles** exist","`pg_dump` does not save roles. Ownership and `GRANT` statements fail if the roles are missing","Restore the global objects first (`pg_dumpall --globals-only`) or create the roles by hand, or use `--no-owner`"],["The **tablespace** directories exist","Objects created `IN TABLESPACE` fail otherwise","Create the directories (Section 08) or use `--no-tablespaces`"],["The **extensions** are installed","`CREATE EXTENSION` needs the extension files on the new host","Install the contrib or third-party packages first (Section 05)"],["Compatible encoding and collation","A different encoding or ICU/libc collation can change index order and unique-constraint behaviour","Create the database with the same encoding and locale (Section 05)"],["Enough disk space and WAL space","Restore writes the data, the indexes and WAL","Size the target for roughly the database size plus WAL"]]},
+{h:"Step 2: an empty target database"},
+{p:"`pg_dump` output is relative to `template0`. If the cluster has local additions in `template1` (extra objects, extensions), restoring into a database created from `template1` produces duplicate-definition errors. Create the target from `template0`, or let the dump create the database (`-C`)."},
+{code:`-- empty, clean database with the same properties as the source
+CREATE DATABASE newdb TEMPLATE template0 ENCODING 'UTF8' LOCALE_PROVIDER libc LC_COLLATE 'en_US.UTF-8' LC_CTYPE 'en_US.UTF-8' OWNER app_owner;
+
+# or from the shell
+createdb -T template0 newdb`},
+{h:"Step 3: restore"},
+{code:`# plain script: stop at the first error, as one transaction
+psql -X -v ON_ERROR_STOP=1 --single-transaction -d newdb -f /backup/shopdb.sql
+
+# custom archive into an existing empty database
+pg_restore -d newdb /backup/shopdb.dump
+
+# recreate the database named in the dump (connects to postgres only to issue DROP/CREATE DATABASE)
+pg_restore -C -d postgres /backup/shopdb.dump
+
+# replace the contents of an existing database: drop objects first, hide "does not exist" errors
+pg_restore -d shopdb --clean --if-exists /backup/shopdb.dump
+
+# big restore: parallel, with verbose progress
+pg_restore -d newdb -j 4 -v /backup/shopdb_dir
+
+# review without touching any database: create the SQL script
+pg_restore -f review.sql /backup/shopdb.dump`},
+{ul:["`-X` (`--no-psqlrc`) is recommended by the documentation when loading plain dumps, so that a personal `~/.psqlrc` cannot change the session.","`psql` continues after an error by default. Use `-v ON_ERROR_STOP=1` to stop at the first error, and `--single-transaction` (`-1`) to roll everything back on failure. A plain dump made with `-C` contains `CREATE DATABASE`, which cannot run inside a transaction block, so do not combine `-1` with `-C` dumps.","`pg_restore` also continues after errors by default and prints a count at the end. `-e` (`--exit-on-error`) stops at the first error; `-1` (`--single-transaction`) wraps everything in one transaction and implies `-e`; `--transaction-size=N` commits every N objects, a compromise that keeps the lock table small on very large restores.","`--single-transaction` and `-j` cannot be used together.","Recent minor releases write `\\restrict` and `\\unrestrict` lines into plain dumps as a safety feature (see `--restrict-key`). An old `psql` that does not know them fails on those lines; load such dumps with an up-to-date `psql`. Such scripts are meant for `psql`, not for other clients."]},
+{h:"The three sections of a dump"},
+{svg:secSvg},
+{p:"Every dump is organised into **pre-data**, **data** and **post-data**. Loading data before creating indexes and constraints is much faster than the reverse, which is why `pg_restore` puts indexes and constraints last and can build several indexes in parallel with `-j`. You can restore the sections separately with `--section`, for example schema first so that you can adjust it, then data."},
+{h:"Key pg_restore options"},
+{t:[["Option","Meaning","Notes"],["`-d dbname`","Restore directly into this database","Without `-d` a script is produced"],["`-C`, `--create`","Create the database first (with its comment, settings and privileges)","The `-d` database is only used to issue `DROP DATABASE` / `CREATE DATABASE`; data goes to the name stored in the dump"],["`-c`, `--clean` with `--if-exists`","Drop objects before recreating them","Destructive. Use only on purpose"],["`-j N`","N parallel jobs for loading data, building indexes, adding constraints","Custom and directory only; input must be a file or directory, not a pipe"],["`-1`, `-e`, `--transaction-size`","Transaction control and error handling","See above"],["`-l`, `-L list`","Print the table of contents; restore only the listed items","See Restore Practicals"],["`-n`, `-N`, `-t`, `-I`, `-P`, `-T`","Schema include/exclude, table, index, function, trigger","`-t` restores the table **without** its indexes; the pg_restore `-t` takes no wildcards and no schema prefix (combine with `-n`)"],["`-a`, `-s`, `--section`","Data only, schema only, or a named section","Use `--disable-triggers` with `-a` into existing tables that have foreign keys (superuser)"],["`-O`, `-x`, `--no-tablespaces`, `--no-comments`, `--no-policies`","Skip ownership, privileges, tablespace clauses, comments, row-security policies","Handy when the target differs from the source"],["`--role=name`","`SET ROLE` before restoring","Own everything with a chosen role together with `-O`"],["`--no-data-for-failed-tables`","Skip data for tables whose creation failed because they exist already","Avoids duplicating data of extension tables"],["`--strict-names`","Fail if a `-n` or `-t` pattern matches nothing","Protects automation against typos"]]},
+{h:"Making a large restore fast"},
+{p:"The restore is a bulk load. The levers below come from the PostgreSQL guidance on populating a database; use them on a **dedicated** restore, not on a busy production server, and put the values back afterwards."},
+{t:[["Lever","Effect","Caution"],["`pg_restore -j N` (about the number of CPU cores)","Loads tables and builds indexes in parallel","More connections and I/O"],["Raise `maintenance_work_mem` (for example 1-2 GB)","Faster `CREATE INDEX` and constraint checks","Memory per index build, multiplied by `-j`"],["Raise `max_wal_size` and `checkpoint_timeout`","Fewer checkpoints during the load","Needs WAL disk space"],["`wal_level = minimal`, `archive_mode = off`, `max_wal_senders = 0` (restart needed)","Lets some commands skip WAL","Only on a server with no archiving or replication; take a fresh base backup afterwards"],["`--transaction-size=1000` or similar","Smaller lock footprint than `-1` with most of its speed","Implies exit on error"],["Run `ANALYZE` afterwards","The planner needs statistics; dumps often do not carry them","Use `vacuumdb --all --analyze-in-stages` for a quick first pass"]]},
+{h:"Verification after a restore"},
+{code:`-- objects present?
+SELECT n.nspname, count(*) FILTER (WHERE c.relkind='r') AS tables,
+       count(*) FILTER (WHERE c.relkind='i') AS indexes
+FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+WHERE n.nspname NOT IN ('pg_catalog','information_schema','pg_toast')
+GROUP BY 1 ORDER BY 1;
+
+-- planner statistics for the new database
+ANALYZE VERBOSE;
+
+-- sequences continue after the highest key? (they are restored with their last value)
+SELECT schemaname, sequencename, last_value FROM pg_sequences;`},
+{h:"Common restore errors"},
+{t:[["Message","Cause","Fix"],["`role \"x\" does not exist`","Roles are not part of `pg_dump`","Restore globals first, or `--no-owner`"],["`database \"newdb\" already exists`","Used `-C` against an existing database, or the dump contains `CREATE DATABASE`","Drop it, restore without `-C`, or use `--clean --create`"],["`relation \"t\" already exists`","Restoring into a non-empty database","Restore into an empty database, or use `--clean --if-exists`"],["`extension \"postgis\" is not available`","Package not installed on the target","Install the extension package, then retry"],["`unsupported version (1.16) in file header`","`pg_restore` is older than the `pg_dump` that wrote the archive","Use the `pg_restore` of the same or newer version"],["`permission denied to create extension` / `must be owner of ...`","The restoring role is not allowed to create the object","Restore as a superuser, or use `--no-owner` and `--role`"],["`input file appears to be a text format dump`","A plain script given to `pg_restore`","Use `psql -f`"],["`errors ignored on restore: N`","Normal `pg_restore` summary after non-fatal errors","Read the errors above it; harmless ones such as the existing bootstrap role can be ignored"]]},
+{note:"Practise a full restore of your most important database on a scratch server **before** you need it, and note how long it takes. That time is your real RTO."}],
+src:[["pg_restore",D+"app-pgrestore.html"],["psql (non-interactive use)",D+"app-psql.html"],["Restoring the Dump (25.1.1)",D+"backup-dump.html#BACKUP-DUMP-RESTORE"],["Populating a Database",D+"populate.html"],["vacuumdb",D+"app-vacuumdb.html"]]},
+
+/* ---------------------------------------------------------------- 8:4 */
+'pg:8:4':{blocks:[
+{p:"This lecture is a **lab**. You build a small sample database and then take every kind of logical backup that a DBA needs in practice: a whole database in each format, one table, several tables, one schema, everything except some tables, schema only and data only, with compression and with a naming convention that still makes sense a year later. It ends with a production-style backup script that checks its own work. Run every command yourself on a throw-away server; the next lecture restores what you create here."},
+{h:"Lab setup: a sample database"},
+{code:`-- as postgres
+CREATE ROLE backup_user LOGIN PASSWORD 'change-me';
+GRANT pg_read_all_data TO backup_user;
+CREATE DATABASE shopdb;
+
+\\c shopdb
+CREATE SCHEMA sales;
+CREATE SCHEMA hr;
+
+CREATE TABLE sales.customers (
+  customer_id serial PRIMARY KEY, name text NOT NULL, city text,
+  created_at timestamptz DEFAULT now());
+CREATE TABLE sales.orders (
+  order_id serial PRIMARY KEY,
+  customer_id int REFERENCES sales.customers, order_date date NOT NULL,
+  amount numeric(10,2) NOT NULL);
+CREATE INDEX orders_date_idx ON sales.orders (order_date);
+CREATE TABLE hr.employees (emp_id serial PRIMARY KEY, name text, salary numeric(10,2));
+CREATE TABLE public.audit_log (id bigserial PRIMARY KEY, event text, logged_at timestamptz DEFAULT now());
+
+INSERT INTO sales.customers (name, city)
+SELECT 'Customer ' || g, (ARRAY['Chennai','Mumbai','Delhi','Pune'])[1 + g % 4]
+FROM generate_series(1, 10000) g;
+INSERT INTO sales.orders (customer_id, order_date, amount)
+SELECT 1 + g % 10000, current_date - (g % 365), round((random() * 500)::numeric, 2)
+FROM generate_series(1, 100000) g;
+INSERT INTO hr.employees (name, salary)
+SELECT 'Employee ' || g, 30000 + g * 10 FROM generate_series(1, 200) g;
+INSERT INTO public.audit_log (event) SELECT 'event ' || g FROM generate_series(1, 50000) g;
+
+-- a baseline you will compare against after every restore
+SELECT 'customers' t, count(*) FROM sales.customers UNION ALL
+SELECT 'orders', count(*) FROM sales.orders UNION ALL
+SELECT 'employees', count(*) FROM hr.employees UNION ALL
+SELECT 'audit_log', count(*) FROM public.audit_log;`},
+{p:"Expected baseline: 10000, 100000, 200 and 50000 rows. Write them down. A directory such as `/backup/logical` owned by `postgres` (mode `0700`) will hold the output."},
+{code:`sudo mkdir -p /backup/logical && sudo chown postgres:postgres /backup/logical && sudo chmod 700 /backup/logical`},
+{h:"1. A whole database in each format"},
+{code:`cd /backup/logical
+pg_dump -U backup_user -h localhost -d shopdb -f shopdb_plain.sql                  # plain
+pg_dump -U backup_user -h localhost -d shopdb -Fc -f shopdb_custom.dump            # custom
+pg_dump -U backup_user -h localhost -d shopdb -Ft -f shopdb_tar.tar                # tar
+pg_dump -U backup_user -h localhost -d shopdb -Fd -j 4 -f shopdb_dir               # directory, parallel
+ls -lh`},
+{p:"Compare the sizes. The plain file is the readable one; the custom and directory archives are compressed; the tar file is the largest archive because tar cannot compress. Look inside the plain file to see what a dump is: a header, `SET` statements, `CREATE SCHEMA`, `CREATE TABLE`, then `COPY ... FROM stdin` with the rows, and finally indexes and constraints."},
+{code:`head -n 40 shopdb_plain.sql
+grep -n "^COPY\\|^CREATE INDEX\\|^ALTER TABLE ONLY" shopdb_plain.sql | head`},
+{h:"2. Choose the content: schema only, data only, one section"},
+{t:[["Goal","Command","Result"],["Definitions only (no rows)","`pg_dump -d shopdb -s -f shopdb_schema.sql`","`CREATE` statements, indexes, constraints, privileges"],["Rows only (no definitions)","`pg_dump -d shopdb -a -Fc -f shopdb_data.dump`","Data, large objects and sequence values"],["Only the data section, by name","`pg_dump -d shopdb --section=data -Fc -f d.dump`","Table data (close to, not identical to, `-a`)"],["Without comments, privileges and ownership","`pg_dump -d shopdb --no-comments -x -O -f portable.sql`","A script that any role can load and will own"]]},
+{h:"3. Select objects: tables and schemas"},
+{code:`# one table (schema-qualified)
+pg_dump -d shopdb -t sales.orders -Fc -f sales_orders.dump
+
+# several tables, by repeating -t or by wildcard (quote the pattern!)
+pg_dump -d shopdb -t sales.customers -t sales.orders -Fc -f sales_two_tables.dump
+pg_dump -d shopdb -t 'sales.*' -Fc -f sales_all_tables.dump
+
+# one schema, with everything inside it
+pg_dump -d shopdb -n sales -Fc -f schema_sales.dump
+
+# two schemas
+pg_dump -d shopdb -n sales -n hr -Fc -f sales_hr.dump
+
+# everything EXCEPT a schema or a table
+pg_dump -d shopdb -N hr -Fc -f shopdb_without_hr.dump
+pg_dump -d shopdb -T public.audit_log -Fc -f shopdb_without_audit.dump
+
+# keep the table definition but skip its rows (huge log or staging tables)
+pg_dump -d shopdb --exclude-table-data=public.audit_log -Fc -f shopdb_audit_empty.dump
+
+# a mixed-case name needs double quotes, which the shell must pass through
+pg_dump -d shopdb -t "\\"MixedCase\\"" -f mixed.sql
+
+# fail loudly if a pattern matches nothing (protects scripts from typos)
+pg_dump -d shopdb -t 'sales.ordres' --strict-names -f /dev/null`},
+{ul:["`-t` and `-n` dump only what you select. The documentation notes that **dependencies are not followed**: a table dump does not include the types, functions or other tables it depends on, so a restore into an empty database may fail. Use `-n` (a whole schema) for self-contained pieces.","`-t` also dumps the table's indexes, constraints and triggers, and matches views, materialized views, foreign tables and sequences, but not the contents of views.","`-n` and `-N` do not apply when `-t` is used.","Large objects are not part of a `-n` or `-t` dump unless you add `-b` (`--large-objects`).","For long lists of patterns use a **filter file**: `pg_dump --filter=filter.txt`, with lines such as `include table sales.*` and `exclude table_data public.audit_log`."]},
+{h:"4. Compression and speed"},
+{code:`pg_dump -d shopdb -Fc -Z gzip:6 -f shopdb_gzip6.dump
+pg_dump -d shopdb -Fc -Z lz4    -f shopdb_lz4.dump       # needs lz4 support
+pg_dump -d shopdb -Fc -Z zstd:5 -f shopdb_zstd5.dump     # needs zstd support
+pg_dump -d shopdb -Fc -Z none   -f shopdb_none.dump
+pg_dump -d shopdb -Fd -j 4 -Z zstd:3 -f shopdb_dir_zstd
+time pg_dump -d shopdb -Fd -j 1 -f /tmp/t1 ; time pg_dump -d shopdb -Fd -j 4 -f /tmp/t4`},
+{p:"On a database this small the difference between `-j 1` and `-j 4` is minor. On a database of hundreds of gigabytes with several large tables it is large, but only tables are parallelised: one gigantic table is still dumped by a single worker."},
+{h:"5. A naming convention that scales"},
+{t:[["Element","Example","Why"],["Database or scope","`shopdb`, `cluster_globals`","Tells you what it is without opening it"],["Timestamp, sortable","`20261008_023000`","Lexical order equals time order"],["Type","`full`, `schema`, `data`, `tbl_sales_orders`","Distinguishes purpose"],["Server or environment","`prod01`","Avoids restoring a test dump on production by mistake"],["Extension by format","`.sql`, `.dump`, `_dir/`, `.tar`","Tells you which restore tool to use"]]},
+{code:`TS=$(date +%Y%m%d_%H%M%S)
+pg_dump -d shopdb -Fc -f /backup/logical/prod01_shopdb_\${TS}_full.dump
+# result: prod01_shopdb_20261008_023000_full.dump`},
+{h:"6. A production-style script"},
+{p:"The script below dumps the global objects and one database, verifies that the archive can be read, records a checksum, and applies a retention rule. It stops on the first error (`set -euo pipefail`) and writes a log. Adapt the paths and add your alerting."},
+{code:`#!/bin/bash
+# /usr/local/bin/nightly_dump.sh : logical backup with verification and retention
+set -euo pipefail
+
+DB=shopdb
+BACKUP_DIR=/backup/logical
+KEEP_DAYS=14
+TS=$(date +%Y%m%d_%H%M%S)
+OUT="$BACKUP_DIR/prod01_\${DB}_\${TS}_full.dump"
+LOG="$BACKUP_DIR/prod01_\${DB}_\${TS}.log"
+export PGHOST=/var/run/postgresql PGUSER=backup_user     # password from ~/.pgpass or peer
+
+exec >>"$LOG" 2>&1
+echo "[$(date -Is)] start $DB"
+
+# 1. the dump (fail instead of waiting forever for locks)
+pg_dump -d "$DB" -Fc -Z zstd:5 --lock-wait-timeout=60000 -f "$OUT"
+
+# 2. can the archive be read back?
+pg_restore -l "$OUT" > /dev/null
+
+# 3. checksum for later integrity checks and off-site copy
+sha256sum "$OUT" > "$OUT.sha256"
+
+# 4. retention: remove old dumps, logs and checksums
+find "$BACKUP_DIR" -type f \\( -name "*.dump" -o -name "*.sha256" -o -name "*.log" \\) -mtime +"$KEEP_DAYS" -delete
+
+echo "[$(date -Is)] done $(du -h "$OUT" | cut -f1)"`},
+{code:`# schedule it (crontab -e as postgres): every night at 02:30
+30 2 * * * /usr/local/bin/nightly_dump.sh || echo "shopdb backup FAILED" | mail -s "backup failure" dba@example.com`},
+{h:"7. Verify before you trust"},
+{code:`# 1. the files exist and are plausible
+ls -lh /backup/logical
+sha256sum -c /backup/logical/*.sha256
+
+# 2. the archive table of contents is readable and complete
+pg_restore -l shopdb_custom.dump | head -n 30
+pg_restore -l shopdb_custom.dump | grep -c "TABLE DATA"       # one entry per table
+
+# 3. the plain script has no obvious problems
+grep -c "^COPY" shopdb_plain.sql`},
+{note:"A readable table of contents proves the file is not truncated. It does not prove the data loads. The next lecture restores these files and compares row counts with your baseline."}],
+src:[["pg_dump (examples and filter files)",D+"app-pgdump.html#PG-DUMP-EXAMPLES"],["pg_restore (-l listing)",D+"app-pgrestore.html"],["25.1 SQL Dump (large databases)",D+"backup-dump.html"]]},
+
+/* ---------------------------------------------------------------- 8:5 */
+'pg:8:5':{blocks:[
+{p:"This lab restores the backups made in Backup Practicals, using `psql` for the plain file and `pg_restore` for the custom, tar and directory archives. It then goes beyond a full restore: one table, only the data, only the schema, a hand-edited item list, a script generated without any database, and the case that matters most in real life, getting one damaged table back without disturbing the rest of production. Every scenario ends with a check against the baseline row counts (10000, 100000, 200, 50000)."},
+{h:"Scenario A: plain script into a new database"},
+{code:`createdb -T template0 shop_a
+psql -X -v ON_ERROR_STOP=1 -d shop_a -f /backup/logical/shopdb_plain.sql
+psql -d shop_a -c "SELECT count(*) FROM sales.orders;"      # 100000`},
+{h:"Scenario B: custom, tar and directory archives"},
+{code:`createdb -T template0 shop_b
+pg_restore -d shop_b -v /backup/logical/shopdb_custom.dump
+
+createdb -T template0 shop_c
+pg_restore -d shop_c /backup/logical/shopdb_tar.tar
+
+createdb -T template0 shop_d
+pg_restore -d shop_d -j 4 /backup/logical/shopdb_dir      # parallel`},
+{p:"The format is detected automatically; you do not need `-F`. With `-v` you see each object as it is created, which is the quickest way to find the slow step."},
+{h:"Scenario C: drop and recreate the database from the archive"},
+{code:`# connects to 'postgres' only to issue DROP DATABASE shopdb / CREATE DATABASE shopdb,
+# then loads into the database NAMED IN THE DUMP
+pg_restore -C --clean --if-exists -d postgres /backup/logical/shopdb_custom.dump`},
+{note:"This **drops the live database of that name**. Make sure nobody is connected (`SELECT pg_terminate_backend(pid) ...`, Section 05) and that you really intend to replace it."},
+{h:"Scenario D: only one table"},
+{code:`createdb -T template0 shop_e
+# schema first, so that the schema, types and sequences exist
+pg_restore -d shop_e --schema-only /backup/logical/shopdb_custom.dump
+# then one table's rows (disable triggers so foreign keys do not block the load; needs superuser)
+pg_restore -d shop_e --data-only --disable-triggers -n sales -t orders /backup/logical/shopdb_custom.dump
+psql -d shop_e -c "SELECT count(*) FROM sales.orders;"`},
+{p:"`pg_restore -t` restores the named table but, unlike `pg_dump -t`, **not** its indexes, constraints or triggers, and it accepts no wildcards or schema prefix (use `-n` for the schema). To get one table complete with its indexes and constraints, use a list file (Scenario F)."},
+{h:"Scenario E: schema only, then data, in two steps"},
+{code:`createdb -T template0 shop_f
+pg_restore -d shop_f --section=pre-data /backup/logical/shopdb_custom.dump
+pg_restore -d shop_f --section=data     /backup/logical/shopdb_custom.dump
+pg_restore -d shop_f --section=post-data /backup/logical/shopdb_custom.dump`},
+{p:"Splitting by section lets you stop after `pre-data` to change something (add a partition, change a tablespace) before the data is loaded, and build the indexes last."},
+{h:"Scenario F: choose items with a list file"},
+{svg:listSvg},
+{code:`pg_restore -l /backup/logical/shopdb_custom.dump > shopdb.list
+head -n 30 shopdb.list`},
+{p:"Each line is one object: its archive ID, type, name and owner. A semicolon at the start turns a line into a comment. The excerpt below keeps the schema, the table, its data and its index, and skips everything else."},
+{code:`; shopdb.list (edited)
+10; 2615 16390 SCHEMA - sales postgres
+212; 1259 16391 TABLE sales orders postgres
+3401; 0 16391 TABLE DATA sales orders postgres
+; 3402; 0 16395 TABLE DATA sales customers postgres      <- skipped
+3120; 1259 16398 INDEX sales orders_date_idx postgres
+3150; 2606 16394 CONSTRAINT sales orders orders_pkey postgres`},
+{code:`createdb -T template0 shop_g
+pg_restore -d shop_g -L shopdb.list /backup/logical/shopdb_custom.dump`},
+{p:"`-L` restores only the listed items **in the order they appear in the file**, so you can also reorder. Numbers and sizes above are illustrative; yours will differ. The foreign key to `customers` is not in the list, so it is not created; add its `FK CONSTRAINT` line if you need it."},
+{h:"Scenario G: produce a script without any database"},
+{code:`pg_restore -f review.sql /backup/logical/shopdb_custom.dump        # whole archive as SQL
+pg_restore -f one_table.sql -n sales -t orders /backup/logical/shopdb_custom.dump
+less review.sql                                                     # review, edit, then run with psql`},
+{h:"Scenario H: restore with a different owner or without privileges"},
+{code:`# objects owned by the restoring role instead of the original roles
+pg_restore -d shop_h --no-owner --no-privileges /backup/logical/shopdb_custom.dump
+# or switch to a specific owner role first
+pg_restore -d shop_h --no-owner --role=app_owner /backup/logical/shopdb_custom.dump`},
+{h:"Scenario I: rescue one damaged table (the common real case)"},
+{p:"Someone ran `DELETE FROM sales.orders` without a `WHERE` at 10:15 and the nightly dump is from 02:30. You do not want to replace the whole database. Restore **into a scratch database** and copy back only what is missing."},
+{flow:["Restore the dump into a scratch database","Compare with production","Copy the missing rows back in a transaction","Check counts and constraints","Drop the scratch database"]},
+{code:`createdb -T template0 rescue
+pg_restore -d rescue -n sales -t orders --data-only /backup/logical/shopdb_custom.dump   # after schema-only restore as in Scenario D
+
+# in production, copy rows that no longer exist (postgres_fdw or dblink, or COPY through a file)
+psql -d rescue -c "COPY (SELECT * FROM sales.orders) TO '/tmp/orders_0230.csv' CSV"
+psql -d shopdb -c "BEGIN; CREATE TEMP TABLE o_old (LIKE sales.orders); COPY o_old FROM '/tmp/orders_0230.csv' CSV; INSERT INTO sales.orders SELECT * FROM o_old ON CONFLICT DO NOTHING; COMMIT;"`},
+{p:"The dump only knows the state at 02:30. Changes made between 02:30 and 10:15 are not in it. To lose nothing, use point-in-time recovery (the PITR lecture) and recover to 10:14 in a scratch instance."},
+{h:"Verifying every restore"},
+{code:`-- exact row counts of every user table (not the approximate n_live_tup)
+SELECT table_schema, table_name,
+       (xpath('/row/c/text()',
+              query_to_xml(format('select count(*) as c from %I.%I', table_schema, table_name), false, true, '')))[1]::text::bigint AS row_count
+FROM information_schema.tables
+WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('pg_catalog','information_schema')
+ORDER BY 1, 2;
+
+# compare structure of source and restored database
+pg_dump -s -d shopdb  | grep -v '^--' > /tmp/src_schema.sql
+pg_dump -s -d shop_b  | grep -v '^--' > /tmp/new_schema.sql
+diff /tmp/src_schema.sql /tmp/new_schema.sql && echo "schemas identical"`},
+{h:"Troubleshooting the practicals"},
+{t:[["Symptom","Cause","Fix"],["Restore finishes with `errors ignored on restore: 1`","Often `role ... does not exist` or an existing object","Read the first error; use `--no-owner` or create the role"],["`pg_restore -t orders` created the table with no index","`-t` does not restore subsidiary objects","Use a list file, or restore `--section=post-data` afterwards"],["`-j` restore of a plain file","Not supported","Plain scripts run in one session; use an archive format"],["`COPY ... permission denied` for `/tmp/orders_0230.csv`","Server-side `COPY` reads and writes as the server OS user","Use `\\copy` in `psql` (client side) or put the file where the server may read it"],["Foreign key errors on `--data-only`","Parent rows are not loaded yet","Load in the right order, use `--disable-triggers` as superuser, or restore without `-a`"]]}],
+src:[["pg_restore",D+"app-pgrestore.html"],["pg_restore (examples: -l and -L)",D+"app-pgrestore.html#APP-PGRESTORE-EXAMPLES"],["psql",D+"app-psql.html"]]},
+
+/* ---------------------------------------------------------------- 8:6 */
+'pg:8:6':{blocks:[
+{p:"`pg_dumpall` writes **all databases of a cluster, together with the global objects, into one SQL script**. It does this by first dumping the global objects and then calling `pg_dump` once for every database. The global objects are exactly what `pg_dump` cannot save: **roles** (with their attributes, memberships and password hashes), **tablespace definitions**, and the privilege grants on configuration parameters. In PostgreSQL 18 the output is a plain SQL script written to standard output (or to a file with `-f`), to be fed to `psql`. Because it needs to read every table of every database, you normally run it as a superuser."},
+{svg:allSvg},
+{h:"What the script contains, in order"},
+{flow:["Role definitions: CREATE ROLE, ALTER ROLE, memberships","Tablespace definitions: CREATE TABLESPACE ... LOCATION","Per-role and per-database settings","For each database: CREATE DATABASE, connect, objects and data","Privileges"]},
+{h:"Options"},
+{t:[["Option","Meaning","Notes"],["`-g`, `--globals-only`","Dump roles and tablespaces only, no databases","Small, fast, and the right companion of per-database `pg_dump`"],["`-r`, `--roles-only`","Dump roles only","Handy when moving users to a new cluster"],["`-t`, `--tablespaces-only`","Dump tablespaces only","Note: `-t` means tablespaces here, not tables as in `pg_dump`"],["`-f file`","Write to a file","Otherwise standard output"],["`-l dbname`, `--database`","Database used for the first connection, where globals are read and the database list is discovered","Default `postgres`, then `template1`"],["`--exclude-database=pattern`, `--filter=file`","Skip databases by pattern","Skip a huge staging database, for instance"],["`-c`, `--clean`, with `--if-exists`","Drop databases, roles and tablespaces before recreating them","Restore the script while connected to `postgres`"],["`--no-role-passwords`","Do not dump password hashes; roles get a null password","Use when moving to a less trusted place; also works when `pg_authid` cannot be read"],["`-s`, `-a`","Schema only, data only","As in `pg_dump`"],["`-O`, `-x`, `--no-tablespaces`, `--no-comments`","Skip ownership, privileges, tablespace commands, comments","As in `pg_dump`"],["`--quote-all-identifiers`","Quote every identifier","Recommended when the target is a different major version"],["`-h`, `-p`, `-U`, `-w`, `-W`, `-d connstr`, `--role`","Connection options","The database name inside a connection string is ignored; use `-l`"],["`--statistics`, `--no-statistics`","Include or skip optimizer statistics","Run `ANALYZE` after the restore either way"],["`-v`","Progress and times","Also passed to `pg_dump`"]]},
+{note:"`pg_dumpall` connects once per database and, if the server uses password authentication, asks for the password **each time**. Use `~/.pgpass`, peer authentication or `-w` with a password file in unattended jobs."},
+{h:"Basic use"},
+{code:`# the whole cluster, to a file
+pg_dumpall -U postgres -f /backup/cluster_20261008.sql
+
+# only roles and tablespaces (small; take it every day)
+pg_dumpall -U postgres --globals-only -f /backup/globals_20261008.sql
+
+# only roles, without password hashes
+pg_dumpall -U postgres --roles-only --no-role-passwords -f /backup/roles_nopw.sql
+
+# everything except one database
+pg_dumpall -U postgres --exclude-database=staging -f /backup/cluster_no_staging.sql
+
+# restore: connect to any database; the script creates and connects to the others
+psql -X -U postgres -d postgres -f /backup/cluster_20261008.sql 2> restore_errors.log`},
+{h:"Restore notes from the documentation"},
+{ul:["Expect **errors that are harmless**: the script issues `CREATE ROLE` for every role, so the bootstrap superuser (usually `postgres`) reports that it already exists, unless the new cluster was initialised with a different superuser name.","`pg_dumpall` needs the **tablespace directories to exist** before the restore. Otherwise databases in non-default locations cannot be created (Section 08).","With `--clean`, the script drops the other databases right away, which fails for the database you are connected to. Connect to `postgres` first. `--clean` also lets the script recreate `postgres` and `template1` with the same properties (locale, encoding) as the source.","Use `psql -X` to ignore a personal `.psqlrc`. The script contains `psql` meta-commands, so it may not work with other clients."]},
+{h:"The recommended production pattern: globals plus per-database dumps"},
+{p:"A single `pg_dumpall` file has no parallelism, cannot restore one database without restoring everything, and cannot be inspected with `pg_restore -l`. For anything but small clusters, combine the two tools: dump the **globals** with `pg_dumpall -g` and every database with `pg_dump` in an archive format."},
+{t:[["Approach","Pros","Cons","Choose when"],["`pg_dumpall` alone","One command, one file; simplest to understand","Text only, serial, no selective restore, large file","Small clusters, quick migrations, dev environments"],["`pg_dumpall -g` + `pg_dump -Fc` per database","Selective and parallel restore, per-database retention, compressed","Needs a small script","Production: the standard logical backup"],["`pg_dumpall -g` + `pg_dump -Fd -j` per database","Fastest on large databases","More files to manage","Large databases and short backup windows"]]},
+{code:`#!/bin/bash
+# /usr/local/bin/cluster_logical_backup.sh
+set -euo pipefail
+OUT=/backup/logical/$(date +%Y%m%d_%H%M%S)
+mkdir -p "$OUT"
+export PGUSER=postgres PGHOST=/var/run/postgresql
+
+# 1. roles, tablespace definitions, role settings
+pg_dumpall --globals-only -f "$OUT/globals.sql"
+
+# 2. every connectable, non-template database, one archive each
+for DB in $(psql -Atc "SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate"); do
+  pg_dump -d "$DB" -Fc -Z zstd:5 -f "$OUT/$DB.dump"
+done
+
+# 3. restrict permissions: the globals file contains password hashes
+chmod -R go-rwx "$OUT"
+sha256sum "$OUT"/* > "$OUT/SHA256SUMS"`},
+{code:`# restore on a new cluster
+psql -X -d postgres -f globals.sql                       # roles and tablespaces first
+createdb -T template0 -O shop_owner shopdb
+pg_restore -d shopdb -j 4 shopdb.dump`},
+{h:"Security of the output"},
+{ul:["The globals contain **password hashes** (SCRAM verifiers or, on old clusters, MD5 hashes). Treat the file like a secret: mode `0600`, encrypted if it leaves the server.","Restoring runs arbitrary SQL as a superuser. Do not load a `pg_dumpall` file from an untrusted source without reading it.","`--no-role-passwords` removes the hashes; the restored roles then cannot log in with a password until you set one."]},
+{h:"What pg_dumpall is good for"},
+{t:[["Use","Why `pg_dumpall` fits"],["Moving a whole cluster to a new server or a newer major version","Brings databases, roles and tablespace definitions together (an alternative to `pg_upgrade`, Section 10)"],["Refreshing a development or test cluster from production","Simple and complete (consider `--no-role-passwords`)"],["A daily copy of roles and tablespaces (`-g`)","Tiny, and it is the only logical record of who the users were"],["Not suitable: point-in-time recovery, very large clusters, selective restore","Use physical backups and per-database archives"]]},
+{note:"A dump made with `pg_dumpall` never contains the files of a tablespace, only the `CREATE TABLESPACE` command. Section 08 explains why a restore needs the directories in place."}],
+src:[["pg_dumpall",D+"app-pg-dumpall.html"],["pg_dump",D+"app-pgdump.html"],["The Password File",D+"libpq-pgpass.html"]]},
+
+/* ---------------------------------------------------------------- 8:7 */
+'pg:8:7':{blocks:[
+{p:"**`pg_basebackup`** takes a **base backup** of a running PostgreSQL cluster. The documentation describes it as a backup that does not affect other clients of the database and that can be used both for **point-in-time recovery** and as the starting point of a **log-shipping or streaming-replication standby**. It makes an exact copy of the cluster's files (a full backup) or, since PostgreSQL 17, a smaller copy that contains only the blocks changed since an earlier backup (an incremental backup). It puts the server in and out of backup mode automatically, and the backup is made over a normal connection that speaks the **replication protocol**. Backups are always of the **entire cluster**; individual databases or tables cannot be selected. For that, use `pg_dump`."},
+{h:"Prerequisites on the server"},
+{t:[["Requirement","Setting or object","Default"],["A role allowed to run replication","`CREATE ROLE repl_backup LOGIN REPLICATION PASSWORD '...'` (or a superuser)","none"],["`pg_hba.conf` must allow a **replication** connection","`host replication repl_backup 10.0.0.20/32 scram-sha-256`. The word `replication` is a keyword for the database column; `all` does not match it","none"],["Enough WAL senders","`max_wal_senders`: at least 1 for the backup plus 1 more for `-X stream`","10"],["`wal_level` of `replica` or higher","`SHOW wal_level;`","`replica`"],["WAL kept for `-X fetch`","`wal_keep_size` large enough to cover the backup duration (not needed for `-X stream`)","0"],["For a PITR-capable backup","WAL archiving enabled and working (`archive_mode`, `archive_command`)","off"]]},
+{code:`-- on the server
+CREATE ROLE repl_backup LOGIN REPLICATION PASSWORD 'change-me';
+
+# pg_hba.conf  (then: SELECT pg_reload_conf();)
+host  replication  repl_backup  10.0.0.20/32  scram-sha-256
+
+# from the backup host, test that the replication login works
+pg_isready -h db1 -p 5432
+psql "host=db1 user=repl_backup replication=true dbname=postgres" -c "IDENTIFY_SYSTEM;"`},
+{h:"How a base backup runs"},
+{svg:pbSvg},
+{p:"The checkpoint at the start fixes the point from which WAL must be replayed. By default the checkpoint is **spread** over `checkpoint_completion_target` so that the backup does not hammer the disks; `--checkpoint=fast` requests an immediate checkpoint when you are in a hurry. While the backup runs, `pg_basebackup` seems idle until that checkpoint finishes. Full-page writes are effectively forced on during backup mode, so WAL volume rises a little."},
+{h:"Output formats"},
+{t:[["","Plain (`-Fp`, default)","Tar (`-Ft`)"],["Result","A copy with the **same layout** as the source data directory","`base.tar` (data directory), `pg_wal.tar` (streamed WAL), one `<tablespace OID>.tar` per extra tablespace"],["Tablespaces","Written to the **same absolute path** as on the source unless remapped with `-T old=new`. On the same host as the server this fails unless you remap","Each in its own tar; the symbolic links are re-created from `tablespace_map` when restored"],["Compression","Only server-side (`--compress=server-gzip` etc.)","Client side or server side: gzip, lz4, zstd"],["Standard output","Not possible","`-D -` is allowed if there are no extra tablespaces and no WAL streaming"],["Restore step","Point `PGDATA` at the directory, adjust permissions","Unpack each tar into the right place first"]]},
+{h:"Including the WAL: the -X (--wal-method) option"},
+{t:[["Method","What happens","Needs","Use"],["`stream` (default)","WAL is streamed on a **second connection** while the data is copied","2 walsenders; a temporary replication slot is created automatically, so the server cannot recycle WAL the backup still needs","Normal choice: the backup is **self-contained** and starts without an archive"],["`fetch`","The WAL files are collected **at the end** of the backup","`wal_keep_size` large enough, or the backup fails and is unusable","When only one connection is available"],["`none`","No WAL in the backup","A working WAL archive and `restore_command` at restore time","PITR setups that archive WAL anyway; you must wait for the last segment to be archived"]]},
+{h:"Option reference"},
+{t:[["Option","Meaning"],["`-D dir`, `--pgdata`","Target directory (required); created if missing, must be empty if it exists"],["`-F p|t`","Format: plain or tar"],["`-X n|f|s`","WAL method (see above)"],["`-z`, `-Z spec`, `--compress=[client|server]-method[:detail]`","Compression of tar output or server-side transfer: `gzip`, `lz4`, `zstd`, with `level`, `long`, `workers` keywords"],["`-c fast|spread`, `--checkpoint`","How hard to checkpoint at the start"],["`-C`, `-S slot`","Create (`-C`) and use a **permanent replication slot** for WAL streaming; use the same name as `primary_slot_name` on a standby so the primary keeps WAL until streaming starts"],["`--no-slot`","Do not create the temporary slot (when no free slot exists). Almost always worse"],["`-R`, `--write-recovery-conf`","Create `standby.signal` and put connection settings in `postgresql.auto.conf`: a ready-to-start standby (Section 10)"],["`-T old=new`","Relocate a tablespace (plain format)"],["`--waldir=dir`","Put the WAL somewhere else (plain format)"],["`-r rate`, `--max-rate`","Throttle transfer, for example `-r 50M` (32 kB/s to 1024 MB/s)"],["`-P`, `-v`","Progress and verbose output"],["`-l label`","Label stored in `backup_label` (default `pg_basebackup base backup`)"],["`--manifest-checksums=alg`, `--no-manifest`","Manifest checksum algorithm (`NONE`, `CRC32C` default, `SHA224`, `SHA256`, `SHA384`, `SHA512`) or no manifest"],["`--no-verify-checksums`","Do not verify data page checksums while copying (verified by default if checksums are on)"],["`-i manifest`, `--incremental`","Incremental backup relative to an earlier backup (PostgreSQL 17+; see the incremental lecture)"],["`-t server:/path`, `--target`","Store the backup on the **server** (needs `pg_write_server_files`); `blackhole` discards it for tests. Requires `-Xfetch` or `-Xnone`"],["`-N`, `--no-sync`","Return without fsync: tests only"],["`-d connstr`, `-h`, `-p`, `-U`, `-w`, `-W`, `-s interval`","Connection options as for other tools"]]},
+{h:"Taking backups"},
+{code:`# plain format, WAL streamed, progress shown
+pg_basebackup -h db1 -U repl_backup -D /backup/base/20261008 -Fp -Xs -P -c fast
+
+# one gzip-compressed tar per tablespace, WAL included
+pg_basebackup -h db1 -U repl_backup -D /backup/base/20261008_tar -Ft -z -P
+
+# zstd compression on the server with 4 workers (the streamed pg_wal.tar stays uncompressed)
+pg_basebackup -h db1 -U repl_backup -D /backup/base/20261008_zstd -Ft --compress=server-zstd:workers=4 -P
+
+# relocate a tablespace while copying (plain format)
+pg_basebackup -h db1 -U repl_backup -D /backup/base/restore_test -T /pgdata/ts_fast=/backup/base/restore_test_ts
+
+# throttle to protect production, with a permanent slot
+pg_basebackup -h db1 -U repl_backup -D /backup/base/20261008_slot -C -S backup_slot -r 100M -P`},
+{h:"Watching a backup"},
+{code:`-- on the server while the backup runs (needs pg_monitor or superuser)
+SELECT pid, phase, pg_size_pretty(backup_total) AS total, pg_size_pretty(backup_streamed) AS streamed,
+       tablespaces_total, tablespaces_streamed
+FROM pg_stat_progress_basebackup;
+-- phases: initializing, waiting for checkpoint to finish, estimating backup size,
+--         streaming database files, waiting for wal archiving to finish, transferring wal files`},
+{h:"What is inside the backup directory"},
+{t:[["File","Meaning"],["`backup_label`","Names the checkpoint WAL replay must start from, the start time and the label. **Vital:** never delete it from a restored backup"],["`backup_manifest`","JSON list of every file with size, modification time and checksum, plus WAL ranges; used by `pg_verifybackup` and incremental backups"],["`tablespace_map`","Maps tablespace OIDs to their original paths (used by tar-format restores)"],["`pg_wal/` or `pg_wal.tar`","The WAL collected during the backup (`-X stream` or `fetch`)"],["`standby.signal`, `postgresql.auto.conf` entries","Only with `-R`"]]},
+{h:"Restoring a stand-alone backup (WAL included)"},
+{code:`# 1. stop the server and move the damaged cluster aside (keep it until recovery is proven)
+sudo systemctl stop postgresql-18
+sudo mv /var/lib/pgsql/18/data /var/lib/pgsql/18/data.broken
+
+# 2a. plain format: copy back
+sudo cp -a /backup/base/20261008 /var/lib/pgsql/18/data
+# 2b. tar format: unpack each file
+sudo mkdir /var/lib/pgsql/18/data
+sudo tar -xf /backup/base/20261008_tar/base.tar -C /var/lib/pgsql/18/data
+sudo tar -xf /backup/base/20261008_tar/pg_wal.tar -C /var/lib/pgsql/18/data/pg_wal
+
+# 3. ownership and permissions: the postgres OS user, mode 0700
+sudo chown -R postgres:postgres /var/lib/pgsql/18/data
+sudo chmod 700 /var/lib/pgsql/18/data
+
+# 4. start: the server reads backup_label, replays the included WAL, then opens
+sudo systemctl start postgresql-18
+sudo -u postgres psql -c "SELECT pg_is_in_recovery();"   # f when done`},
+{p:"If the backup was taken with `-X none`, there is no WAL inside. The restore then needs `restore_command` pointing at the WAL archive and an empty `recovery.signal` file in the data directory. That is point-in-time recovery, covered in the PITR lecture."},
+{h:"Limits and cautions"},
+{ul:["**Whole cluster only.** There is no per-database or per-table selection.","**Version.** `pg_basebackup` works with servers of the same or older major version (down to 9.1). Incremental backup needs a 17+ server. A base backup restores only to the **same major version** and a compatible platform.","**From a standby** it works, with limits: no backup history file is created in the backed-up cluster, a promotion during the backup makes it fail, `full_page_writes` must be on at the primary, and with `-X none` you may need `pg_switch_wal()` on the primary to push out the last segment.","**A permanent slot (-C -S) outlives the backup.** If it is not used by a standby afterwards, the primary keeps retaining WAL for it until the disk fills. Drop it with `SELECT pg_drop_replication_slot('backup_slot');` (the temporary slot of the default `-X stream` disappears by itself).","**Only one at a time** is usually better: several in parallel compete for I/O. Take one and copy the result.","**Checksum errors** reported during the copy mean real corruption in a data file; the backup is kept for inspection. Do not ignore them."]},
+{h:"Verify the backup"},
+{code:`pg_verifybackup /backup/base/20261008                     # manifest, file sizes, checksums, WAL records
+pg_controldata /backup/base/20261008 | grep -i "checkpoint location\\|cluster state"`},
+{p:"`pg_verifybackup` is not a replacement for a test restore. The only complete proof is starting a server from the backup, on another host or port, and querying it (see the verification lecture)."},
+{h:"Logical or physical: combining them"},
+{t:[["Layer","Tool","Frequency","Protects against"],["Physical base backup + WAL archive","`pg_basebackup`, archive","Weekly (full), daily (incremental), WAL continuous","Server or disk loss, any-moment recovery"],["Logical archives per database","`pg_dump -Fc/-Fd`","Daily","A dropped table or schema, cross-version moves, selective restore"],["Globals","`pg_dumpall -g`","Daily","Loss of roles and tablespace definitions"],["Config files","Copy of `postgresql.conf`, `pg_hba.conf`, `pg_ident.conf`","On change","Configuration loss (not stored in WAL)"]]},
+{note:"Next in this section: the bonus lectures on strategy, file-system-level backups, WAL archiving, point-in-time recovery, incremental backups and the disaster-recovery runbook turn this base backup into a complete, tested recovery plan."}],
+src:[["pg_basebackup",D+"app-pgbasebackup.html"],["25.3 Continuous Archiving and PITR",D+"continuous-archiving.html"],["Base Backup Progress Reporting",D+"progress-reporting.html#BASEBACKUP-PROGRESS-REPORTING"],["pg_verifybackup",D+"app-pgverifybackup.html"],["Streaming Replication Protocol",D+"protocol-replication.html"]]},
+
+/* ---------------------------------------------------------------- 8:8 */
+'pg:8:8':{blocks:[
+{p:"Tools do not make a backup strategy. A strategy answers four questions: **how much data may we lose** (RPO), **how long may we be down** (RTO), **how many copies, where, for how long**, and **how do we know it works**. This lecture turns the tools of the previous lectures into a plan, with sizing arithmetic, an automation script, monitoring and the security measures that backups need as much as the database does."},
+{h:"Recovery objectives"},
+{t:[["Term","Question it answers","Determined by","Example"],["**RPO** Recovery Point Objective","How much recent data can we afford to lose?","Backup frequency and, for PITR, how fast WAL reaches safe storage","Nightly dump: up to 24 h. WAL archiving with `archive_timeout = 60`: about 1 minute. Synchronous replication: about 0"],["**RTO** Recovery Time Objective","How long can the service be unavailable?","Restore speed: data volume, disk and network throughput, WAL to replay, automation","1 TB base backup restored at 400 MB/s is about 45 minutes plus WAL replay"],["**Retention**","How far back must we be able to go?","Business, legal and audit rules; how long a logical error can stay undetected","Daily for 14 days, weekly for 8 weeks, monthly for 12 months"]]},
+{svg:planSvg},
+{h:"Match the technique to the objective"},
+{t:[["RPO target","Technique","Section"],["24 hours","Nightly `pg_dump` and `pg_dumpall -g`","This section"],["Minutes","Base backups plus **continuous WAL archiving**","Archiving and PITR lectures"],["Seconds to zero","Synchronous streaming replication **and** backups","Section 10"],["Protection against an operator error that is replicated at once","Backups with PITR, optionally a **delayed standby** (`recovery_min_apply_delay`)","PITR lecture, Section 10"]]},
+{note:"**Replication is not a backup.** A standby faithfully copies a `DROP TABLE` or a corrupted page within seconds. Replication protects against hardware loss; backups protect against everything else."},
+{h:"The 3-2-1 rule (and its modern extension)"},
+{t:[["Rule","Meaning in PostgreSQL terms"],["**3** copies","Production data plus at least two backups"],["**2** different media or systems","For example local disk plus object storage, or two storage arrays"],["**1** copy off-site","In another site, region or cloud account, so that a site loss or a compromised account cannot destroy every copy"],["**1** copy immutable or offline","Object lock, WORM storage or tape: ransomware or a mistaken script cannot delete it"],["**0** errors","Backups are verified; a failed verification is an alarm"]]},
+{h:"Backup layers in a typical production design"},
+{t:[["Layer","Method","Frequency","Keeps","Restores"],["Physical full","`pg_basebackup` (or a tool)","Weekly","4 weeks","Whole cluster, base for PITR"],["Physical incremental","`pg_basebackup --incremental` (17+)","Daily","1 week","Shorter backup window"],["WAL archive","`archive_command`","Continuous","Back to the oldest kept base backup","Any moment since a base backup"],["Logical per database","`pg_dump -Fd` or `-Fc`","Daily","14 days","One table, schema or database; version moves"],["Globals","`pg_dumpall -g`","Daily","30 days","Roles and tablespace definitions"],["Configuration","Copy of `postgresql.conf`, `pg_hba.conf`, `pg_ident.conf`, service files","On every change (version control)","Forever","Server settings, which WAL does not contain"]]},
+{h:"Sizing the backup storage"},
+{code:`-- 1. database sizes (logical dumps are usually a fraction of this; physical is about this size)
+SELECT pg_size_pretty(sum(pg_database_size(datname))) FROM pg_database;
+
+-- 2. WAL volume per day: record the LSN at two points in time, then subtract
+SELECT pg_current_wal_lsn();                                   -- at 09:00, e.g. 5/A1000000
+SELECT pg_size_pretty(pg_wal_lsn_diff('5/D8000000', '5/A1000000')) AS wal_between_the_two;
+
+-- 3. archive volume actually produced (cumulative counters)
+SELECT archived_count, last_archived_wal, last_archived_time FROM pg_stat_archiver;`},
+{t:[["Component","Formula (rough)"],["Physical full backups","size of cluster x number of fulls kept (less with compression)"],["Incrementals","changed data per day x days kept"],["WAL archive","WAL per day x days of retention (WAL for the oldest kept base backup must be kept)"],["Logical dumps","compressed dump size x copies kept"],["Headroom","Add 30-50% for growth, for a restore test copy and for bursts"]]},
+{p:"The WAL volume depends on write activity and on **full-page writes** after each checkpoint (Section 08). Raising `max_wal_size` and `checkpoint_timeout` lowers it, and `wal_compression` shrinks it further at some CPU cost."},
+{h:"Retention rules that actually work"},
+{ul:["A base backup can only be recovered with **all WAL from its start onward**. Never delete WAL that a retained base backup still needs. The backup history file (`*.backup`) names the first needed segment: segments with lower names are no longer required for that backup (`pg_archivecleanup` automates the deletion).","Keep **several** base backups, not one, in case the newest turns out to be unusable.","Retention for logical dumps follows how long a mistake may go unnoticed, often weeks.","Privacy rules (for example a request to erase personal data) interact with backup retention; decide and document how erased data ages out of backups."]},
+{h:"Automation"},
+{p:"Backups must run without a person. A good job: runs as a dedicated role, uses a lock so that two runs never overlap, stops on error, logs, verifies, copies off-site, applies retention and **alerts on failure and on silence** (a job that stopped running reports nothing)."},
+{code:`#!/bin/bash
+# /usr/local/bin/pg_backup_full.sh : weekly physical backup with verification
+set -euo pipefail
+exec 9>/var/lock/pg_backup.lock
+flock -n 9 || { echo "another backup is running"; exit 1; }       # no overlapping runs
+
+TS=$(date +%Y%m%d_%H%M%S)
+DEST=/backup/base/$TS
+LOG=/backup/base/$TS.log
+export PGHOST=db1 PGUSER=repl_backup
+
+{
+  echo "[$(date -Is)] pg_basebackup start"
+  pg_basebackup -D "$DEST" -Fp -Xs -c fast --manifest-checksums=SHA256 -r 200M
+  pg_verifybackup "$DEST"
+  echo "[$(date -Is)] done: $(du -sh "$DEST" | cut -f1)"
+  # off-site copy (example): rclone, rsync, aws s3 sync, ...
+  # retention: keep the 4 newest base backups
+  ls -1dt /backup/base/2* | tail -n +5 | xargs -r rm -rf
+} >>"$LOG" 2>&1
+
+# crontab (postgres or a backup user): Sundays 01:00
+# 0 1 * * 0 /usr/local/bin/pg_backup_full.sh || mail -s "FULL BACKUP FAILED" dba@example.com < /dev/null`},
+{p:"A **systemd timer** is a good alternative to cron: `OnCalendar=`, `Persistent=true` (runs a missed job after downtime), logs in the journal and `OnFailure=` to trigger an alert unit."},
+{h:"Monitor the backups, not just the database"},
+{t:[["Check","How","Alert when"],["Last successful backup age","File timestamp, tool report, or a heartbeat table/metric written by the job","Older than the schedule plus a margin"],["Backup size trend","Compare today's size with the median","Drops sharply (truncated or empty) or jumps (bloat, new data)"],["WAL archiving health","`SELECT * FROM pg_stat_archiver;` and the number of `.ready` files","`failed_count` grows, `last_failed_time` is newer than `last_archived_time`, or `.ready` files accumulate"],["`pg_wal` growth","Disk usage of `pg_wal`","Above a threshold (a stuck archive or a slot is the usual cause)"],["Verification","`pg_verifybackup` result, `pg_restore -l`, checksums","Any non-zero exit"],["Restore test","Scheduled restore into a scratch instance, row counts compared","Fails, or takes longer than the RTO"],["Off-site copy","Remote listing and checksum","Missing or different"]]},
+{h:"Backup security"},
+{ul:["**Backups contain everything**, including password hashes and personal data. Restrict the directory (`0700`, owner `postgres` or a backup user), restrict who can read the storage bucket, and use a separate account for off-site writes that cannot delete.","**Encrypt** before the data leaves the server (`gpg`, `age`, or the encryption of your backup tool) and keep the keys apart from the backups. An unreadable encrypted backup is as useless as no backup, so back up the keys too.","Use a role with the minimum rights (`pg_read_all_data` for dumps; `REPLICATION` for base backups) rather than a superuser (Section 07).","Protect the **manifest**: `pg_verifybackup` can only detect tampering if the manifest itself is stored securely elsewhere; use `SHA256` or stronger checksums if tampering is a concern (the default CRC32C only catches accidents).","Test that the backup account **cannot delete** old backups: that is your protection against ransomware and against your own scripts."]},
+{h:"Frequent mistakes"},
+{t:[["Mistake","Consequence","Prevention"],["Backups on the same disk or host as the database","One failure destroys both","Off-host, off-site copy"],["WAL archiving enabled but never monitored","The archive silently stops; `pg_wal` fills; PITR impossible","Alert on `pg_stat_archiver` and `pg_wal` size"],["Never testing a restore","The first test is the real disaster","Scheduled restore tests with timings"],["Backing up only the database, not the configuration","The restored server cannot start as before","Keep configuration in version control and in the backup"],["Retention shorter than the time to notice an error","The good copy is already deleted","Base retention on detection time"],["No documentation or owner","Nobody knows the procedure at 3 a.m.","Runbook (last lecture) and drills"]]}],
+src:[["Chapter 25: Backup and Restore",D+"backup.html"],["25.3 Continuous Archiving and PITR",D+"continuous-archiving.html"],["pg_archivecleanup",D+"pgarchivecleanup.html"],["pg_stat_archiver",D+"monitoring-stats.html#MONITORING-PG-STAT-ARCHIVER-VIEW"],["pg_verifybackup",D+"app-pgverifybackup.html"]]},
+
+/* ---------------------------------------------------------------- 8:9 */
+'pg:8:9':{blocks:[
+{p:"A **file system level backup** is a copy of the files that make up the cluster: the data directory and every tablespace. The PostgreSQL documentation presents it as the second of the three approaches (Chapter 25, section *File System Level Backup*) and lists its limits: it can only restore the **whole cluster**, it is **tied to the major version and platform** and, most importantly, a copy of files that are changing is **not consistent** unless something makes it so. This lecture covers the three ways to make it consistent: a stopped server (cold backup), an atomic storage snapshot, and PostgreSQL's own **backup mode** through the low-level API. `pg_basebackup`, which automates the third, was covered earlier."},
+{h:"The consistency problem"},
+{p:"A running server keeps changing files and relies on WAL to repair what is half done. `cp` or `tar` of a running data directory reads different files at different moments, so the copy contains pages from different times and cannot be started reliably. A file system level backup must therefore satisfy **one** of the conditions in the table."},
+{t:[["Method","How consistency is achieved","Downtime","Point-in-time recovery","Typical use"],["**Cold backup**","The server is stopped cleanly, so all files agree","Yes, for the whole copy","No (one moment)","Small systems, maintenance windows"],["**Atomic snapshot**","The storage layer freezes **all** volumes at the same instant. Restoring it looks like a power failure, and crash recovery fixes it","None","Only with archived WAL and the API (below)","SAN, LVM, ZFS, Btrfs, cloud volume snapshots"],["**Backup mode (low-level API)**","`pg_backup_start` / `pg_backup_stop` bracket the copy; WAL replay from the recorded checkpoint corrects any inconsistency","None","Yes, with WAL archive","Custom scripts, third-party tools, non-atomic snapshots"],["**`pg_basebackup`**","Same as backup mode, automated and with a manifest","None","Yes, with WAL archive","The standard way"]]},
+{h:"1. Cold backup"},
+{flow:["Stop applications","Clean shutdown (fast or smart)","Copy PGDATA, tablespaces, configuration","Start the server","Verify and check the log"]},
+{code:`# a clean shutdown writes a final checkpoint; do NOT copy after "immediate", which leaves crash recovery to do
+sudo -u postgres /usr/pgsql-18/bin/pg_ctl stop -D /var/lib/pgsql/18/data -m fast
+
+# archive, keeping ownership, permissions and symbolic links (tablespaces live behind pg_tblspc links)
+sudo tar --xattrs --acls -cpf /backup/cold/pg18_$(date +%Y%m%d).tar /var/lib/pgsql/18/data /pgdata/ts_fast
+# configuration kept outside PGDATA (Debian: /etc/postgresql, others: custom)
+sudo cp -a /etc/postgresql /backup/cold/etc_postgresql_$(date +%Y%m%d)
+
+sudo systemctl start postgresql-18`},
+{p:"Shutdown modes (Section 03) matter here: after `smart` or `fast` the files are complete and need no replay. After `immediate`, the next start performs crash recovery, so a copy taken in that state has to do the same and is only safe if every file, including `pg_wal`, is copied."},
+{h:"The two-pass rsync technique"},
+{p:"To keep the outage short, copy while the server is running (the copy will be inconsistent but moves most of the bytes), then stop the server and run `rsync` again. The second pass transfers only what changed. The documentation recommends `--checksum` for it, because file modification times alone may be too coarse to detect all changes."},
+{code:`# pass 1: server running; result is inconsistent and is only a head start
+rsync -a --delete /var/lib/pgsql/18/data/ /backup/cold/data/
+
+sudo systemctl stop postgresql-18
+# pass 2: server stopped; short and exact
+rsync -a --delete --checksum /var/lib/pgsql/18/data/ /backup/cold/data/
+sudo systemctl start postgresql-18`},
+{h:"2. Atomic snapshots"},
+{p:"Volume managers and storage systems can take a snapshot of a file system at one instant. If **every** file the cluster uses (data directory, `pg_wal`, every tablespace) is covered by the **same atomic snapshot**, restoring it is equivalent to the server losing power at that instant. PostgreSQL then recovers by replaying WAL from the last checkpoint on its first start, exactly as in Section 04, and no backup mode is needed."},
+{t:[["Snapshot technology","Atomic across several volumes?","Notes"],["LVM (`lvcreate -s`)","Per logical volume only; use a **single volume** (or a consistency group) for everything","Snapshot must be large enough to hold changes while it exists"],["ZFS / Btrfs","Per dataset; use a recursive snapshot of a parent dataset","Check recordsize and full-page-write interaction in your platform notes"],["SAN or cloud block storage","Only with consistency-group or multi-volume snapshot features","A snapshot of each disk **separately** is not atomic across disks"],["File system with `fsfreeze`","Freezes writes to one file system","Brief pause; still one file system at a time"]]},
+{note:"If the data, WAL and tablespaces are on different volumes, taking separate snapshots is **not** safe. Either use a consistency group, put everything on one volume, or wrap the snapshots in `pg_backup_start` / `pg_backup_stop`, which also makes it valid for archive recovery."},
+{h:"3. The low-level backup API"},
+{svg:lowSvg},
+{code:`-- one connection (any database) by a superuser or a role granted EXECUTE on these functions
+SELECT pg_backup_start(label => 'nightly_20261008', fast => false);
+--   fast => false waits for the next scheduled checkpoint (gentle); true forces an immediate one
+--   THIS CONNECTION MUST STAY OPEN until pg_backup_stop, or the backup is aborted
+
+-- ... copy PGDATA and every tablespace with tar, rsync, cpio or a snapshot ...
+-- do not use pg_dump or pg_dumpall for this: they are logical and cannot replace the file copy
+
+SELECT * FROM pg_backup_stop(wait_for_archive => true);
+-- returns: lsn, labelfile, spcmapfile
+--   labelfile  -> save, byte for byte, as backup_label in the ROOT of the backup
+--   spcmapfile -> save as tablespace_map (unless empty)`},
+{ul:["`backup_label` and `tablespace_map` are **not** optional extras. Recovery uses them to find the start checkpoint and to rebuild tablespace links. Write them exactly as returned, in binary mode.","In PostgreSQL 15 the old *exclusive* mode was removed and the functions were renamed from `pg_start_backup` and `pg_stop_backup` to `pg_backup_start` and `pg_backup_stop`. Old scripts need updating.","On a primary, `pg_backup_stop` switches to a new WAL segment and, with `wait_for_archive => true`, waits until the last segment has been archived. On a standby it cannot switch segments, so run `pg_switch_wal()` on the primary, and `archive_mode` must be `always` for it to wait.","The session that calls `pg_backup_start` has to be the one that calls `pg_backup_stop`, which is why hand-written shell scripts are fragile. Prefer `pg_basebackup` or a backup tool unless you need an exotic copy method.","Several backups may be taken at the same time with this API."]},
+{h:"What to copy and what to leave out"},
+{t:[["Path","In the backup?","Reason"],["Everything under the cluster directory","**Yes**","Data, catalogs, `global/`, `pg_xact`, `base/`, and so on"],["Every tablespace (follow `pg_tblspc/` links)","**Yes**, and keep the symbolic links as links","Otherwise the restore breaks the tablespaces (Section 08)"],["`pg_wal/` contents","**No**","Reduces mistakes at restore; WAL comes from the archive. Easy when `pg_wal` is a symlink to another disk"],["`postmaster.pid`, `postmaster.opts`","No","Describe the old postmaster and confuse `pg_ctl`"],["`pg_replslot/` contents","No (usually)","Slots from the primary would keep WAL on the new server and cause bloat"],["Contents (not the directories) of `pg_dynshmem`, `pg_notify`, `pg_serial`, `pg_snapshots`, `pg_stat_tmp`, `pg_subtrans`","No","Re-initialised at start"],["Anything starting with `pgsql_tmp`, and `pg_internal.init` files","No","Temporary and rebuilt"],["`postgresql.conf`, `pg_hba.conf`, `pg_ident.conf`","Yes if inside PGDATA; **copy separately** if not","WAL does not contain configuration changes"]]},
+{h:"Copy tools and their warnings"},
+{ul:["Tools complain when files change while they copy. That is normal for a hot backup, but you must be able to tell it from a real error. GNU `tar` exits with 1 if a file changed and 2 for other errors (version 1.16 and later); version 1.23+ can silence the warnings with `--warning=no-file-changed --warning=no-file-removed`. Some `rsync` versions return a distinct exit code (24) for vanished source files.","Preserve **ownership and permissions**: the data directory must be owned by the PostgreSQL OS user with mode `0700` (or `0750` if group access was enabled at `initdb`).","On SELinux systems restore contexts after copying (`restorecon -Rv /var/lib/pgsql`).","Do not back up with a method that dereferences symbolic links; tablespace links must stay links."]},
+{h:"Restoring a file system level backup"},
+{t:[["Backup type","Restore","Result"],["Cold backup or atomic snapshot **without** backup mode","Put files back, fix ownership, start","Crash recovery, then normal operation (state as of the copy)"],["Backup taken with backup mode (`backup_label` present)","Put files back, **keep `backup_label`**, make WAL available (archive + `restore_command`, or WAL included in the copy), create `recovery.signal` for archive recovery, start","Recovery from the start checkpoint to the end of the backup or a chosen target (PITR lecture)"]]},
+{h:"Pitfalls"},
+{t:[["Pitfall","Effect","Remedy"],["Copying a running cluster with plain `cp` and no backup mode","Unusable or silently corrupted restore","Use backup mode or `pg_basebackup`"],["Non-atomic, per-volume snapshots","Data and WAL from different instants","Consistency group, one volume, or backup mode"],["Deleting `backup_label` to \"make it start\"","Server may start from the wrong checkpoint and corrupt data","Never remove it; supply the WAL instead"],["Forgetting tablespaces","Start fails or objects are missing","Follow `pg_tblspc`; list with `pg_tablespace_location`"],["Restoring to a different major version or architecture","Server refuses to start (version file mismatch)","Use a logical dump for such moves"],["Copying `pg_replslot`","Standby retains WAL indefinitely","Exclude it"],["Containers: backing up an anonymous volume","Data lost with the container","Named volumes, and the same rules as above"]]},
+{note:"Section 08 (Tablespaces in Backup, Replication and Upgrade) lists the tablespace-specific checks. In production most teams use `pg_basebackup` or a tool built on backup mode instead of hand-written copy scripts."}],
+src:[["25.2 File System Level Backup",D+"backup-file.html"],["25.3.4 Making a Base Backup Using the Low Level API",D+"continuous-archiving.html#BACKUP-LOWLEVEL-BASE-BACKUP"],["Backup Control Functions",D+"functions-admin.html#FUNCTIONS-ADMIN-BACKUP"],["Release notes 15 (exclusive backup mode removed)","https://www.postgresql.org/docs/release/15.0/"]]},
+
+/* ---------------------------------------------------------------- 8:10 */
+'pg:8:10':{blocks:[
+{p:"**Continuous archiving** means copying every completed WAL segment to safe storage as soon as it is full. Combined with a base backup it gives point-in-time recovery, lets you take backups of any size without a perfectly consistent copy, and can feed a warm standby. The documentation lists these benefits explicitly: the base backup need not be consistent (WAL replay repairs it, as in crash recovery), an indefinitely long chain of WAL can be replayed, replay can stop at any moment, and the same WAL stream can feed another machine. The costs are more administration and storage. Because recovery needs an unbroken WAL sequence from the start of the base backup, **set up and test archiving before you take the first base backup**."},
+{svg:archSvg},
+{h:"Parameters"},
+{t:[["Parameter","Value","Context","Meaning"],["`wal_level`","`replica` (default) or `logical`; not `minimal`","restart","With `minimal`, some commands skip WAL, so archive recovery would be incomplete. That is why archiving and replication are impossible at `minimal`"],["`archive_mode`","`off`, `on`, `always`","restart","`on` archives on a primary; `always` also archives on a standby (needed for some standby backup setups)"],["`archive_command`","Shell command with `%p` (path) and `%f` (file name)","reload","Copies one completed segment; `%%` writes a literal `%`. The path is relative to the data directory"],["`archive_library`","Name of an archive module (PostgreSQL 15+)","reload","A C module instead of a shell command, for example the contrib `basic_archive`. Faster and with access to server facilities"],["`archive_timeout`","Seconds (0 = off)","reload","Forces a segment switch at least this often so a quiet server still archives. A switched segment is **still 16 MB** in the archive, so very short values waste space; about one minute is typical"]]},
+{h:"Procedure"},
+{flow:["Create the archive location with correct ownership","Set wal_level, archive_mode, archive_command","Restart (archive_mode needs it)","Force a switch: pg_switch_wal()","Check pg_stat_archiver and the archive","Test restore_command can fetch a file","Then take the base backup"]},
+{code:`# 1. location: owned by postgres, no group or world access (WAL contains all your data)
+sudo mkdir -p /backup/wal_archive && sudo chown postgres:postgres /backup/wal_archive && sudo chmod 700 /backup/wal_archive
+
+# 2. postgresql.conf
+wal_level = replica
+archive_mode = on
+archive_command = 'test ! -f /backup/wal_archive/%f && cp %p /backup/wal_archive/%f'
+archive_timeout = 60
+
+# 3. restart because archive_mode changed
+sudo systemctl restart postgresql-18
+
+-- 4. prove it works
+SELECT pg_switch_wal();
+SELECT archived_count, last_archived_wal, last_archived_time, failed_count, last_failed_wal, last_failed_time FROM pg_stat_archiver;
+
+# 5. the file must be there
+ls -l /backup/wal_archive | tail`},
+{p:"The command is run by the same OS user as the server. After placeholder expansion it may look like `test ! -f /backup/wal_archive/00000001000000A900000065 && cp pg_wal/00000001000000A900000065 /backup/wal_archive/00000001000000A900000065`. The documentation calls this an **example, not a recommendation**."},
+{h:"Rules for a correct archive command"},
+{ul:["**Exit status 0 if and only if the file is safely archived.** PostgreSQL then recycles or removes the segment. Any other status means \"try again later\", and the segment stays in `pg_wal`.","**Never overwrite** an existing archive file. That protects you if two servers are accidentally pointed at one directory. But note a subtlety: after a crash PostgreSQL may archive the **same segment again**. If the file already exists with **identical content** and is safely stored, return success; if the content differs, return failure.","GNU `cp -i` returns 0 when the target exists, which is the wrong behaviour; use an explicit `test` or compare.","The file is archived only after it is complete and durable. A plain `cp` does not guarantee the data reached the disk of the archive; production scripts copy to a temporary name, flush, then rename.","The speed of the command is not important as long as it keeps up with the **average** WAL rate; if it falls behind, `pg_wal` grows.","File names are up to 64 characters of letters, digits and dots. Preserve `%f` exactly; `%p` can differ.","If the command is killed by a signal other than SIGTERM, or the shell reports a status above 125 (for example command not found), the **archiver process aborts and is restarted**, and that failure is **not** counted in `pg_stat_archiver`. Look in the server log (Section 06)."]},
+{code:`#!/bin/bash
+# /usr/local/bin/archive_wal.sh  --  archive_command = '/usr/local/bin/archive_wal.sh "%p" "%f"'
+set -u
+SRC="$1"; F="$2"; DEST=/backup/wal_archive
+
+if [ -f "$DEST/$F" ]; then
+  # re-archival after a crash: succeed only if identical
+  cmp -s "$SRC" "$DEST/$F" && exit 0
+  echo "archive: $F exists with different content" >&2; exit 1
+fi
+cp "$SRC" "$DEST/$F.tmp"     || exit 1
+sync "$DEST/$F.tmp"          || exit 1       # data on disk before the final name appears
+mv "$DEST/$F.tmp" "$DEST/$F" || exit 1
+# optional: copy off-site here (rsync, rclone, aws s3 cp); return nonzero if that fails`},
+{p:"Messages the script writes to standard error appear in the server log when `logging_collector` is on, which makes failures easy to diagnose."},
+{h:"Variants"},
+{code:`# compress the archive (the restore side must decompress)
+archive_command = 'gzip < %p > /backup/wal_archive/%f.gz'
+restore_command = 'gunzip < /backup/wal_archive/%f.gz > %p'
+
+# directly to a remote host
+archive_command = 'rsync -a %p backup@arch1:/wal_archive/%f'
+
+# an archive module instead of a shell command (PostgreSQL 15+)
+archive_library = 'basic_archive'
+basic_archive.archive_directory = '/backup/wal_archive'`},
+{h:"Monitoring and what a failure looks like"},
+{code:`-- counters and last success or failure
+SELECT archived_count, last_archived_wal, last_archived_time,
+       failed_count, last_failed_wal, last_failed_time FROM pg_stat_archiver;
+
+-- how many segments wait for the archiver? (.ready markers)
+SELECT count(*) AS waiting FROM pg_ls_archive_statusdir() WHERE name LIKE '%.ready';
+
+-- size of pg_wal
+SELECT pg_size_pretty(sum(size)) FROM pg_ls_waldir();`},
+{t:[["Symptom","Cause","Action"],["`failed_count` rising, `.ready` files accumulating","Command returns non-zero: full disk, permission, network or mount problem","Read the log; fix the cause; the archiver retries by itself"],["`pg_wal` grows toward the disk limit","Archiving stuck, or a replication slot holds WAL (Section 08)","Fix archiving first. If `pg_wal` fills, the server **PANIC**-shuts down (committed data is safe; it stays offline until space is freed)"],["Archive missing a file","Someone deleted it, or two clusters share a directory","The chain is broken: take a new base backup immediately"],["Nothing archived on a quiet server","Segment not full","Set `archive_timeout` or call `pg_switch_wal()`"],["Works manually, fails from the server","The server OS user lacks rights, different `PATH` or environment","Test as the `postgres` user; use full paths"]]},
+{note:"To pause archiving temporarily with a shell command, set `archive_command = ''` and reload. WAL then accumulates in `pg_wal` until a working command is set again, so keep the pause short and watch disk space."},
+{h:"Cleaning the archive"},
+{p:"Each base backup writes a **backup history file** such as `000000010000000000000010.00000028.backup` into the archive. WAL segments with a lower name than the first segment named by the oldest base backup you keep are no longer needed for it and may be deleted. `pg_archivecleanup` does exactly that."},
+{code:`# remove everything older than the oldest kept base backup
+pg_archivecleanup -d /backup/wal_archive 000000010000000000000010.00000028.backup
+
+# on a standby it is wired in as archive_cleanup_command
+archive_cleanup_command = 'pg_archivecleanup /backup/wal_archive %r'`},
+{ul:["Timeline history files (`*.history`) are tiny; **keep them indefinitely** (you may add comments to document why a timeline exists).","Configuration files are **not** in WAL. Back up `postgresql.conf`, `pg_hba.conf` and `pg_ident.conf` separately.","Take a **new base backup after** `CREATE TABLESPACE` or `DROP TABLESPACE`: they are logged with absolute paths, and replaying them on another host can be harmful (Section 08).","Do not modify template databases while a base backup is running if a `CREATE DATABASE` copies them at the same time; replay could propagate the change into the new database."]},
+{h:"Full-page writes and archive volume"},
+{p:"WAL contains whole-page images after each checkpoint (Section 08, WAL Format). That makes archives larger. Longer checkpoint intervals and `wal_compression` reduce volume without affecting PITR; disabling `full_page_writes` also does not prevent PITR but is risky and should be considered only after reading the reliability chapter."}],
+src:[["25.3.1 Setting Up WAL Archiving",D+"continuous-archiving.html#BACKUP-ARCHIVING-WAL"],["WAL Configuration: Archiving",D+"runtime-config-wal.html#RUNTIME-CONFIG-WAL-ARCHIVING"],["Archive Modules",D+"archive-modules.html"],["basic_archive",D+"basic-archive.html"],["pg_archivecleanup",D+"pgarchivecleanup.html"],["pg_stat_archiver",D+"monitoring-stats.html#MONITORING-PG-STAT-ARCHIVER-VIEW"]]},
+
+/* ---------------------------------------------------------------- 8:11 */
+'pg:8:11':{blocks:[
+{p:"**Point-in-time recovery (PITR)** restores a base backup and then replays archived WAL, but stops at a point you choose instead of at the end. This is the only way to get back to the moment before a mistaken `DELETE`, `DROP TABLE` or faulty release. It needs two ingredients that must exist **before** the incident: a base backup and a continuous WAL archive that reaches back to the start of that backup. The stop point is called the **recovery target**. Every recovery that ends creates a new **timeline**, which keeps the WAL of the new history separate from the old one."},
+{svg:pitrSvg},
+{h:"The recovery procedure (from the documentation)"},
+{flow:["Stop the server","Keep a copy of the old data directory and unarchived WAL","Remove the old files (data and tablespaces)","Restore the base backup with correct owner","Empty pg_wal, add saved WAL","Set recovery parameters, create recovery.signal","Start the server","Inspect the result","Open the database to users"]},
+{h:"Recovery parameters"},
+{t:[["Parameter","Meaning","Context"],["`restore_command`","**Required.** Shell command that fetches a WAL file: `%f` is the file name, `%p` the destination path. Must return **non-zero** when the file does not exist (that is normal at the end of the archive). Also asked for `*.history` files","restart (postmaster)"],["`recovery_target_time`","Stop at a timestamp. Include a **time zone offset**, for example `'2026-10-07 14:29:00+05:30'`; otherwise the server time zone is used","restart"],["`recovery_target_name`","Stop at a restore point created with `pg_create_restore_point('name')`","restart"],["`recovery_target_xid`","Stop at a transaction ID. Hard to identify without WAL inspection","restart"],["`recovery_target_lsn`","Stop at an exact WAL position","restart"],["`recovery_target = 'immediate'`","Stop as soon as a consistent state is reached, that is, at the end of the base backup","restart"],["`recovery_target_inclusive`","`on` (default): stop just **after** the target; `off`: just **before** it","restart"],["`recovery_target_timeline`","`latest` (default), `current`, or a timeline ID","restart"],["`recovery_target_action`","`pause` (default), `promote` or `shutdown` after the target is reached","restart"],["`recovery_end_command`, `archive_cleanup_command`","Commands run at the end of recovery or at restartpoints","reload"]]},
+{ul:["Specify **at most one** of the `recovery_target*` settings (except `inclusive`, `timeline`, `action`). If none is set, recovery replays everything available and ends at the end of the archive.","The target must be **after the end of the base backup**. You cannot recover into the interval when the backup was running; use the previous base backup and roll forward.","`recovery.signal` (an empty file in the data directory) asks for **archive recovery**. `standby.signal` asks for a standby. When recovery ends the server **removes `recovery.signal`** so it does not enter recovery again.","During recovery the server runs as a hot standby when `hot_standby = on` (default). Settings such as `max_connections`, `max_worker_processes`, `max_wal_senders`, `max_prepared_transactions` and `max_locks_per_transaction` must be **at least as high as on the server that wrote the WAL**, or recovery stops."]},
+{h:"Create restore points before risky changes"},
+{code:`-- right before a release, a bulk delete or a migration
+SELECT pg_create_restore_point('before_release_42');
+-- recovery_target_name = 'before_release_42' stops exactly there`},
+{h:"Finding the right target"},
+{t:[["Source of information","How it helps"],["Application and change logs, deployment times","The incident time; recover slightly before it"],["Server log with `log_statement` / `log_min_duration_statement` and `log_line_prefix` showing `%t` and `%x` (Section 06)","The time and transaction of the bad statement"],["`pg_waldump --rmgr=Transaction` on archived WAL (Section 08)","The commit record with its xid and timestamp"],["`pg_stat_database`, monitoring graphs","The moment when counters changed abnormally"],["Trial and error with `recovery_target_action = 'pause'`","Look at the data, then move the target forward or back"]]},
+{h:"Pause first, then decide"},
+{p:"With the default `pause` the server reaches the target and **stops replaying**, in read-only hot-standby mode. Query the data. If this is the right moment, call `pg_wal_replay_resume()`, which ends recovery and promotes the server. If not, shut the server down, change the target (earlier or later, within the same base backup) and start again."},
+{code:`SELECT pg_get_wal_replay_pause_state();   -- 'paused' once the target is reached
+SELECT pg_last_xact_replay_timestamp();   -- time of the last replayed commit
+SELECT count(*) FROM sales.orders;        -- is the data as expected?
+SELECT pg_wal_replay_resume();            -- accept: end recovery and open for writes`},
+{h:"Timelines"},
+{p:"Suppose you drop a table on Tuesday 17:15, notice on Wednesday noon, and recover to Tuesday 17:14. In this new history the table was never dropped. If the server then wrote WAL under the old names, it could overwrite WAL that you may still want from the original history. PostgreSQL prevents this with **timelines**. When archive recovery completes, a **new timeline** begins, and the timeline ID is the **first 8 hexadecimal characters of every WAL file name** (`00000002...` after the first recovery). A small **history file** such as `00000002.history` records the parent timeline and the point where it branched. It is archived like a WAL file and is needed for later recoveries."},
+{code:`# 00000002.history (illustrative content; fields are tab-separated)
+1	0/3000148	before 2026-10-07 14:30:00+05:30`},
+{t:[["Setting","Effect"],["`recovery_target_timeline = 'latest'` (default)","Follow the newest timeline found in the archive"],["`'current'`","Stay on the timeline that was current when the base backup was taken"],["`'2'` (an ID)","Recover into that specific timeline, for example to return to a state reached by an earlier recovery attempt"]]},
+{p:"Because old timelines stay in the archive, you can try several recovery targets and still go back to any of them. You cannot recover into a timeline that branched **before** the base backup."},
+{h:"Complete worked example: recovering a dropped table"},
+{p:"Situation: at 14:30 on 2026-10-07 someone ran `DROP TABLE sales.orders`. Archiving has been running, and the last base backup is `/backup/base/20261004`. We recover to 14:29:00 on a **scratch server first**, which is safer and does not block production."},
+{code:`# 0. scratch host or a second cluster: copy the base backup into an empty data directory
+sudo -u postgres cp -a /backup/base/20261004 /var/lib/pgsql/18/scratch
+sudo rm -rf /var/lib/pgsql/18/scratch/pg_wal/*            # old WAL from the backup is obsolete
+sudo chmod 700 /var/lib/pgsql/18/scratch
+
+# 1. recovery settings, appended to postgresql.conf of the scratch cluster
+cat >> /var/lib/pgsql/18/scratch/postgresql.conf <<'EOF'
+port = 5440
+restore_command = 'cp /backup/wal_archive/%f %p'
+recovery_target_time = '2026-10-07 14:29:00+05:30'
+recovery_target_action = 'pause'
+archive_mode = off           # IMPORTANT: the scratch server must not write into the production archive
+EOF
+
+# 2. ask for archive recovery and start
+sudo -u postgres touch /var/lib/pgsql/18/scratch/recovery.signal
+sudo -u postgres /usr/pgsql-18/bin/pg_ctl -D /var/lib/pgsql/18/scratch -l /tmp/scratch.log start
+tail -f /tmp/scratch.log`},
+{p:"The log shows the progress: the start of redo from the checkpoint in `backup_label`, `consistent recovery state reached`, then `recovery stopping before commit of transaction ...` or `recovery stopping at ... time`, and finally the pause. A message that the file `00000002.history` or the next segment was not found at the end is normal."},
+{code:`psql -p 5440 -d shopdb -c "SELECT count(*) FROM sales.orders;"      # the table exists again, 100000 rows
+psql -p 5440 -d shopdb -c "SELECT pg_wal_replay_resume();"            # or leave paused and just dump from it
+
+# 3. move only the lost table back to production
+pg_dump -p 5440 -d shopdb -t sales.orders -Fc -f /tmp/orders_recovered.dump
+pg_restore -p 5432 -d shopdb --clean --if-exists -t orders -n sales /tmp/orders_recovered.dump
+
+# 4. remove the scratch cluster
+sudo -u postgres /usr/pgsql-18/bin/pg_ctl -D /var/lib/pgsql/18/scratch stop -m fast`},
+{p:"To recover the **production** server itself instead (everything after 14:29 is then discarded), follow the same steps in the real data directory after stopping the server and keeping `data.broken`. Before you reopen it, restrict `pg_hba.conf` so that users cannot connect until you have checked the data. Afterwards **take a new base backup at once**: the old backups belong to timeline 1."},
+{h:"Monitoring and verifying recovery"},
+{code:`SELECT pg_is_in_recovery();                  -- t while recovering or paused
+SELECT pg_last_wal_replay_lsn();             -- how far replay has advanced
+SELECT pg_last_xact_replay_timestamp();      -- time of the last replayed transaction
+SELECT timeline_id FROM pg_control_checkpoint();   -- the timeline now in use`},
+{h:"Recovery problems and fixes"},
+{t:[["Message or symptom","Cause","Fix"],["`FATAL: recovery ended before configured recovery target was reached`","The archive has no WAL up to the target (target too late, or WAL missing)","Check the archive for gaps; choose an earlier target"],["`could not locate required checkpoint record` / `could not locate a valid checkpoint record`","`backup_label` missing or wrong, or the needed WAL is not available","Restore the real `backup_label`, supply WAL; never fake it"],["`WAL ends before end of online backup`","WAL needed to reach the end of the backup is missing (for example `-X none` and the last segment was never archived)","Provide the missing segment, or use a base backup with WAL included"],["`requested recovery stop point is before consistent recovery point`","The target lies inside or before the backup interval","Use a target after the backup end, or an older base backup"],["`hot standby is not possible because max_connections = ... is a lower setting than on the primary`","Recovery server has smaller limits","Raise the setting to at least the source value"],["`restore_command` errors for `.history` files","Normal on the first timeline","Ignore unless recovery fails"],["Corrupted WAL record found","Damaged archive file","Recover to a target before the corruption, restore the file from another copy"],["Server starts in recovery and stays in it","Only `standby.signal` present, or `recovery_target_action = 'pause'`","Use `recovery.signal`, or call `pg_wal_replay_resume()`"]]},
+{note:"A restored server will start **archiving** with the same `archive_command` as production if you copy `postgresql.conf` unchanged. Set `archive_mode = off` or a different archive path on any scratch or test restore."}],
+src:[["25.3.5 Recovering Using a Continuous Archive Backup",D+"continuous-archiving.html#BACKUP-PITR-RECOVERY"],["25.3.6 Timelines",D+"continuous-archiving.html#BACKUP-TIMELINES"],["Archive Recovery settings",D+"runtime-config-wal.html#RUNTIME-CONFIG-WAL-ARCHIVE-RECOVERY"],["Recovery Target settings",D+"runtime-config-wal.html#RUNTIME-CONFIG-WAL-RECOVERY-TARGET"],["Recovery Control Functions",D+"functions-admin.html#FUNCTIONS-RECOVERY-CONTROL"]]},
+
+/* ---------------------------------------------------------------- 8:12 */
+'pg:8:12':{blocks:[
+{p:"Since **PostgreSQL 17**, `pg_basebackup` can take **incremental backups**: instead of copying every file again, the server sends only the blocks that changed since an earlier backup of the same server. A separate tool, `pg_combinebackup`, later stitches a chain of backups into one ordinary full backup. Every backup also carries a **manifest**, a list of files with checksums, which `pg_verifybackup` uses to check that the backup is intact. This lecture explains the machinery (WAL summaries), the commands, the manifest, the verification tools and why none of them replaces a real test restore."},
+{svg:incSvg},
+{h:"How an incremental backup knows what changed"},
+{p:"The server runs a **WAL summarizer** process that reads WAL and writes small **summary files** into `pg_wal/summaries`, one per range of WAL, recording which blocks of which files were modified. An incremental backup asks for the summaries between the start LSN of the reference backup and the start LSN of the new one. Relation files are then replaced by **incremental files** holding only the changed blocks plus metadata; non-relation files are copied whole."},
+{t:[["Setting","Value","Context","Notes"],["`summarize_wal`","`on`","reload (sighup)","Default `off`. Enable it **before** taking the full backup that will be the reference, because summaries must cover the whole interval between backups"],["`wal_summary_keep_time`","Default 10 days","reload","How long summary files are kept. Longer than your longest gap between backups"]]},
+{code:`-- enable and verify the summarizer
+ALTER SYSTEM SET summarize_wal = on;
+SELECT pg_reload_conf();
+SELECT * FROM pg_get_wal_summarizer_state();
+SELECT * FROM pg_available_wal_summaries() ORDER BY start_lsn DESC LIMIT 5;`},
+{h:"Taking a chain of backups"},
+{code:`# 1. full backup (its backup_manifest is the reference)
+pg_basebackup -h db1 -U repl_backup -D /backup/base/full_mon -Fp -Xs -c fast
+
+# 2. incremental backup relative to the full one: give the OLD manifest
+pg_basebackup -h db1 -U repl_backup -D /backup/base/incr_tue -i /backup/base/full_mon/backup_manifest -Xs
+
+# 3. next incremental relative to the previous incremental
+pg_basebackup -h db1 -U repl_backup -D /backup/base/incr_wed -i /backup/base/incr_tue/backup_manifest -Xs`},
+{h:"Restoring: combine, then recover"},
+{code:`# list ALL needed backups, oldest first; output must be a new, empty directory
+pg_combinebackup /backup/base/full_mon /backup/base/incr_tue /backup/base/incr_wed -o /backup/base/restored_wed
+
+# faster copy on file systems that support it (XFS or Btrfs with reflink, APFS)
+pg_combinebackup --clone /backup/base/full_mon /backup/base/incr_tue -o /backup/base/restored_tue
+
+# check the result, then use it like any full backup
+pg_verifybackup /backup/base/restored_wed
+sudo chown -R postgres:postgres /backup/base/restored_wed`},
+{p:"The combined result is a **synthetic full backup**, and it can itself be used as the first element of a future combine. All the usual requirements of a full backup still apply: the WAL generated during and after the backup must be available (streamed into the backup or in the archive), and you still create `recovery.signal` and perform recovery as in the PITR lecture."},
+{h:"pg_combinebackup options"},
+{t:[["Option","Meaning"],["`-o dir`, `--output`","Output directory (required)"],["`--copy` (default), `--clone`, `--copy-file-range`","How unchanged blocks are copied: ordinary copy, reflink clone, or the `copy_file_range` system call"],["`-T old=new`","Remap tablespaces in the output"],["`--manifest-checksums=alg`, `--no-manifest`","Manifest of the result"],["`-n`, `-d`","Dry run and debug output (use together)"],["`-N`, `--sync-method`","Control fsync behaviour"]]},
+{h:"Rules and limits"},
+{ul:["PostgreSQL does **not track** which backups depend on which. You must keep the chain (full plus all following incrementals) and never delete an earlier backup that a later one needs.","`pg_combinebackup` checks that the backups form a valid chain, but **not** that each backup is intact; verify each with `pg_verifybackup`.","If data checksums were enabled or disabled between backups, take a **new full backup**; `pg_combinebackup` does not recompute page checksums.","On a **standby** an incremental backup can fail if too little happened since the previous one (no new restartpoint). On a primary every backup triggers a checkpoint, so this does not occur.","Incremental backups pay off for **large databases where most data is cold**. For small or entirely hot databases the saving is small and a full backup is simpler."]},
+{h:"The backup manifest"},
+{p:"Unless you pass `--no-manifest`, the server sends a `backup_manifest` file with every base backup. It is JSON: a version, the **system identifier** of the cluster, a list of every file with size, last-modified time and checksum, the **WAL ranges** needed to recover the backup, and a SHA-256 checksum of the manifest itself."},
+{code:`{ "PostgreSQL-Backup-Manifest-Version": 2,
+  "System-Identifier": 7432198765432109876,
+  "Files": [
+    { "Path": "base/16384/16391", "Size": 4382720, "Last-Modified": "2026-10-07 09:12:41 GMT",
+      "Checksum-Algorithm": "CRC32C", "Checksum": "a1b2c3d4" } ],
+  "WAL-Ranges": [ { "Timeline": 1, "Start-LSN": "0/3000028", "End-LSN": "0/3000138" } ],
+  "Manifest-Checksum": "..." }       /* abbreviated, illustrative values */`},
+{t:[["Checksum algorithm","Use"],["`CRC32C` (default)","Fast; catches accidental damage but not deliberate tampering"],["`SHA224`, `SHA256`, `SHA384`, `SHA512`","Cryptographic; use when someone might alter the backup. Store the manifest securely elsewhere, or the attacker can alter both"],["`NONE`","No file checksums: only sizes are checked"]]},
+{h:"pg_verifybackup"},
+{p:"`pg_verifybackup` checks a backup made with `pg_basebackup` against its manifest, in four stages: it reads and validates the manifest (including that its system identifier matches `pg_control` in the backup); compares the files present with the manifest, finding **extra and missing files**; recomputes the **checksum** of each file; and finally checks that the **WAL records needed** to recover the backup are present and parsable, by running `pg_waldump` quietly. It ignores `postgresql.auto.conf`, `standby.signal`, `recovery.signal`, the manifest itself and the contents of `pg_wal` where appropriate. In PostgreSQL 18 it also accepts **tar-format** backups, including compressed ones."},
+{t:[["Option","Meaning"],["`-e`, `--exit-on-error`","Stop at the first problem (default: report all)"],["`-F p|t`, `--format`","Plain or tar backup"],["`-n`, `--no-parse-wal`","Skip WAL parsing. **Required for tar-format backups**, because WAL verification supports plain format only"],["`-s`, `--skip-checksums`","Check only presence and sizes: much faster"],["`-m path`, `--manifest-path`","Use a manifest stored elsewhere (a good security practice)"],["`-w path`, `--wal-directory`","Parse WAL from this directory, for example the archive, instead of `pg_wal`"],["`-i path`, `--ignore`","Ignore an extra file or directory you added on purpose"],["`-P`, `-q`","Progress, or silence on success"]]},
+{code:`pg_verifybackup /backup/base/full_mon
+pg_verifybackup -m /secure/manifests/full_mon.manifest -w /backup/wal_archive /backup/base/full_mon
+pg_verifybackup -F t -n /backup/base/20261008_tar            # tar-format backup, no WAL check`},
+{note:"The documentation is explicit that `pg_verifybackup` cannot do everything a running server does with a backup. It finds missing, extra, truncated and altered files and unreadable WAL. It cannot find a server bug that wrote sensible-looking but wrong WAL, nor logical problems. WAL checking also depends on the version: use the `pg_verifybackup` that matches the backup."},
+{h:"Layers of integrity checking"},
+{t:[["Layer","What it catches","How"],["Data checksums (`initdb --data-checksums`; the default since PostgreSQL 18; `SHOW data_checksums`)","Bit rot in data pages","`pg_basebackup` verifies pages while copying (disable with `--no-verify-checksums`). `pg_checksums --check` on a stopped cluster"],["Backup manifest and `pg_verifybackup`","Missing, altered or truncated backup files, unreadable WAL","After every backup, and again after copying off-site"],["`sha256sum` on dumps and archives","Damage during storage or transfer","Create at backup time, check before restore"],["`pg_restore -l`","Truncated or unreadable logical archives","After each dump"],["`amcheck` / `pg_amcheck`","Corrupt B-tree indexes and heap structure in a **restored copy**","Run against the test restore"],["**Restore test**","Everything above plus whether the data is right and how long recovery takes","Scheduled, automated, timed"]]},
+{h:"Automated restore test"},
+{code:`#!/bin/bash
+# weekly: restore the newest base backup into a scratch instance, check it, time it
+set -euo pipefail
+LATEST=$(ls -1dt /backup/base/2* | head -n 1)
+SCRATCH=/var/lib/pgsql/18/restore_test
+START=$(date +%s)
+rm -rf "$SCRATCH"; cp -a "$LATEST" "$SCRATCH"; chmod 700 "$SCRATCH"
+echo "port = 5441
+archive_mode = off" >> "$SCRATCH/postgresql.conf"
+/usr/pgsql-18/bin/pg_ctl -D "$SCRATCH" -w -l /tmp/restore_test.log start
+psql -p 5441 -d shopdb -Atc "SELECT count(*) FROM sales.orders"           # compare with expected
+pg_amcheck -p 5441 -d shopdb --heapallindexed >/dev/null                  # structural check
+/usr/pgsql-18/bin/pg_ctl -D "$SCRATCH" stop -m fast
+echo "restore test OK in $(( $(date +%s) - START )) s"                    # your measured RTO input`},
+{p:"Record the duration. It is your **measured RTO** for that backup, and growth over the weeks warns you before a real disaster does."}],
+src:[["25.3.3 Making an Incremental Backup",D+"continuous-archiving.html#BACKUP-INCREMENTAL-BACKUP"],["pg_combinebackup",D+"app-pgcombinebackup.html"],["pg_verifybackup",D+"app-pgverifybackup.html"],["Backup Manifest Format",D+"backup-manifest-format.html"],["pg_amcheck",D+"app-pgamcheck.html"],["pg_checksums",D+"app-pgchecksums.html"]]},
+
+/* ---------------------------------------------------------------- 8:13 */
+'pg:8:13':{blocks:[
+{p:"The built-in tools (`pg_dump`, `pg_basebackup`, WAL archiving, `pg_combinebackup`, `pg_verifybackup`) are building blocks. Most production teams add a **backup tool** to orchestrate them, and all teams need a written **disaster recovery runbook**. This lecture compares the common tools, maps failures to the right recovery, gives a runbook you can adapt, states the version-compatibility rules, and ends with a troubleshooting matrix of the error messages you will actually meet."},
+{h:"Backup tools around PostgreSQL"},
+{t:[["Tool","Typical capabilities","Strengths","Consider"],["**pgBackRest**","Full, differential and incremental backups, parallel and compressed, built-in WAL archiving and retention, backup verification, backup from a standby, repositories on POSIX, S3, GCS or Azure, optional encryption","Mature and fast for large clusters; one tool for backup, archive and restore; PITR","Needs its own configuration and a repository; learn its stanza model"],["**Barman**","Central server managing backups of many PostgreSQL servers, WAL archiving or streaming, retention policies, PITR, hooks and recovery commands","Good for fleets and a central view","Runs on a separate host; setup of SSH or streaming access"],["**WAL-G**","Base backups and WAL archiving to cloud object storage, delta backups, compression and encryption","Cloud-native, simple to wire into `archive_command`","Operational model is storage-centric; test restores carefully"],["**pg_probackup**","Page-level incremental backups, validation, retention, PITR","Efficient incrementals on older versions","Check current support for your major version"],["**Built-in tools only**","Everything in this section","No extra software; fully documented","You write and maintain scripts, retention and monitoring"]]},
+{note:"Features and supported versions change between releases of these third-party projects; always read their current documentation. They build on the same PostgreSQL mechanisms (base backup, backup mode, WAL archiving), so everything you learned here still applies to them."},
+{h:"When to choose what"},
+{t:[["Situation","Reasonable choice"],["Small database, simple needs","`pg_dump` plus `pg_basebackup` with WAL archiving, scripted"],["Large database, short RTO, many databases or servers","A backup tool (pgBackRest or Barman) with PITR"],["Cloud object storage as the repository","pgBackRest, WAL-G or the provider's managed backups (verify how restore and PITR work)"],["Managed database service (RDS, Cloud SQL, Azure)","The service's snapshots and PITR **plus** your own logical dumps for portability and as protection against a provider-side problem"]]},
+{h:"Failure scenarios and the right recovery"},
+{svg:drSvg},
+{t:[["Scenario","Typical cause","Recovery","Lecture"],["Rows or a table deleted or dropped by mistake","Human error, bad deployment","PITR into a **scratch instance** and copy the data back; or restore the table from a dump","PITR, Restore Practicals"],["A table or schema is wrong, but the rest is fine","Faulty migration","Restore that object from a logical archive (`pg_restore -n -t` or a list file)","Restore, Restore Practicals"],["Server or disk lost, standby available","Hardware failure","Promote the standby (Section 10), rebuild a new standby","Section 10"],["Server and standby lost","Site problem, bug, operator error on both","Restore the newest base backup, replay archived WAL, repoint applications","Physical Backup, PITR"],["Whole site or cloud account lost, ransomware or malicious deletion","Disaster, attack","Rebuild from the **off-site or immutable** copy","Backup Strategy"],["Page checksum failure or corrupted block","Storage fault","Restore the file from a backup or a standby, or restore the cluster; never rely on `zero_damaged_pages` for production data","Verification"],["`pg_wal` full, server down","Stuck archiver or slot","Fix archiving or drop the slot, free space, restart (Section 08)","WAL Archiving"],["Wrong major version or platform","Migration planning","Logical dump and restore, or `pg_upgrade`","Section 10"]]},
+{h:"Disaster recovery runbook"},
+{flow:["Declare the incident and stop writes","Assess: what is lost, when did it start","Choose the recovery type and target","Preserve evidence: copy damaged data and pg_wal","Restore into a clean location","Recover to the target","Verify data and application","Switch users over","Rebuild backups and replication","Write the post-incident review"]},
+{t:[["Step","Checklist"],["1. Declare","Name an incident lead; stop applications or put them in read-only mode so more damage is not written; record the time"],["2. Assess","Is it logical (bad data) or physical (hardware)? When was the data last good? Does a standby have the same problem? Check `pg_stat_archiver`, free space and the server log (Section 06)"],["3. Decide","Logical error: PITR target just before the mistake, recovered in a scratch instance. Physical loss: latest base backup plus WAL to the end. Decide acceptable data loss with the business"],["4. Preserve","Copy the damaged data directory and `pg_wal` (space permitting); they may contain WAL that never reached the archive"],["5. Restore","New or cleaned host; install the **same major version**; restore base backup or dump; correct owner `postgres`, mode `0700`; tablespace paths exist; restore configuration files"],["6. Recover","`restore_command`, recovery target, `recovery.signal`; watch the log; use `pause` to check the target"],["7. Verify","Row counts against known values, application smoke tests, `pg_amcheck`, `ANALYZE`; keep `pg_hba.conf` closed to users until done"],["8. Switch","Reopen access, update connection strings or DNS or virtual IP; confirm applications write successfully"],["9. Rebuild","New base backup **immediately** (a new timeline invalidates older chains), re-enable archiving, rebuild standbys"],["10. Review","What failed, how long did recovery take versus RTO, what data was lost versus RPO, what changes follow"]]},
+{h:"Version and platform compatibility"},
+{t:[["Operation","Compatible with","Not compatible with"],["`pg_dump` / `pg_dumpall` from version N","Servers of version N and older (the 18 tools support servers back to 9.2)","Servers **newer** than N: `pg_dump` refuses"],["Loading a plain or archive dump","The same or a **newer** major version","An older server may need manual edits; not guaranteed"],["`pg_restore`","Archives written by the same or an older `pg_dump`","Archives from a newer `pg_dump` (`unsupported version in file header`)"],["Physical backup, file system copy, WAL archive","The **same major version**, same CPU architecture and compatible OS libraries (glibc or ICU collation versions)","Any other major version, a different architecture or an incompatible C library"],["`pg_basebackup` client","Servers of the same or older major version; incremental needs a 17+ server","Newer servers"],["Incremental chain and `pg_combinebackup`","Backups of the same cluster in order","Backups of different clusters or with a broken chain"]]},
+{h:"Backup versus replication versus high availability"},
+{t:[["","Backup","Streaming replica","Delayed replica (`recovery_min_apply_delay`)"],["Protects against hardware failure","Yes, slowly","Yes, quickly","Yes"],["Protects against `DROP TABLE` or bad data","**Yes** (PITR)","**No**, it copies the mistake","Yes, within the delay window"],["Protects against site loss","If stored off-site","If located elsewhere","If located elsewhere"],["Recovery time","Minutes to hours","Seconds","Minutes"],["Replaces the other?","No","No","No, it complements backups"]]},
+{h:"Troubleshooting matrix"},
+{t:[["Tool","Message or symptom","Likely cause","Action"],["`pg_dump`","`aborting because of server version mismatch`","Client older than server","Use the newer `pg_dump`"],["`pg_dump`","`permission denied for table ...`","Role cannot read an object","Use a role with `pg_read_all_data`"],["`pg_dump -j`","Dump aborts, `could not obtain lock`","Exclusive-lock request (DDL) during the dump","Avoid DDL during dumps; `--lock-wait-timeout`; rerun"],["`pg_dump -j`","`too many connections`","N+1 connections needed","Lower `-j` or raise `max_connections`"],["`pg_dump`","`No space left on device`","Backup disk full","Free space, compress (`-Z zstd`), stream to another host"],["`pg_dumpall`","Password prompt for every database","No `.pgpass`","Create it, or use peer authentication"],["`pg_restore`","`role ... does not exist`, `relation already exists`","Missing roles or non-empty target","See the Restore lecture"],["`pg_basebackup`","`no pg_hba.conf entry for replication connection`","Missing replication rule","Add `host replication user addr method`; reload"],["`pg_basebackup`","`number of requested standby connections exceeds max_wal_senders`","Too few WAL senders","Raise `max_wal_senders` (restart) or stop other senders"],["`pg_basebackup -Xf`","`requested WAL segment ... has already been removed`","`wal_keep_size` too small","Use `-X stream`, or raise `wal_keep_size`"],["`pg_basebackup`","`checksum verification failed in file ...`","Real corruption in a data file","Investigate; do not ignore; restore the file from another copy"],["Archiving","`archive command failed with exit code 1`; `.ready` files grow","Command fails (space, permissions, mount)","Fix; check `pg_stat_archiver` and the log"],["Archiving","`pg_wal` filling","Failing archive or a replication slot behind","Fix archiving, advance or drop the slot (Section 08)"],["Recovery","`recovery ended before configured recovery target was reached`","WAL missing before the target","Check archive continuity; choose an earlier target"],["Recovery","`could not locate a valid checkpoint record`","`backup_label` lost, or WAL missing","Restore `backup_label`; supply the WAL"],["Recovery","`WAL ends before end of online backup`","Last WAL segment of the backup not available","Archive it or use a backup with WAL included"],["Recovery","Hot standby limits error","Lower `max_connections` etc. than on the source","Raise to at least the source values"],["`pg_verifybackup`","`checksum mismatch`, `file is missing`, `has size ...`","Damaged or incomplete backup","Take a new backup; investigate storage"],["`pg_combinebackup`","`backup ... is not a valid chain`","Wrong order or missing earlier backup","List all required backups, oldest first"],["Any","`FATAL: data directory has invalid permissions`","Restore left wrong mode or owner","`chown postgres`, `chmod 700`"]]},
+{h:"Backup readiness audit"},
+{ul:["RPO and RTO are written down and approved.","A physical backup and WAL archiving exist, and `pg_stat_archiver` shows recent success.","Logical dumps per database and `pg_dumpall --globals-only` run daily.","Configuration files are backed up on every change.","A copy exists **off the server** and **off-site**, one immutable, all encrypted where needed.","Every backup is verified (`pg_verifybackup`, `pg_restore -l`, checksums).","A full restore has been **performed and timed** in the last quarter, and it met the RTO.","Alerts exist for backup age, archive failures and `pg_wal` growth.","The runbook is current, stored outside the database server, and the team has practised it.","Section 10 builds on this with replication, failover and `pg_upgrade`."]}],
+src:[["Chapter 25: Backup and Restore",D+"backup.html"],["pgBackRest","https://pgbackrest.org/"],["Barman","https://pgbarman.org/"],["WAL-G","https://github.com/wal-g/wal-g"],["Hot Standby and recovery_min_apply_delay",D+"runtime-config-replication.html"],["pg_amcheck",D+"app-pgamcheck.html"]]}
+
+});
+
+/* ---------- back-fill notes into earlier lessons (Section 09) ---------- */
+const X=(k,blocks,src)=>{const L=window.LESSONS[k];if(!L)return;L.blocks.push(...blocks);if(src)L.src=(L.src||[]).concat(src)};
+
+X('pg:0:1',[
+{h:"MVCC and backups (Section 09)"},
+{p:"MVCC is the reason `pg_dump` can produce a **consistent** export without blocking anybody: it reads the whole database inside one snapshot, so concurrent changes are invisible to it. The same mechanism explains why a long-running dump delays `VACUUM` from removing old row versions: the dump's snapshot keeps them alive until it ends."}],
+[["SQL Dump",D+"backup-dump.html"]]);
+
+X('pg:0:2',[
+{h:"Where backup and recovery duties are taught (Section 09)"},
+{t:[["DBA duty","Where to learn it"],["Define RPO, RTO, retention, 3-2-1 copies","Backup and Restore, Backup Strategy (bonus)"],["Logical backups of databases, schemas, tables","Backup Formats, Connection Options, Backup Practicals"],["Restore, selective restore, rescue of one table","Restore, Restore Practicals"],["Roles and tablespace definitions","pg_dumpall"],["Whole-cluster physical backups and standby seeds","Physical Backup"],["Any-moment recovery after a mistake","Continuous Archiving (bonus), Point-in-Time Recovery (bonus)"],["Large databases: incremental backups, verification","Incremental Backups and Verification (bonus)"],["Disaster recovery and runbooks","Backup Tools, Troubleshooting and DR Runbook (bonus)"]]}],
+[["Backup and Restore",D+"backup.html"]]);
+
+X('pg:1:2',[
+{h:"Client tools on side-by-side installs (Section 09)"},
+{p:"PGDG packages install each major version under its own directory (`/usr/pgsql-18/bin`). A backup run with the wrong `pg_dump` fails or, worse, is made by an old client. `pg_dump` refuses servers **newer** than itself, so always call the client of the highest major version on the host by full path, or put that `bin` directory first in `PATH`, and use the same version's `pg_restore` and `psql` when restoring."},
+{code:`/usr/pgsql-18/bin/pg_dump --version
+/usr/pgsql-18/bin/pg_basebackup --version`}],
+[["pg_dump",D+"app-pgdump.html"]]);
+
+X('pg:1:5',[
+{h:"Test the backup before you uninstall (Section 09)"},
+{ul:["A `pg_dumpall` file contains roles and all databases, but **not the tablespace directories**; use a physical backup (`pg_basebackup`) when files must be preserved.","Prove the backup is usable first: `pg_restore -l` for archives, a trial restore into a scratch instance, and a row-count comparison (Restore Practicals).","Keep the configuration files (`postgresql.conf`, `pg_hba.conf`, `pg_ident.conf`) and a note of the exact version and extensions, so that a later reinstall can match them.","Protect the dump files: `pg_dumpall` output contains role password hashes."]}],
+[["Backup and Restore",D+"backup.html"]]);
+
+X('pg:2:0',[
+{h:"Replication connections for backups (Section 09)"},
+{p:"`pg_basebackup` connects with the **replication protocol**, which is matched by a special keyword in the database column of `pg_hba.conf`. A rule for database `all` does **not** match it. The role also needs the `REPLICATION` attribute (or must be a superuser)."},
+{code:`# pg_hba.conf
+host  replication  repl_backup  10.0.0.20/32  scram-sha-256
+# then reload
+SELECT pg_reload_conf();`}],
+[["The pg_hba.conf File",D+"auth-pg-hba-conf.html"]]);
+
+X('pg:2:1',[
+{h:"One backup set per cluster (Section 09)"},
+{ul:["Each cluster on a multi-cluster host needs its **own** backup directory, WAL archive directory and `archive_command`. Two clusters archiving into one directory overwrite or confuse each other's WAL; archive commands that refuse to overwrite will start failing.","Select the cluster in backup scripts with `-p` or `PGPORT`: `pg_dump -p 5433 ...`, `pg_basebackup -p 5433 ...`.","Include the port or cluster name in the backup file name (`prod01_5433_shopdb_...`)."]}],
+[["pg_basebackup",D+"app-pgbasebackup.html"]]);
+
+X('pg:2:2',[
+{h:"Shutdown modes and file system backups (Section 09)"},
+{t:[["Mode","Safe to copy the data directory afterwards?"],["`smart`, `fast`","Yes. A clean shutdown writes a final checkpoint, so the files are consistent and need no WAL replay"],["`immediate`","Only with the **complete** `pg_wal` copied: the next start performs crash recovery"]]},
+{p:"A cold backup is simply a clean shutdown followed by a copy of `PGDATA` and every tablespace (File System Level Backups). A hot backup instead uses `pg_basebackup` or backup mode and needs no shutdown."}],
+[["File System Level Backup",D+"backup-file.html"]]);
+
+X('pg:2:4',[
+{h:"psql options that matter for restores (Section 09)"},
+{t:[["Option","Purpose"],["`-X`","Ignore `~/.psqlrc`; recommended when loading dumps"],["`-f file`","Run a script file (a plain dump)"],["`-v ON_ERROR_STOP=1`","Stop at the first error instead of continuing"],["`-1` / `--single-transaction`","Run the whole script as one transaction (not with dumps that create databases)"],["`-q`, `-o file`","Quiet output, redirect output"]]},
+{code:`psql -X -v ON_ERROR_STOP=1 -1 -d newdb -f /backup/shopdb.sql`}],
+[["psql",D+"app-psql.html"]]);
+
+X('pg:3:2',[
+{h:"Processes that serve backups (Section 09)"},
+{t:[["Process","Role in backup and recovery"],["**archiver**","Runs `archive_command` for each completed WAL segment (Continuous Archiving)"],["**checkpointer**","A checkpoint starts every base backup and fixes the point from which WAL replay begins"],["**walsender**","Serves `pg_basebackup` and streams WAL; one more is used for `-X stream`"],["**WAL summarizer** (17+)","Writes `pg_wal/summaries` when `summarize_wal = on`, enabling incremental backups"],["**startup process**","Performs crash recovery and archive recovery (PITR) when the server starts"]]}],
+[["Continuous Archiving and PITR",D+"continuous-archiving.html"]]);
+
+X('pg:3:4',[
+{h:"WAL as the basis of backup (Section 09)"},
+{p:"Because every change is in WAL, a base backup does not have to be consistent: replay from the checkpoint recorded in `backup_label` repairs it, exactly as in crash recovery. If the WAL is also archived, replay can stop at any chosen point, which is point-in-time recovery. Section 09 builds on this in Continuous Archiving and Point-in-Time Recovery."}],
+[["Continuous Archiving and PITR",D+"continuous-archiving.html"]]);
+
+X('pg:3:6',[
+{h:"Files that appear around backups and recovery (Section 09)"},
+{t:[["File","Created by","Meaning"],["`backup_label`","Backup mode, `pg_basebackup`","Start checkpoint and label of the backup; required for recovery; never delete it"],["`backup_manifest`","`pg_basebackup`","File list with checksums for `pg_verifybackup`"],["`tablespace_map`","Backup mode, `pg_basebackup`","Tablespace OID to path mapping"],["`recovery.signal`","You","Request archive recovery (PITR); removed when recovery ends"],["`standby.signal`","You or `pg_basebackup -R`","Start as a standby (Section 10)"],["`pg_wal/archive_status/*.ready`","Server","Segments waiting for the archiver"]]}],
+[["Backup and Restore",D+"backup.html"]]);
+
+X('pg:4:1',[
+{h:"template0, template1 and restores (Section 09)"},
+{p:"A `pg_dump` is written **relative to `template0`**. Restore into a database created `WITH TEMPLATE template0` (or let `pg_restore -C` create it). If `template1` has local additions, restoring into a database copied from it produces duplicate-object errors. Create the target with the same encoding and locale as the source."},
+{code:`CREATE DATABASE restored TEMPLATE template0 ENCODING 'UTF8';
+-- or: createdb -T template0 restored`}],
+[["pg_restore",D+"app-pgrestore.html"]]);
+
+X('pg:4:4',[
+{h:"Backups, locks and sessions (Section 09)"},
+{ul:["A running `pg_dump` appears in `pg_stat_activity` (one backend, or N+1 with `-j`) with `application_name = 'pg_dump'`, and holds `ACCESS SHARE` locks on every table it reads.","DDL such as `ALTER TABLE` or `TRUNCATE` queues behind it, and everything else on that table queues behind the DDL. Check `pg_locks` before cancelling anything.","Terminating a dump backend (`pg_terminate_backend`) aborts the dump; the output file is incomplete and must be discarded.","Use `--lock-wait-timeout` in scheduled dumps so they fail rather than wait indefinitely."]},
+{code:`SELECT pid, application_name, state, now() - xact_start AS running_for
+FROM pg_stat_activity WHERE application_name IN ('pg_dump','pg_basebackup','pg_restore');`}],
+[["pg_dump",D+"app-pgdump.html"]]);
+
+X('pg:4:6',[
+{h:"Sizing backup storage (Section 09)"},
+{p:"Physical backups are about the size of the cluster including indexes and bloat; logical dumps contain no index data and compress well, often to a fraction of the database size. Use `pg_database_size()` and `pg_total_relation_size()` as the starting point and add room for retained copies and WAL archive (Backup Strategy)."}],
+[["Database Object Size Functions",D+"functions-admin.html#FUNCTIONS-ADMIN-DBSIZE"]]);
+
+X('pg:4:7',[
+{h:"Extensions in dumps (Section 09)"},
+{p:"A dump stores `CREATE EXTENSION` and the data of tables the extension marks as configuration tables, **not** the extension's files. The target host must have the same extension packages installed (for example `pg_stat_statements` from contrib, PostGIS), at a compatible version, before the restore."}],
+[["pg_dump",D+"app-pgdump.html"]]);
+
+X('pg:4:8',[
+{h:"Encoding and collation across restores (Section 09)"},
+{ul:["Create the restore target with the **same encoding and locale** as the source; `pg_dump -E` can change the dump encoding, but a mismatch in collation can reorder text and break unique indexes or partition bounds.","When restoring on a server with a different collation definition, `--load-via-partition-root` lets rows be re-routed to the right partition.","Physical backups need the same operating-system library versions (glibc or ICU) for collations to behave identically."]}],
+[["pg_dump",D+"app-pgdump.html"]]);
+
+X('pg:4:10',[
+{h:"Views that show backup health (Section 09)"},
+{t:[["View or function","Shows"],["`pg_stat_archiver`","WAL archiving counters, last archived file, last failure"],["`pg_stat_progress_basebackup`","Phase and progress of a running `pg_basebackup`"],["`pg_stat_replication_slots`, `pg_replication_slots`","Slots that may hold WAL"],["`pg_ls_archive_statusdir()`","Segments waiting to be archived (`.ready`)"],["`pg_control_checkpoint()`","Timeline and last checkpoint"]]}],
+[["The Cumulative Statistics System",D+"monitoring-stats.html"]]);
+
+X('pg:5:3',[
+{h:"Backup and recovery parameters (Section 09)"},
+{t:[["Parameter","Context","Action"],["`archive_command`, `archive_library`, `archive_timeout`, `summarize_wal`, `wal_summary_keep_time`","`sighup`","Reload"],["`archive_mode`, `wal_level`, `max_wal_senders`","`postmaster`","Restart"],["`restore_command`, `recovery_target_*`, `recovery_target_action`","`postmaster`","Restart; set only for the recovery run"],["`archive_cleanup_command`, `recovery_end_command`","`sighup`","Reload"]]}],
+[["Archive Recovery",D+"runtime-config-wal.html#RUNTIME-CONFIG-WAL-ARCHIVE-RECOVERY"]]);
+
+X('pg:5:6',[
+{h:"Checkpoints, archiving and recovery time (Section 09)"},
+{ul:["`pg_basebackup` begins with a checkpoint. By default it is spread over `checkpoint_completion_target`; `--checkpoint=fast` forces an immediate one.","Longer `checkpoint_timeout` and larger `max_wal_size` mean less WAL (fewer full-page images) in the archive, but a longer crash recovery and a longer PITR replay.","`archive_timeout` closes a WAL segment after N seconds so quiet servers still archive; each switched segment is archived at full 16 MB size."]}],
+[["WAL Configuration",D+"runtime-config-wal.html"]]);
+
+X('pg:5:7',[
+{h:"Logging backup activity (Section 09)"},
+{ul:["`log_replication_commands = on` logs replication commands such as the start of a base backup, giving an audit trail of who took one.","`log_checkpoints = on` shows the checkpoint that starts each backup.","Output of an `archive_command` script written to standard error ends up in the server log when `logging_collector` is on, which is the first place to look when archiving fails.","Failures where the archive command is killed or the shell returns a status above 125 are not counted in `pg_stat_archiver`; only the log shows them."]}],
+[["Error Reporting and Logging",D+"runtime-config-logging.html"]]);
+
+X('pg:6:1',[
+{h:"Authentication for backup jobs (Section 09)"},
+{ul:["Give backup jobs their own role and their own `pg_hba.conf` lines, restricted to the backup host and using `scram-sha-256` or certificates.","`pg_dump` needs a rule for the target database; `pg_basebackup` needs a rule in the **replication** column.","Peer authentication on the local socket lets a cron job running as a dedicated OS user connect without storing a password."]}],
+[["Client Authentication",D+"client-authentication.html"]]);
+
+X('pg:6:3',[
+{h:"Creating backup roles (Section 09)"},
+{code:`-- logical backups: read everything, nothing else
+CREATE ROLE backup_user LOGIN PASSWORD 'change-me' CONNECTION LIMIT 4;
+GRANT pg_read_all_data TO backup_user;
+
+-- physical backups
+CREATE ROLE repl_backup LOGIN REPLICATION PASSWORD 'change-me' CONNECTION LIMIT 2;`},
+{p:"`pg_read_all_data` is enough for `pg_dump` but not for `pg_dumpall` password hashes (those need a superuser, or use `--no-role-passwords`). Avoid giving backup jobs superuser rights."}],
+[["Predefined Roles",D+"predefined-roles.html"]]);
+
+X('pg:6:6',[
+{h:"Row-level security and dumps (Section 09)"},
+{p:"`pg_dump` sets `row_security = off` so that every row is exported. If the dumping role does not have `BYPASSRLS` (or is not the table owner or a superuser), `pg_dump` fails rather than producing a partial dump. `--enable-row-security` dumps only the rows the role can see, and should be used together with `--inserts` because `COPY` does not support row security. Restores use the same default."}],
+[["pg_dump",D+"app-pgdump.html"]]);
+
+X('pg:6:10',[
+{h:"Backup security checklist (Section 09)"},
+{ul:["Backups hold all data and password hashes: restrict file and bucket permissions, encrypt off-server copies, keep keys separate.","Use least-privilege backup roles and an off-site account that can write but not delete.","Store the backup manifest where an attacker with access to the backup cannot change it, and use `SHA256` checksums if tampering matters.","Never restore a dump from an untrusted superuser without inspecting it (`pg_restore -f`)."]}],
+[["Backup Strategy",D+"backup.html"]]);
+
+X('pg:7:6',[
+{h:"Archive retention and cleanup (Section 09)"},
+{p:"Once a base backup is complete, WAL segments with names lower than the one in its `*.backup` history file are not needed to restore **that** backup. `pg_archivecleanup` removes them. Keep every `.history` file. Section 09 (Continuous Archiving) shows how to monitor the archive with `pg_stat_archiver` and how to write a safe `archive_command`."}],
+[["pg_archivecleanup",D+"pgarchivecleanup.html"]]);
+
+X('pg:7:8',[
+{h:"Where the full procedures are (Section 09)"},
+{t:[["Topic","Lecture in Section 09"],["Taking and restoring base backups, `-T` tablespace mapping","Physical Backup"],["`pg_dumpall` and tablespace definitions","pg_dumpall"],["Replaying `CREATE TABLESPACE` during recovery","Point-in-Time Recovery"],["Verifying a restore","Incremental Backups, Manifests and Backup Verification"]]}],
+[["Backup and Restore",D+"backup.html"]]);
+
+})();
+
+/* ================================================================
+   PART: Section 10 - Upgrade & Replication  (was lessons9.js)
+   ================================================================ */
+/* LearnSphere: Section 10 - Upgrade & Replication (lectures 1-3 + bonus lectures 4-13)
+   Load AFTER lessons8.js. Docs links target PostgreSQL 18. Also back-fills notes into earlier lessons. */
+(function(){
+const D='https://www.postgresql.org/docs/18/';
+const dg=window.LS_DG;
+
+/* ---------- diagrams ---------- */
+const upgSvg=dg(700,225,[
+[10,20,200,85,"Old cluster, version 17|/usr/pgsql-17/bin|/var/lib/pgsql/17/data|port 5432",0],[250,20,200,85,"pg_upgrade (the 18 binary)|1 dump old schema|2 restore into new cluster|3 transfer data files",2],[490,20,200,85,"New cluster, version 18|/usr/pgsql-18/bin|/var/lib/pgsql/18/data|port 5433",0],
+[10,145,200,60,"User data files|format unchanged",0],[250,145,200,60,"pg_upgrade_output.d|logs and scripts",0],[490,145,200,60,"New system catalogs|created by initdb",2]],
+[[210,62,250,62],[450,62,490,62],[110,105,110,145],[350,105,350,145],[590,105,590,145]]);
+
+const replSvg=dg(700,230,[
+[5,2,600,100,"Primary",1],[20,32,115,55,"Client COMMIT|writes WAL record",0],[165,32,125,55,"WAL buffers|then pg_wal",2],[320,32,110,55,"walsender|one per standby",2],[460,32,125,55,"TCP stream|replication protocol",0],
+[5,125,600,100,"Standby",1],[460,155,125,55,"walreceiver|receives WAL",2],[320,155,110,55,"pg_wal copy|flushed to disk",0],[165,155,125,55,"startup process|replays WAL",2],[20,155,115,55,"Read-only queries|hot standby",0]],
+[[135,59,165,59],[290,59,320,59],[430,59,460,59],[522,87,522,155],[460,182,430,182],[320,182,290,182],[165,182,135,182]]);
+
+const syncSvg=dg(700,200,[
+[10,35,150,60,"local|primary flushed WAL",0],[190,35,150,60,"remote_write|standby wrote WAL",2],[370,35,150,60,"on (default)|standby flushed WAL",2],[550,35,140,60,"remote_apply|standby replayed",2],
+[10,125,680,50,"Each level waits for more: a stronger guarantee but a longer commit time",0]],
+[[160,65,190,65],[340,65,370,65],[520,65,550,65]]);
+
+const failSvg=dg(700,245,[
+[5,2,335,238,"Before",1],[20,40,140,50,"Primary|timeline 1",2],[180,40,140,50,"Standby A|streaming",0],[180,150,140,50,"Standby B|streaming",0],
+[360,2,335,238,"After failover",1],[375,40,140,50,"Old primary|rewound, then standby",0],[535,40,140,50,"Standby A|promoted, timeline 2",2],[535,150,140,50,"Standby B|follows timeline 2",0]],
+[[160,65,180,65],[90,90,180,175],[535,65,515,65],[605,90,605,150]]);
+
+const logSvg=dg(700,200,[
+[10,35,130,60,"Publisher|wal_level = logical",0],[170,35,130,60,"Publication|tables and actions",2],[330,35,140,60,"walsender|logical decoding",0],[500,35,190,60,"Subscription|apply worker writes rows",2],
+[10,125,680,50,"Row changes are replayed as logical changes, so versions, schemas and extra tables may differ",0]],
+[[140,65,170,65],[300,65,330,65],[470,65,500,65]]);
+
+const slotSvg=dg(700,235,[
+[10,20,210,45,"Active slot|restart_lsn follows standby",0],[10,80,210,45,"Inactive slot|restart_lsn stands still",2],[10,140,210,45,"wal_keep_size|a fixed amount kept",0],
+[280,75,150,70,"pg_wal on primary|WAL that cannot be|removed yet",2],
+[500,20,190,50,"Slot active|size stays stable",0],[500,95,190,50,"Slot inactive|pg_wal keeps growing",2],[500,170,190,50,"max_slot_wal_keep_size|slot invalidated",0]],
+[[220,42,280,95],[220,102,280,110],[220,162,280,130],[430,95,500,45],[430,110,500,120],[430,125,500,195]]);
+
+const hotSvg=dg(700,190,[
+[10,20,150,55,"Primary VACUUM|removes old rows",0],[200,20,150,55,"WAL record|cleanup of the page",2],[390,20,150,55,"Standby replay|needs that page",2],
+[390,110,150,55,"Long query|still needs the rows",0],[200,110,150,60,"Replay waits up to|max_standby_|streaming_delay",2],[10,110,150,55,"Then: query cancelled|or use feedback",0]],
+[[160,47,200,47],[350,47,390,47],[465,75,465,110],[390,137,350,137],[200,137,160,137]]);
+
+const haSvg=dg(700,255,[
+[10,95,120,60,"Applications",0],[170,95,140,60,"Router or VIP|HAProxy, pgBouncer",2],
+[350,15,150,55,"Primary|read and write",2],[350,100,150,55,"Standby 1|read only, sync",0],[350,185,150,55,"Standby 2|other site, async",0],
+[540,15,150,55,"Backups + WAL|archive",0],[540,100,150,55,"Failover manager|Patroni, repmgr",0],[540,185,150,55,"Monitoring|lag, slots, alerts",0]],
+[[130,125,170,125],[310,110,350,42],[310,125,350,127],[310,140,350,212],[500,42,540,42],[500,127,540,127],[500,212,540,212]]);
+
+const setupSvg=dg(700,215,[
+[10,25,200,110,"Primary|pg-primary 192.168.1.10|replication role and slot|pg_hba.conf replication line",2],[260,25,180,50,"pg_basebackup -R|copies the data files",0],[260,85,180,50,"standby.signal and|primary_conninfo written",0],[490,25,200,110,"Standby|pg-standby 192.168.1.11|same major version|read-only queries",2],
+[10,160,680,40,"After the start the standby connects back to the primary and WAL streams continuously",0]],
+[[210,50,260,50],[440,50,490,50],[490,110,440,110]]);
+
+const cascadeSvg=dg(700,175,[
+[10,30,170,60,"Primary|read and write",2],[265,30,170,60,"Standby 1|also sends WAL onward",0],[520,30,170,60,"Standby 2|follows Standby 1",0],
+[10,120,680,40,"Fewer connections on the primary; each hop needs its own slot and hot_standby_feedback settings",0]],
+[[180,60,265,60],[435,60,520,60]]);
+
+const upgMethSvg=dg(700,230,[
+[10,85,130,60,"Old cluster|version 17",0],
+[190,15,230,50,"Dump and restore|pg_dumpall, pg_dump",0],[190,90,230,50,"pg_upgrade|copy, link, clone, swap",2],[190,165,230,50,"Logical replication|publish and subscribe",0],
+[470,15,220,50,"Longest downtime|grows with data size",0],[470,90,220,50,"Minutes|link, clone and swap are fastest",2],[470,165,220,50,"Seconds|only the cut-over",0]],
+[[140,105,190,40],[140,115,190,115],[140,125,190,190],[420,40,470,40],[420,115,470,115],[420,190,470,190]]);
+
+const modesSvg=dg(700,200,[
+[10,25,125,75,"--copy|every file copied|old cluster intact",0],[150,25,125,75,"--copy-file-range|kernel copy|old cluster intact",0],[290,25,125,75,"--clone|reflink copies|old cluster intact",0],[430,25,125,75,"--link|hard links|old cluster shared",2],[570,25,120,75,"--swap|dirs moved|old cluster gone",2],
+[10,125,680,50,"Left to right: more speed, less ability to go back. Take a backup before using link or swap",0]],
+[]);
+
+const rollSvg=dg(700,200,[
+[10,35,120,65,"1 Standby 2|update packages|restart",0],[155,35,120,65,"2 Standby 1|update packages|restart",0],[300,35,120,65,"3 Switchover|promote an|updated standby",2],[445,35,120,65,"4 Old primary|update, then|rejoin as standby",0],[590,35,100,65,"5 Verify|lag, slots|applications",0],
+[10,125,680,50,"Standbys first, primary last: one node is out at a time and replication is checked between steps",0]],
+[[130,67,155,67],[275,67,300,67],[420,67,445,67],[565,67,590,67]]);
+
+const lagSvg=dg(700,200,[
+[10,30,120,65,"sent_lsn|walsender has|sent the WAL",0],[160,30,120,65,"write_lsn|standby wrote it|to the OS",0],[310,30,120,65,"flush_lsn|standby flushed it|to disk",2],[460,30,120,65,"replay_lsn|standby applied it|to the data files",2],[610,30,80,65,"Visible|to queries",0],
+[10,125,680,50,"write_lag, flush_lag and replay_lag in pg_stat_replication are the times between these points",0]],
+[[130,62,160,62],[280,62,310,62],[430,62,460,62],[580,62,610,62]]);
+
+const rewindSvg=dg(700,230,[
+[10,25,190,60,"Common ancestor|last shared checkpoint",2],
+[250,25,200,60,"Old primary|extra transactions,|diverged",0],[250,110,200,60,"New primary|promoted, new timeline",2],
+[500,25,190,60,"pg_rewind|copies the changed blocks",0],[500,110,190,60,"Old primary rejoins|streams from new primary",0],
+[10,190,680,32,"Only blocks changed since the divergence are copied, so it is far faster than a new base backup",0]],
+[[200,55,250,55],[200,70,250,130],[450,55,500,55],[500,140,450,140],[595,85,595,110]]);
+
+window.EXTRA_LECTURES=window.EXTRA_LECTURES||{};
+window.EXTRA_LECTURES[9]=[
+['Upgrade Strategy: Minor and Major Releases, Methods Compared and Planning','0:00','Minor versus major upgrades, dump/restore versus pg_upgrade (copy, link, clone, swap) versus logical replication, a planning checklist, testing and a rollback plan for each method.'],
+['pg_upgrade Reference: Modes, Options, Checks, Statistics and Rollback','0:00','Every pg_upgrade option, how the transfer modes differ, what --check verifies, the reg* type restriction, PostgreSQL 18 statistics transfer and char signedness, post-upgrade scripts and reverting.'],
+['Upgrading Replicated Clusters and Rolling Minor Updates','0:00','Upgrading a primary with standbys: rebuild versus the documented rsync method, pg_controldata checks, slots, rolling minor updates and the order of operations.'],
+['Logical Replication and Near-Zero-Downtime Upgrades','0:00','Publications and subscriptions, requirements and limits, monitoring, and using logical replication to move to a new major version with a short cut-over.'],
+['Replication Slots, WAL Retention and Monitoring Lag','0:00','Physical slots, wal_keep_size, max_slot_wal_keep_size, the dangers of an abandoned slot, pg_stat_replication, lag measurement and alert thresholds.'],
+['Hot Standby: Read Queries, Query Conflicts and Tuning','0:00','What a standby may and may not run, why queries are cancelled, max_standby delays, hot_standby_feedback trade-offs, required parameter values and delayed replicas.'],
+['Synchronous Replication and Durability Levels','0:00','synchronous_commit levels, synchronous_standby_names with FIRST and ANY, per-transaction durability, performance and availability planning.'],
+['Failover, Switchover, Promotion and pg_rewind','0:00','Planned switchover and emergency failover step by step, pg_promote, timelines, split-brain and fencing, pg_rewind and re-attaching the old primary.'],
+['High Availability Architecture, Operations and Troubleshooting','0:00','Reference architectures, failover managers, connection routing, monitoring checklists, runbooks and a troubleshooting matrix for replication and upgrade problems.'],
+['Replication Utilities and Post-Upgrade Maintenance: pg_receivewal, pg_recvlogical, Collations and Extensions','0:00','pg_receivewal as a WAL archive, pg_recvlogical and logical decoding, slot management functions, collation version mismatches, extension updates, a post-upgrade checklist and a map of every tool in the section.']];
+
+Object.assign(window.LESSONS,{
+
+/* ---------------------------------------------------------------- 9:0 */
+'pg:9:0':{blocks:[
+{p:"PostgreSQL numbers its releases as **major.minor**. A **minor** release (for example 17.5 to 17.6) contains only bug and security fixes and is installed by replacing the binaries and restarting. A **major** release (17 to 18) adds features and usually changes the layout of the **system catalogs**, so the data directory of version 17 cannot simply be started by version 18. Historically the only route was a full dump and restore. **`pg_upgrade`** (formerly called `pg_migrator`) removes that need. The documentation explains the idea: major releases change the system tables often but the format of user data files rarely, so `pg_upgrade` **creates new system tables and reuses the old user data files**. It supports upgrades from 9.2 and later to the current major release. This lecture performs a complete 17 to 18 upgrade on one server; the bonus lectures cover every option, the alternatives and replicated clusters."},
+{svg:upgSvg},
+{note:"The documentation warns that upgrading causes the destination to execute arbitrary code chosen by the superusers of the source cluster. Only upgrade clusters whose superusers you trust."},
+{h:"Lab layout"},
+{t:[["","Old cluster (17)","New cluster (18)"],["Binaries","`/usr/pgsql-17/bin`","`/usr/pgsql-18/bin`"],["Data directory","`/var/lib/pgsql/17/data`","`/var/lib/pgsql/18/data`"],["Port","`5432` (production)","`5433` while testing, `5432` after cut-over"],["Service","`postgresql-17`","`postgresql-18`"]]},
+{p:"Both versions are installed **side by side**, which is exactly what the PGDG packages of Section 02 provide. A version-specific install directory means that, as the documentation notes, you do not have to move the old installation."},
+{h:"The procedure"},
+{flow:["Back up everything","Install 18 binaries and extensions","initdb the new cluster with matching settings","Run pg_upgrade --check","Stop both servers","Run pg_upgrade","Start 18 and run the generated scripts","Refresh statistics and verify","Switch the port and clients","Delete the old cluster later"]},
+{h:"Step 1: pre-upgrade checks and a baseline"},
+{p:"Record what the old cluster contains. After the upgrade you compare the same numbers; a mismatch means something did not come across."},
+{code:`-- run in EVERY database of the old cluster (or script it with psql -l)
+SELECT version();
+SELECT extname, extversion FROM pg_extension ORDER BY 1;                -- extensions to install on the new server
+SELECT c.relkind, count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname NOT IN ('pg_catalog','information_schema','pg_toast') GROUP BY 1 ORDER BY 1;
+SELECT count(*) AS functions FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname NOT IN ('pg_catalog','information_schema');
+SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database ORDER BY 1;
+SHOW data_checksums;  SHOW server_encoding;  SHOW lc_collate;  SHOW lc_ctype;
+
+-- columns of reg* types that pg_upgrade cannot handle (regclass, regrole, regtype are fine)
+SELECT n.nspname, c.relname, a.attname, format_type(a.atttypid, a.atttypmod)
+FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE a.atttypid IN ('regcollation'::regtype,'regconfig'::regtype,'regdictionary'::regtype,'regnamespace'::regtype,
+                     'regoper'::regtype,'regoperator'::regtype,'regproc'::regtype,'regprocedure'::regtype)
+  AND NOT a.attisdropped AND c.relkind IN ('r','m');`},
+{t:[["Check","Why it matters"],["A **current backup** that has been test-restored (Section 09)","The only way back if link mode was used and the new server was started"],["Enough disk space","Copy mode needs room for a second copy of all data; link, clone and swap need very little extra"],["Same encoding and locale in the new cluster","`pg_upgrade` refuses clusters with incompatible settings"],["Data checksums must **match** between old and new","PostgreSQL 18 `initdb` enables checksums by default, so a 17 cluster created without them needs `initdb --no-data-checksums` for the new one (or enable them on the stopped old cluster with `pg_checksums --enable`)"],["Extensions available for 18","Install the matching shared libraries (for example `postgresql18-contrib`, PostGIS for 18). Do **not** run `CREATE EXTENSION` in the new cluster; it comes across with the catalog"],["No unsupported `reg*` columns","Listed in the documentation; the query above finds them"],["`pg_hba.conf` allows `pg_upgrade` to connect","Use `peer` locally or a `~/.pgpass` file, because it connects several times"],["Tablespaces and `pg_wal` locations known","Section 08"],["Release notes read","Incompatibilities between 17 and 18 that need application changes"]]},
+{h:"Step 2: install 18 and create the new cluster"},
+{code:`sudo dnf install -y postgresql18-server postgresql18-contrib
+# initdb with the SAME encoding and locale as the old cluster; match checksums
+sudo -u postgres /usr/pgsql-18/bin/initdb -D /var/lib/pgsql/18/data --encoding=UTF8 --locale=en_US.UTF-8 --no-data-checksums
+# (omit --no-data-checksums if the old cluster HAS checksums)
+
+# the new cluster must NOT be started. Give it its own port in case you test it later
+echo "port = 5433" | sudo -u postgres tee -a /var/lib/pgsql/18/data/postgresql.conf
+
+# compare the control data: block size, checksums, TOAST and others must be compatible
+sudo -u postgres /usr/pgsql-17/bin/pg_controldata /var/lib/pgsql/17/data | egrep "block size|checksum|Maximum"
+sudo -u postgres /usr/pgsql-18/bin/pg_controldata /var/lib/pgsql/18/data | egrep "block size|checksum|Maximum"`},
+{p:"Carry over custom full-text-search files (dictionaries, thesauri, stop words) by copying them from the old installation's `share/tsearch_data` to the new one. Copy your configuration **changes** into the new `postgresql.conf`; do not overwrite the new file with the old one, because parameter names and defaults change between versions."},
+{h:"Step 3: dry run with --check"},
+{code:`cd /tmp          # pg_upgrade writes working files into the current directory: it needs write permission
+sudo -u postgres /usr/pgsql-18/bin/pg_upgrade --old-bindir=/usr/pgsql-17/bin --new-bindir=/usr/pgsql-18/bin --old-datadir=/var/lib/pgsql/17/data --new-datadir=/var/lib/pgsql/18/data --old-port=5432 --new-port=5433 --jobs=4 --link --check`},
+{p:"`--check` compares both clusters and reports every problem it can find without changing any data, even while the old server is still running (in that case the two port numbers must differ). It also lists manual work needed after the upgrade. Add the same transfer-mode flag you will use later (`--link` here) so that mode-specific checks, such as the requirement that both data directories be on the **same file system**, are included. Always run the `pg_upgrade` of the **new** version. Fix every complaint and repeat until the last line reports that the clusters are compatible (output below is illustrative)."},
+{code:`Performing Consistency Checks
+-----------------------------
+Checking cluster versions                                      ok
+Checking database connection settings                          ok
+Checking for system-defined composite types in user tables     ok
+Checking for incompatible "reg*" data types in user tables     ok
+Checking for presence of required libraries                    ok
+Checking database user is the install user                     ok
+
+*Clusters are compatible*`},
+{h:"Step 4: stop both servers and upgrade"},
+{code:`sudo systemctl stop postgresql-17
+sudo systemctl stop postgresql-18      # normally not running yet; make sure
+
+# take a final copy if you use --link (see the rollback table): data directory and tablespaces
+sudo -u postgres /usr/pgsql-18/bin/pg_upgrade --old-bindir=/usr/pgsql-17/bin --new-bindir=/usr/pgsql-18/bin --old-datadir=/var/lib/pgsql/17/data --new-datadir=/var/lib/pgsql/18/data --old-port=5432 --new-port=5433 --jobs=4 --link`},
+{p:"The tool starts short-lived servers on both clusters, restores the **schema** of the old cluster into the new one (this is the step that fails if something is incompatible), then transfers the data files and finally prepares the control information. By default it uses TCP port 50432 for these temporary servers so that no application connects by accident. On success it prints how to start the new server, which scripts to run and how to delete the old cluster (output below is illustrative)."},
+{code:`Upgrade Complete
+----------------
+Some statistics are not carried over; run:  vacuumdb --all --analyze-in-stages --missing-stats-only
+                                            vacuumdb --all --analyze-only
+Optimizer statistics ... the following script updates extensions:   update_extensions.sql
+Running this script will delete the old cluster's data files:       ./delete_old_cluster.sh`},
+{h:"Step 5: start 18, post-upgrade processing and statistics"},
+{code:`sudo systemctl enable --now postgresql-18
+sudo systemctl disable postgresql-17           # never start both on the same port
+
+# scripts generated by pg_upgrade (run only those that exist), in any order
+psql -p 5433 -U postgres -f update_extensions.sql postgres
+psql -p 5433 -U postgres -f reindex_hash.sql postgres      # only if pg_upgrade created it
+
+# statistics: PostgreSQL 18 transfers most optimizer statistics itself, but not all.
+# 1. quick minimal statistics for relations that have none
+vacuumdb -p 5433 --all --analyze-in-stages --missing-stats-only --jobs=4
+# 2. make sure cumulative statistics exist so autovacuum and autoanalyze trigger correctly
+vacuumdb -p 5433 --all --analyze-only --jobs=4`},
+{note:"Do not let applications touch tables mentioned in a generated rebuild script until the script has finished: reading them early can give wrong results or poor performance."},
+{h:"Step 6: verify against the baseline"},
+{code:`-- same queries as in step 1, now against 18
+SELECT version();
+SELECT extname, extversion FROM pg_extension ORDER BY 1;
+SELECT c.relkind, count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname NOT IN ('pg_catalog','information_schema','pg_toast') GROUP BY 1 ORDER BY 1;
+SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database ORDER BY 1;
+-- application-level checks: row counts of key tables, a few critical queries and their plans (EXPLAIN)`},
+{h:"Step 7: switch to the production port"},
+{code:`sudo systemctl stop postgresql-18
+sudo sed -i 's/^port = 5433/port = 5432/' /var/lib/pgsql/18/data/postgresql.conf
+sudo systemctl start postgresql-18
+psql -p 5432 -U postgres -c "SHOW port;" -c "SELECT version();"`},
+{p:"Restore `pg_hba.conf` if you relaxed it for the upgrade, re-create cron jobs, backup scripts and monitoring for the new version, point **WAL archiving** at a new archive location (the old WAL belongs to version 17 and cannot be mixed in) and take a **fresh base backup of the 18 cluster** immediately."},
+{h:"Step 8: clean up (later)"},
+{p:"Keep the old cluster until you are satisfied, typically some days. Then run `./delete_old_cluster.sh` (it cannot remove user tablespace directories inside the old data directory automatically) and remove the 17 packages. Never run the script in link mode before the new cluster is proven, because the data files are shared."},
+{h:"Going back"},
+{t:[["Situation","Can you restart the old cluster?"],["`--check` only, or copy/clone mode (no `--link` or `--swap`)","Yes, it was not modified"],["`--link`, aborted before linking began","Yes"],["`--link`, finished, new cluster **never started**","Yes: remove the `.old` suffix from `global/pg_control` in the old data directory"],["`--link`, new cluster **started**","**No**: the files are shared and have been written by 18. Restore the old cluster from backup"],["`--swap`, after pg_upgrade says the old cluster is no longer safe to start","**No**: restore from backup"]]},
+{h:"Frequent mistakes"},
+{t:[["Mistake","Result","Prevention"],["Running the old version's `pg_upgrade`","Wrong behaviour or failure","Always run the new version's binary"],["Different checksum setting","`pg_upgrade` stops at the check","Match with `initdb --no-data-checksums` or `pg_checksums`"],["Skipping `--check`","Failure halfway after the old server is already stopped","Always run `--check` first"],["Starting the new cluster in link mode and expecting to go back","Old cluster unusable","Take a backup first, or use `--clone`"],["Forgetting extension libraries","`could not load library`","Install them before upgrading"],["Not refreshing statistics","Slow queries immediately after the upgrade","Run the two `vacuumdb` commands"],["Reusing the old archive directory","WAL from two versions mixed","New archive path and a new base backup"]]}],
+src:[["pg_upgrade",D+"pgupgrade.html"],["Upgrading a PostgreSQL Cluster",D+"upgrading.html"],["Release notes for PostgreSQL 18",D+"release-18.html"],["vacuumdb",D+"app-vacuumdb.html"],["initdb",D+"app-initdb.html"]]},
+
+/* ---------------------------------------------------------------- 9:1 */
+'pg:9:1':{blocks:[
+{p:"**Replication** keeps copies of a database on more than one server. It is used for **high availability** (another server can take over), **disaster recovery** (a copy in another site), **read scaling** (queries run on the copies) and **safe maintenance** (switch to a copy while the first server is serviced). PostgreSQL's built-in replication is based on **WAL**: the primary server records every change in the write-ahead log (Section 04, Section 08), and the copies, called **standby servers**, receive that log and **replay** it. A standby therefore has the same data files as the primary, byte for byte. This lecture explains the theory: the kinds of replication, how a standby works, the vocabulary, the requirements and the limits. The next lecture builds one."},
+{h:"Solutions compared"},
+{t:[["Approach","How it works","Typical use","In this course"],["**Physical (WAL-based) replication**","Standby replays the primary's WAL; identical binary copy of the **whole cluster**","High availability, disaster recovery, read replicas","Yes: this section"],["**Log shipping**","WAL **files** are copied (archive) and replayed, one 16 MB segment at a time","Disaster recovery over any distance; also the fallback for streaming","Section 09 archiving and this section"],["**Streaming replication**","The standby connects to the primary and receives WAL records as they are written, without waiting for a full segment","Standard HA setup, delay normally under a second","Yes"],["**Logical replication**","Row-level changes of selected tables are decoded from WAL and applied on a different server, possibly of another version","Upgrades, selective copies, data integration","Bonus lecture"],["Trigger-based and middleware replication","Application or trigger logic copies changes","Special cases (multi-master designs)","No"],["Shared storage failover","Two servers use the same disks, one at a time","Specialised clusters, needs fencing","No"]]},
+{h:"How streaming replication works"},
+{svg:replSvg},
+{ul:["A client commits. The change is written to the **WAL buffers** and flushed to `pg_wal` on the primary.","A **walsender** process on the primary (one per standby) reads the WAL and sends it over a normal TCP connection that uses the **replication protocol**.","The **walreceiver** on the standby writes the received WAL to its own `pg_wal` and reports progress back.","The standby's **startup process** replays the records into the standby's data files in the same order, exactly like crash recovery or point-in-time recovery (Section 09).","If hot standby is enabled, read-only sessions can query the data while replay continues."]},
+{flow:["COMMIT writes WAL on the primary","walsender streams it","walreceiver writes it on the standby","startup process replays it","Readers on the standby see the change"]},
+{h:"How a standby starts and keeps going"},
+{p:"A server becomes a standby when a file named **`standby.signal`** exists in the data directory at start. The documentation describes its loop: at startup it first replays everything available in the WAL **archive** (`restore_command`); when that runs out it looks in its own **`pg_wal`**; then, if `primary_conninfo` is set, it connects to the primary and **streams** from the last valid record. If the connection drops, or streaming is not configured, it goes back to the archive and tries again. This cycle repeats until the server is **promoted**. Promotion happens with `pg_ctl promote` or the SQL function `pg_promote()`; before it completes, any WAL immediately available in the archive or `pg_wal` is replayed, but no attempt is made to contact the primary."},
+{t:[["Setting or file","Role"],["`standby.signal`","Start as a standby; stays in recovery until promoted"],["`recovery.signal`","Archive recovery that **ends** at a target (PITR, Section 09)"],["`primary_conninfo`","libpq connection string to the primary (host, port, user, options; `password` unless `.pgpass` is used)"],["`primary_slot_name`","Replication slot used on the primary, so it keeps the WAL the standby needs"],["`restore_command`","Optional: fetch WAL from an archive"],["`hot_standby`","`on` (default): accept read-only queries during recovery"],["`recovery_target_timeline`","`latest` (default): follow the new timeline after a failover"]]},
+{h:"Asynchronous by default"},
+{p:"Streaming replication is **asynchronous** unless you configure otherwise: the primary reports a commit as successful without waiting for any standby. There is a small delay, usually under a second if the standby keeps up, between the commit on the primary and the change becoming visible on the standby. If the primary is lost, transactions that had not yet been shipped are lost. That window is the **RPO** of the setup. Synchronous replication (bonus lecture) shrinks it to zero for chosen transactions at the cost of commit latency. Pure file-based log shipping is also asynchronous but with a much larger window, bounded only by `archive_timeout`."},
+{h:"Warm standby and hot standby"},
+{t:[["","Warm standby","Hot standby"],["Accepts connections","No","**Yes, read-only** once a consistent state is reached"],["Purpose","Take over on failure","Take over **and** serve queries (reports, read scaling, backups)"],["Controlled by","`hot_standby = off`","`hot_standby = on` (default)"],["Query conflicts with replay","Not applicable","Possible; see the Hot Standby lecture"]]},
+{h:"Requirements and limits"},
+{ul:["**Same major version**: physical replication cannot cross major versions (use logical replication or `pg_upgrade`, Section 10 bonus lectures). Minor versions may differ, and the documentation advises updating the **standbys first**, because newer code is more likely to read older WAL than the reverse.","**Same CPU architecture** and compatible operating system and libraries; locale and collation libraries should match, or indexes may be ordered differently.","**Same tablespace paths**: `CREATE TABLESPACE` is replayed with its absolute path (Section 08), so the directories must exist on the standby **before** the command runs on the primary.","Configuration capacity on the standby must not be smaller than on the primary for `max_connections`, `max_prepared_transactions`, `max_locks_per_transaction`, `max_wal_senders` and `max_worker_processes`.","Replication covers the **whole cluster**. You cannot replicate a single database or table physically.","A standby is **read-only**: no DDL, no `VACUUM`, no extra indexes. Everything comes from the primary."]},
+{h:"Vocabulary"},
+{t:[["Term","Meaning"],["**Primary** (formerly master)","The server that accepts writes and generates WAL"],["**Standby** (replica)","A server in recovery that applies the primary's WAL"],["**Cascading standby**","A standby that itself feeds other standbys, reducing load and bandwidth on the primary"],["**Lag**","How far the standby is behind, measured in bytes of WAL or in time (write, flush and replay lag)"],["**LSN**","Position in the WAL (Section 08); lag is the difference between two LSNs"],["**Switchover**","Planned role change with no data loss"],["**Failover**","Unplanned promotion after the primary is lost"],["**Promotion**","Ending recovery on a standby so it becomes a primary and starts a new timeline"],["**Timeline**","A branch of WAL history; incremented at each promotion (Section 09)"],["**Replication slot**","A primary-side marker that keeps the WAL a standby still needs"],["**Restartpoint**","The standby's equivalent of a checkpoint"],["**STONITH / fencing**","Making sure the old primary cannot continue accepting writes after failover"]]},
+{h:"Typical topologies"},
+{t:[["Topology","Description","Strength","Weakness"],["Primary + 1 asynchronous standby","The simplest HA pair","Easy to run","Possible loss of the last transactions"],["Primary + 1 synchronous standby + 1 asynchronous","Sync partner for zero loss, second copy elsewhere","Strong durability","Commit waits for the sync standby"],["Primary + 2 or more standbys, `ANY 1 (...)` quorum","Quorum commit tolerates one standby failure","High availability","More machines"],["Cascading chain","Remote site fed by a local standby","Saves bandwidth on the primary","Longer delay; cascading is always asynchronous"],["Delayed standby","`recovery_min_apply_delay` keeps it minutes or hours behind","Protection against operator errors","Not suitable for failover"]]},
+{h:"Replication is not backup"},
+{p:"A `DROP TABLE` or a bad `DELETE` is replicated within moments, and so is corruption caused by a software error. Replication protects against **hardware and site failures**. Backups with point-in-time recovery (Section 09) protect against **mistakes**. A production system needs both, and a standby can even take the backups to relieve the primary."},
+{h:"Quick health checks"},
+{code:`-- on the primary: who is connected and how far behind are they?
+SELECT application_name, client_addr, state, sent_lsn, replay_lsn, replay_lag FROM pg_stat_replication;
+
+-- on a standby
+SELECT pg_is_in_recovery();                         -- t
+SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn(), pg_last_xact_replay_timestamp();
+SELECT status, sender_host FROM pg_stat_wal_receiver;`}],
+src:[["Chapter 26: High Availability, Load Balancing, and Replication",D+"high-availability.html"],["26.1 Comparison of Different Solutions",D+"different-replication-solutions.html"],["26.2 Log-Shipping Standby Servers",D+"warm-standby.html"],["26.4 Hot Standby",D+"hot-standby.html"],["Streaming Replication Protocol",D+"protocol-replication.html"]]},
+/* ---------------------------------------------------------------- 9:2 */
+'pg:9:2':{blocks:[
+{p:"This lab builds a **primary and one hot standby** with **streaming replication** on PostgreSQL 18, following Section 26.2.5 of the documentation. The standby is created from a **base backup** of the primary (Section 09), connects with a dedicated **replication role** and then receives WAL continuously. The procedure is the same on a laptop VM and in production; only host names, network rules and monitoring change. Read the Replication Theory lecture first: the words *walsender*, *walreceiver*, *slot* and *standby.signal* are used here without further explanation."},
+{h:"Lab layout"},
+{t:[["Item","Primary","Standby"],["Host name (example)","`pg-primary`, `192.168.1.10`","`pg-standby`, `192.168.1.11`"],["Version and packages","PostgreSQL 18 (PGDG `postgresql18-server`)","**Same** major version and architecture"],["Data directory","`/var/lib/pgsql/18/data`","`/var/lib/pgsql/18/data` (filled by `pg_basebackup`)"],["Service","`postgresql-18`","`postgresql-18`"],["Port","`5432`","`5432`"],["Replication identity","Role `replicator`","`application_name=standby1`, slot `standby1_slot`"]]},
+{svg:setupSvg},
+{flow:["Prepare the primary","Create the replication role and the pg_hba.conf line","Create a physical slot","Empty the standby's data directory","pg_basebackup -R","Review the standby's settings","Start the standby","Verify and test"]},
+{h:"Before you start: checklist"},
+{t:[["Requirement","Why"],["Same **major version** and CPU architecture on both servers","Physical replication copies data files; only minor versions may differ"],["Same operating system family and compatible locale libraries","Different glibc or ICU versions can order text differently and silently damage indexes (Section 05, Encoding, Locale and Collation)"],["Every **extension library** installed on the standby","The standby replays the primary's WAL and may be promoted to primary later"],["Tablespace directories exist on the standby with the **same paths**","`CREATE TABLESPACE` is replayed with its absolute path (Section 08)"],["Port `5432` open from the standby to the primary","The standby opens the connection, not the primary"],["Synchronised clocks (chrony or NTP)","Lag in time units, `recovery_min_apply_delay` and log analysis depend on it"],["Disk space on the primary for `pg_wal` growth","A stopped standby with a slot makes the primary keep WAL"]]},
+{h:"Step 1: parameters on the primary"},
+{p:"Most of the settings below are already correct in PostgreSQL 18, because `wal_level = replica`, `max_wal_senders = 10` and `hot_standby = on` are defaults. Check them anyway. Settings marked *restart* have context `postmaster` (Section 06): changing them needs a full restart, so prepare them during a maintenance window."},
+{t:[["Parameter","Default (18)","Recommended for a standby","Change needs"],["`wal_level`","`replica`","`replica` or `logical`; `minimal` makes replication impossible","restart"],["`max_wal_senders`","`10`","Number of standbys + concurrent `pg_basebackup` runs + a spare","restart"],["`max_replication_slots`","`10`","At least the number of slots you will create (physical and logical)","restart"],["`wal_keep_size`","`0`","A safety net such as `1GB` if no slot is used","reload"],["`max_slot_wal_keep_size`","`-1` (unlimited)","A limit that your `pg_wal` disk can survive, for example `50GB`","reload"],["`hot_standby`","`on`","`on` (also on the primary, so it is right after a failover)","restart"],["`listen_addresses`","`localhost`","The primary's address or `*`","restart"],["`wal_log_hints`","`off`","`on` unless data checksums are enabled (the 18 `initdb` default); required by `pg_rewind` later","restart"],["`archive_mode` and `archive_command`","`off`","Recommended: a standby can fall back to the archive (Section 09)","restart / reload"]]},
+{code:`-- on the primary, as a superuser
+ALTER SYSTEM SET listen_addresses = '*';
+ALTER SYSTEM SET wal_log_hints = on;
+ALTER SYSTEM SET wal_keep_size = '1GB';
+ALTER SYSTEM SET max_slot_wal_keep_size = '50GB';
+-- wal_level, max_wal_senders and max_replication_slots are already adequate in 18; check:
+SELECT name, setting, unit, context FROM pg_settings
+WHERE name IN ('wal_level','max_wal_senders','max_replication_slots','hot_standby','wal_keep_size','max_slot_wal_keep_size','wal_log_hints','data_checksums');`},
+{code:`sudo systemctl restart postgresql-18   # needed for listen_addresses and wal_log_hints`},
+{h:"Step 2: the replication role and pg_hba.conf"},
+{p:"Never replicate as `postgres`. Create a role whose only extra power is the **`REPLICATION`** attribute. It may open replication connections and run `pg_basebackup`, but it cannot read tables (Section 07, User Creation)."},
+{code:`CREATE ROLE replicator WITH LOGIN REPLICATION PASSWORD 'ChangeMe-LongRandomValue';
+-- better: CREATE ROLE replicator WITH LOGIN REPLICATION;  then  \\password replicator  in psql,
+-- so that the password is not written to the server log or to the shell history`},
+{p:"Then allow that role from the **standby's address only**, with SCRAM authentication. In `pg_hba.conf` the word **`replication`** in the database column is a keyword, not a database name: it matches **physical** replication connections (streaming and `pg_basebackup`). Logical replication connections specify a real database name and are matched against that name instead."},
+{code:`# TYPE  DATABASE     USER        ADDRESS            METHOD
+host    replication  replicator  192.168.1.11/32    scram-sha-256
+# a stricter variant that also forces TLS:
+# hostssl replication replicator 192.168.1.11/32    scram-sha-256`},
+{code:`sudo -u postgres psql -c "SELECT pg_reload_conf();"
+sudo firewall-cmd --permanent --add-service=postgresql && sudo firewall-cmd --reload   # or restrict to the standby's IP with a rich rule
+
+# on the STANDBY: save the password for the OS user that will run PostgreSQL (database field = the word replication)
+echo '192.168.1.10:5432:replication:replicator:ChangeMe-LongRandomValue' | sudo -u postgres tee -a /var/lib/pgsql/.pgpass
+sudo chmod 0600 /var/lib/pgsql/.pgpass; sudo chown postgres:postgres /var/lib/pgsql/.pgpass
+
+# test the replication protocol itself; IDENTIFY_SYSTEM returns the system identifier and timeline
+sudo -u postgres psql "host=192.168.1.10 user=replicator replication=true" -c "IDENTIFY_SYSTEM;"`},
+{p:"A successful `IDENTIFY_SYSTEM` proves network, firewall, `listen_addresses`, `pg_hba.conf`, password and the `REPLICATION` attribute in one command. Do this test **before** taking the backup."},
+{h:"Step 3: a physical replication slot"},
+{p:"A **replication slot** makes the primary keep every WAL segment the standby has not yet received, even if the standby is disconnected for a long time. Without a slot the primary may recycle WAL that the standby still needs, and the standby then has to be rebuilt (unless a WAL archive can supply the missing files)."},
+{code:`SELECT pg_create_physical_replication_slot('standby1_slot');
+SELECT slot_name, slot_type, active, restart_lsn, wal_status FROM pg_replication_slots;
+-- the same can be done by pg_basebackup itself with -C -S standby1_slot (next step)`},
+{note:"A slot is a promise to keep WAL. If the standby is lost for good and the slot is not dropped, the primary's `pg_wal` grows until the disk is full. Set `max_slot_wal_keep_size` and monitor slots (Replication Slots lecture)."},
+{h:"Step 4: take the base backup on the standby"},
+{p:"On the standby server, stop PostgreSQL if it is running and **empty the data directory** (it is about to be replaced; be certain you are on the standby). Then run `pg_basebackup` as the `postgres` OS user. It connects as `replicator`, copies the whole cluster, streams the WAL generated during the copy and writes the standby configuration for you."},
+{code:`# ON THE STANDBY
+sudo systemctl stop postgresql-18 2>/dev/null
+sudo -u postgres bash -c 'rm -rf /var/lib/pgsql/18/data/*'      # double-check the host name first!
+
+sudo -u postgres pg_basebackup -h 192.168.1.10 -p 5432 -U replicator -D /var/lib/pgsql/18/data -X stream -R -S standby1_slot -c fast -P -v`},
+{t:[["Option","Meaning"],["`-h`, `-p`, `-U`","Host, port and role of the **primary** (the `.pgpass` file supplies the password)"],["`-D`","Target data directory; must be empty or not exist"],["`-X stream`","Open a second connection and stream WAL during the backup (the default). The backup is self-contained"],["`-R`, `--write-recovery-conf`","Create `standby.signal` and write `primary_conninfo` (and `primary_slot_name` when `-S` is given) into `postgresql.auto.conf`"],["`-S slot`","Use this existing slot for the WAL stream and for the standby afterwards"],["`-C -S slot`","Create the slot first (add `--no-slot` instead of `-S` if you do not want any slot)"],["`-c fast`","Force an immediate checkpoint instead of waiting for the spread checkpoint"],["`-P`, `-v`","Progress and verbose output"],["`-T old=new`","Map a tablespace directory to a different path on the standby"],["`-F p`","Plain format, the default; required to start a standby directly"]]},
+{p:"The primary stays fully available while the backup runs. When the command ends the data directory is a consistent copy and contains these two additions:"},
+{t:[["Item","Content"],["`standby.signal`","Empty file. Its presence at start-up puts the server into standby mode, where it stays until promoted"],["`postgresql.auto.conf`","`primary_conninfo = 'user=replicator host=192.168.1.10 port=5432 sslmode=prefer ...'` and `primary_slot_name = 'standby1_slot'`"],["`postgresql.conf`, `pg_hba.conf`","Copied unchanged from the primary (they live in the data directory on this installation)"]]},
+{note:"If the password was supplied on the command line, `-R` writes it into `postgresql.auto.conf` in clear text. Prefer a `.pgpass` file, keep `postgresql.auto.conf` at mode `0600` and never commit it to a repository."},
+{h:"Step 5: review the standby's settings"},
+{p:"Because the configuration files were copied from the primary, the standby already has the same values for the parameters that must match. Add the standby-specific settings. Naming the standby with **`application_name`** is important: it appears in `pg_stat_replication` and it is what `synchronous_standby_names` refers to."},
+{code:`# /var/lib/pgsql/18/data/postgresql.auto.conf  (edit while the standby is stopped; ALTER SYSTEM works after start)
+primary_conninfo = 'host=192.168.1.10 port=5432 user=replicator application_name=standby1 sslmode=require'
+primary_slot_name = 'standby1_slot'
+
+# postgresql.conf additions on the standby
+hot_standby = on                         # default; allow read-only queries
+hot_standby_feedback = off               # see the Hot Standby lecture before changing
+max_standby_streaming_delay = 30s        # default; how long replay waits for a conflicting query
+#restore_command = 'cp /archive/%f %p'   # optional fallback if the standby falls too far behind`},
+{p:"Some parameters on the standby **must be equal to or higher than** on the primary, otherwise the standby refuses to start (see the table in the Hot Standby lecture): `max_connections`, `max_prepared_transactions`, `max_locks_per_transaction`, `max_wal_senders` and `max_worker_processes`. When you later **increase** them, raise the standby first and the primary second; when you **decrease** them, lower the primary first."},
+{h:"Step 6: start the standby"},
+{code:`sudo systemctl enable --now postgresql-18
+sudo tail -n 20 /var/lib/pgsql/18/data/log/postgresql-*.log`},
+{p:"A healthy start writes messages like the following (wording and positions are illustrative):"},
+{code:`LOG:  entering standby mode
+LOG:  redo starts at 0/3000028
+LOG:  consistent recovery state reached at 0/3000100
+LOG:  database system is ready to accept read-only connections
+LOG:  started streaming WAL from primary at 0/4000000 on timeline 1`},
+{h:"Step 7: verify the replication"},
+{code:`-- ON THE PRIMARY
+SELECT pid, application_name, client_addr, state, sync_state, sent_lsn, write_lsn, flush_lsn, replay_lsn, replay_lag
+FROM pg_stat_replication;                       -- state = streaming
+SELECT slot_name, active, restart_lsn, wal_status FROM pg_replication_slots;   -- active = t
+
+-- ON THE STANDBY
+SELECT pg_is_in_recovery();                     -- t
+SELECT status, sender_host, slot_name, written_lsn, flushed_lsn FROM pg_stat_wal_receiver;
+SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn(), pg_last_xact_replay_timestamp();`},
+{code:`-- end-to-end test: write on the primary
+CREATE TABLE repl_test (id int PRIMARY KEY, created timestamptz DEFAULT now());
+INSERT INTO repl_test SELECT g FROM generate_series(1,1000) g;
+
+-- read on the standby (within a moment)
+SELECT count(*) FROM repl_test;                 -- 1000
+
+-- and a write attempt on the standby must fail
+INSERT INTO repl_test VALUES (5000);            -- ERROR:  cannot execute INSERT in a read-only transaction`},
+{h:"Step 8: test what happens when the standby disappears"},
+{p:"Do this once on a test system so that you recognise the symptoms later. Stop the standby, generate WAL on the primary and watch the slot hold it back."},
+{code:`-- standby: sudo systemctl stop postgresql-18
+-- primary:
+INSERT INTO repl_test SELECT g FROM generate_series(1001, 500000) g;
+SELECT slot_name, active, restart_lsn, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS retained, wal_status
+FROM pg_replication_slots;                      -- active = f, retained grows
+-- standby: sudo systemctl start postgresql-18   -> it reconnects and catches up; retained returns to a few MB`},
+{h:"Variations of the setup"},
+{t:[["Variant","How","When"],["**Streaming + archive**","Add `restore_command` to the standby, in addition to `primary_conninfo`","Resilience: the standby can catch up from the archive after a long outage even without a slot (Section 09)"],["**Archive only (log shipping)**","`standby.signal` and `restore_command`, no `primary_conninfo`","Remote disaster-recovery site over a poor link; delay bounded by `archive_timeout`"],["**Temporary slot**","`wal_receiver_create_temp_slot = on` and no `primary_slot_name`","Slot exists only while the standby is connected, so it can never fill the primary's disk (but offers no protection during an outage)"],["**Cascading standby**","`primary_conninfo` points to **another standby** that has `max_wal_senders` and a `pg_hba.conf` line","Remote site, offloading the primary; always asynchronous to the primary"],["**Delayed standby**","`recovery_min_apply_delay = '1h'`","Protection against human error; not a failover target"],["**Base backup by a tool**","pgBackRest, Barman, or `pg_basebackup` from another standby","Large clusters, or to spare the primary"]]},
+{svg:cascadeSvg},
+{p:"In a cascade, the middle standby needs `hot_standby = on` and a replication slot of its own for the standby below it. The documentation notes that feedback from `hot_standby_feedback` is passed upstream until it reaches the primary."},
+{h:"Where the settings live"},
+{t:[["Setting","Primary","Standby"],["`wal_level`, `max_wal_senders`, `max_replication_slots`, `wal_keep_size`","Used","Used only if the standby has its own downstream standbys, and after promotion"],["`synchronous_standby_names`","Used","Ignored until it becomes a primary"],["`primary_conninfo`, `primary_slot_name`, `restore_command`, `hot_standby`, `recovery_min_apply_delay`","Ignored","Used"],["`pg_hba.conf` line for `replication`","Required","Required too (downstream standbys, `pg_basebackup`, and for the day it is promoted)"]]},
+{h:"Troubleshooting the setup"},
+{t:[["Message","Cause","Fix"],["`no pg_hba.conf entry for replication connection from host ...`","No line with the keyword `replication` for that role and address","Add the line, `SELECT pg_reload_conf();`"],["`password authentication failed for user \"replicator\"`","Wrong password, a `.pgpass` entry whose database field is not `replication`, or an MD5/SCRAM mismatch","Correct `.pgpass` (mode `0600`) or `primary_conninfo`; check `password_encryption`"],["`number of requested standby connections exceeds max_wal_senders`","All sender slots in use (standbys plus backups)","Increase `max_wal_senders` and restart the primary"],["`requested WAL segment ... has already been removed`","The standby was away longer than the primary kept WAL, and no slot or archive exists","Use a slot and/or `restore_command`; otherwise rebuild with `pg_basebackup`"],["`database system identifier differs between the primary and standby`","The standby was not created from this primary","Rebuild from a base backup of the right server"],["`hot standby is not possible because of insufficient parameter settings`","A required parameter is lower than on the primary (the message names it)","Raise it on the standby and restart"],["`replication slot \"standby1_slot\" does not exist`","Slot not created (or dropped)","`pg_create_physical_replication_slot()` on the primary"],["`replication slot ... is active for PID ...`","Two standbys use the same slot","One slot per standby"],["Standby does not accept connections","Consistent state not reached yet, or `hot_standby = off`","Wait for the log line *consistent recovery state reached*; check `hot_standby`"],["`could not connect to the primary server`","Firewall, `listen_addresses`, wrong host or port","Test with the `psql ... replication=true` command above"]]},
+{note:"To rebuild a broken standby, stop it, empty its data directory and repeat step 4. The primary does not need any change, provided the slot still exists."}],
+src:[["26.2 Log-Shipping Standby Servers (streaming replication, slots, cascading)",D+"warm-standby.html"],["pg_basebackup",D+"app-pgbasebackup.html"],["19.6 Replication (parameters)",D+"runtime-config-replication.html"],["The pg_hba.conf File",D+"auth-pg-hba-conf.html"],["pg_replication_slots",D+"view-pg-replication-slots.html"],["Streaming Replication Protocol",D+"protocol-replication.html"]]},
+
+/* ---------------------------------------------------------------- 9:3 */
+'pg:9:3':{blocks:[
+{p:"Upgrading is not an emergency task that is done when a version is about to expire; it is a **planned, repeated activity**, and the DBA's job is to make it boring. This lecture gives the strategy: what kinds of upgrade exist, which method fits which situation, what to check, how to rehearse and how to go back. The next lecture is the full `pg_upgrade` reference; the lectures after that cover replicated clusters and logical replication."},
+{h:"Version numbers and the release calendar"},
+{t:[["Item","Rule","Consequence for the DBA"],["Version number","From version 10 on, `MAJOR.MINOR`, for example `18.6`. Before 10 the major version had two parts (`9.6`)","`SHOW server_version;` and the package name tell you where you are"],["Major release","About **once a year**, in the autumn (PostgreSQL 18 was released on 25 September 2025)","New features; the layout of the system catalogs changes; needs a real upgrade"],["Minor release","Bug and **security** fixes only; scheduled quarterly (second Thursday of February, May, August and November) plus unscheduled ones for serious problems","Safe in-place update: new binaries, restart"],["Support window","Each major version is supported for **five years** after its first release, then gets a final minor release and reaches end of life","Version 14 (released September 2021) gets its last minor release in November 2026; plan upgrades **before** that date, not after"],["Compatibility promise","The community does not change the on-disk **data** format between majors unless unavoidable","This is why `pg_upgrade` can reuse the data files"]]},
+{note:"Official policy: postgresql.org/support/versioning. Check it for the exact end-of-life date of your version. Running an unsupported version means no security fixes."},
+{h:"Minor upgrades (for example 18.5 to 18.6)"},
+{p:"A minor upgrade replaces the **binaries only**. The data directory is untouched, no dump, no `pg_upgrade`. The documentation states that minor releases never change the internal storage format and are always compatible with earlier and later minor releases of the same major version. The one thing to read each time is the **release notes** of every minor version you skip, because they occasionally ask for an action such as `REINDEX` of a certain index type or an `ALTER EXTENSION ... UPDATE`."},
+{flow:["Read the release notes","Update the standby binaries first","Restart the standby","Switch over (or restart the primary)","Update the old primary","Check the log and monitoring"]},
+{code:`# single server, RHEL family, PGDG packages
+sudo dnf check-update 'postgresql18*'
+sudo dnf update -y 'postgresql18*'              # installs new binaries; the running server still uses the old ones in memory
+sudo -u postgres psql -c "CHECKPOINT;"           # shortens crash-recovery work if something goes wrong
+sudo systemctl restart postgresql-18             # downtime = shutdown + startup, usually seconds
+sudo -u postgres psql -c "SELECT version();"`},
+{t:[["Do","Do not"],["Test the minor update on a standby or a copy first","Skip several quarters of minor releases: the notes accumulate and so does the risk"],["Update **standbys before the primary** (newer code reads older WAL more safely than the reverse)","Update the primary first and leave the standbys on old binaries for a long time"],["Use `fast` shutdown (the default for `systemctl stop` in the PGDG unit), Section 03","Use `kill -9` or `immediate` shutdown for convenience"],["Update client libraries and extension packages together","Assume an extension package version matches the new server binary"]]},
+{h:"Major upgrades (for example 17 to 18)"},
+{p:"A major version cannot simply be started on the old data directory. The server compares the `PG_VERSION` file and the **catalog version number** stored in `pg_control` with its own, and refuses:"},
+{code:`FATAL:  database files are incompatible with server
+DETAIL:  The data directory was initialized by PostgreSQL version 17, which is not compatible with this version 18.6.`},
+{p:"The release notes of PostgreSQL 18 state the possible routes: **a dump and restore with `pg_dumpall`, `pg_upgrade`, or logical replication** is required to migrate from any previous release."},
+{svg:upgMethSvg},
+{h:"The methods in detail"},
+{t:[["Method","How it works","Downtime","Extra disk","Old cluster afterwards","Best for","Main drawback"],
+["**Dump and restore** (`pg_dumpall`, or `pg_dump -Fd -j` plus `pg_dumpall --globals-only`)","Export SQL, create a new cluster, restore. Section 09","Hours to days for large data (restore rebuilds indexes)","A full second copy plus the dump","Untouched; stays usable","Small databases, cross-platform or cross-architecture moves, cleaning bloat, changing encoding or locale","Slowest; downtime grows with data size"],
+["**`pg_upgrade` copy** (default)","New catalogs, **copy** the user data files","Minutes to hours (copy time)","Full second copy","Untouched","When you need the old cluster kept intact and have the disk","Disk and copy time"],
+["**`pg_upgrade --link`**","New catalogs, **hard-link** the old data files","**Minutes**, mostly independent of data size","Very little","**Unusable** once the new cluster has started","Large clusters with a short window and a verified backup","No way back except a restore"],
+["**`pg_upgrade --clone`**","Copy-on-write clone of the files (reflinks)","Minutes","Very little at first (shared blocks)","**Untouched**","Linux XFS (with reflink) or Btrfs, macOS APFS: link speed without the risk","Needs a supporting file system"],
+["**`pg_upgrade --swap`**","Move the old directories into the new cluster, replace catalogs","Minutes; fastest with very many relations","Very little","**Destroyed** once transfer begins","Clusters with hundreds of thousands of tables","Same risk as link, more extreme"],
+["**Logical replication**","Build a new-version cluster, replicate continuously, switch applications","**Seconds** (cut-over only)","A full second copy","Untouched; keep as a fallback until the end","Business-critical systems that cannot be down for minutes","Complex; schema and sequences handled manually; limits of logical replication"],
+["**`pg_createsubscriber`** (17 and later) then `pg_upgrade`","Turn a physical standby into a logical subscriber without the initial copy; upgrade the subscriber; switch","Seconds","A standby you already have","Untouched","Very large databases where the initial logical copy would take days","Advanced; read the lecture on logical replication"]]},
+{h:"How to choose"},
+{t:[["Your situation","Choose","Reason"],["Database of a few GB, a window of an hour, simple environment","Dump and restore or `pg_upgrade` copy","Simplicity; also removes bloat"],["Hundreds of GB or TB, window of 15 to 60 minutes, **good backups**","`pg_upgrade --link`, or `--clone` if the file system supports it","Time does not depend on the data volume"],["You want the speed of link **and** a way back","`--clone`, or a link upgrade of an **rsync copy** of the old cluster (the documentation describes the procedure)","Old data is never modified"],["Millions of relations (schema-per-tenant)","`pg_upgrade --swap` with `--jobs`","Per-file work dominates"],["Cannot be offline more than a minute or two","Logical replication, or `pg_createsubscriber` plus `pg_upgrade`","Applications move to the new server in a short cut-over"],["Different OS, CPU architecture or locale provider","Dump and restore, or logical replication","Physical files are not portable"],["Moving to a new server **and** a new version","`pg_upgrade` on the new server after copying, or logical replication to the new host","Combines the migration and the upgrade"]]},
+{h:"What changes between major versions"},
+{p:"Check the release notes of **every** major version between yours and the target. For PostgreSQL 18 the notes point out, among other things:"},
+{t:[["Change in 18","Effect on an upgrade from 17"],["**`initdb` enables data checksums by default**; `--no-data-checksums` turns them off","`pg_upgrade` requires matching checksum settings. A 17 cluster created without checksums needs `initdb --no-data-checksums` for the new cluster (or `pg_checksums --enable` on the stopped old one)"],["**MD5 password authentication is deprecated**","`CREATE ROLE` and `ALTER ROLE` warn when setting MD5 passwords; plan the move to SCRAM (Section 07)"],["**`pg_upgrade` retains optimizer statistics**","Far less slow-query time after the upgrade; extended and cumulative statistics still need regeneration"],["Full-text search and `pg_trgm` indexes","The notes recommend reindexing those indexes after a `pg_upgrade`"],["Unlogged partitioned tables are disallowed","They never worked; remove them before upgrading"],["Older `psql` clients and `\\copy`","Update client tools together with the server"]]},
+{p:"Other recurring areas to review: removed or renamed configuration parameters (the new server stops at start-up with an error naming them), changed defaults, extension versions (PostGIS, `pg_stat_statements` and others have their own compatibility matrix), **client drivers** (JDBC, psycopg, libpq version) and **collation versions** (Section 05, Encoding, Locale and Collation)."},
+{h:"Pre-upgrade inventory"},
+{p:"Collect the facts that decide the method, and keep the output: you compare it with the same queries after the upgrade."},
+{code:`SELECT version();  SHOW data_checksums;  SHOW server_encoding;  SHOW lc_collate;
+SELECT datname, pg_size_pretty(pg_database_size(datname)) AS size FROM pg_database ORDER BY pg_database_size(datname) DESC;
+
+-- things that block or complicate pg_upgrade
+SELECT * FROM pg_prepared_xacts;                                                 -- must be empty
+SELECT slot_name, slot_type, active, confirmed_flush_lsn FROM pg_replication_slots; -- logical slots need care
+SELECT subname, subenabled FROM pg_subscription;                                 -- logical replication in use?
+SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;                  -- invalid indexes
+SELECT extname, extversion FROM pg_extension ORDER BY 1;                         -- libraries needed on the new server
+SELECT count(*) AS relations FROM pg_class;                                      -- drives --jobs and the --swap decision
+SELECT spcname, pg_tablespace_location(oid) FROM pg_tablespace;                  -- Section 08`},
+{h:"Planning timeline"},
+{t:[["When","Activity"],["8 to 4 weeks before","Choose target version and method; read all release notes; inventory extensions and drivers; request the maintenance window"],["4 to 2 weeks before","**Rehearsal 1** on a copy of production (restore of the latest backup): run `--check`, then the upgrade, record the **time of each step**; fix findings"],["2 to 1 weeks before","Application regression tests against the upgraded copy; compare important query plans and `pg_stat_statements` before and after; performance test"],["The week before","Rehearsal 2 as a dress rehearsal with the real runbook; confirm backups restore; freeze schema changes; write the communication plan"],["Day of upgrade","Fresh backup, stop applications, upgrade, verify, statistics, start applications, monitor"],["After","New base backup of the new cluster, new WAL archive location, monitoring and alert checks, keep the old cluster until the agreed date, then delete it"]]},
+{h:"Testing the upgrade"},
+{ul:["**Restore the latest production backup** on a test host. This tests the backup and gives realistic data volume at the same time.","Run the **same commands** you will run in production, from a script, and measure each step. The time of a link-mode upgrade depends mainly on the **number of objects**, not on the data size.","The documentation suggests another test for deployment automation: create a **schema-only copy** of the old cluster, insert dummy data and upgrade that. Post-upgrade steps depend on the schema, not on the data.","Capture the top queries with `pg_stat_statements` (Section 05) before the upgrade and compare timings and plans afterwards.","Test the **rollback** as carefully as the upgrade. An untested rollback is not a plan."]},
+{h:"Rollback plan for each method"},
+{t:[["Method","Until when can you go back?","How"],["Dump and restore","Always (old cluster never touched)","Point applications back to the old server; changes made on the new one are lost unless replayed"],["`pg_upgrade` copy or `--clone`","Always","Start the old cluster; changes made on the new one are lost"],["`--link` before the new cluster is started","Until the new cluster starts","Remove the `.old` suffix from `global/pg_control` in the old data directory and restart the old cluster"],["`--link` after the new cluster started; `--swap` after transfer","**Never**","Restore from backup (and replay WAL archive to the desired point)"],["Logical replication","Until you delete the old server","Reverse replication (new to old) can be set up before cut-over to allow a controlled return"]]},
+{h:"Frequent mistakes"},
+{t:[["Mistake","Result","Prevention"],["Waiting for end of life to start planning","Rushed upgrade, no rehearsal","Calendar reminder 12 months before EOL"],["No rehearsal on production-sized data","Surprise failure at 3 a.m. or a window that is too short","At least two rehearsals with timings"],["Using `--link` without a **tested** backup","No way back","Section 09: restore test first"],["Forgetting extension binaries for the new version","`could not load library`","Install matching packages before `pg_upgrade`"],["Not refreshing statistics","Slow queries after the upgrade","Run the `vacuumdb` commands `pg_upgrade` prints"],["Leaving old and new clusters on the same port","Applications reach the wrong server","Use different ports during testing and a clear final switch"],["Upgrading the primary but not planning the standbys","Replication broken for hours","Lecture: Upgrading Replicated Clusters"],["No new backup and archive after the upgrade","No recovery point on the new version","Take a base backup immediately; use a new WAL archive path"]]}],
+src:[["Versioning Policy","https://www.postgresql.org/support/versioning/"],["Upgrading a PostgreSQL Cluster",D+"upgrading.html"],["pg_upgrade",D+"pgupgrade.html"],["Release 18 (migration notes)",D+"release-18.html"],["Logical Replication",D+"logical-replication.html"],["pg_createsubscriber",D+"app-pgcreatesubscriber.html"]]},
+
+/* ---------------------------------------------------------------- 9:4 */
+'pg:9:4':{blocks:[
+{p:"**`pg_upgrade`** (formerly called `pg_migrator`) upgrades the data files of a cluster to a later major version without the dump and restore that is otherwise required. The documentation explains why this works: major releases often change the layout of the **system tables**, but the internal format of **user data** rarely changes, so `pg_upgrade` creates **new system tables and reuses the old user data files**. It supports upgrades from 9.2 and later to the current major release. This lecture is the complete reference: how it works, every option, the five transfer modes, what `--check` verifies, statistics, logical replication objects, generated scripts, troubleshooting and reverting."},
+{code:`pg_upgrade -b oldbindir [-B newbindir] -d oldconfigdir -D newconfigdir [option...]`},
+{note:"The documentation warns that an upgrade makes the destination execute arbitrary code chosen by the superusers of the source cluster. Only upgrade clusters whose superusers you trust."},
+{h:"How it works"},
+{flow:["Compare both clusters (pg_controldata)","Start old server on a private port","Dump global objects and each schema in binary-upgrade mode","Restore the schema into the new cluster","Transfer the user data files","Carry over transaction status and counters","Write post-upgrade scripts","Stop and report"]},
+{ul:["**Checks first.** `pg_upgrade` reads `pg_controldata` of both clusters and refuses to continue unless compile-time and `initdb` settings are compatible: block size, WAL segment size, maximum identifier length, maximum index columns, TOAST chunk size, date/time storage, data checksum setting and others. It also checks the new cluster is empty and the old one was shut down cleanly. It cannot check that external modules are binary compatible: that is your job.","**Schema restore.** Short-lived servers are started on both clusters (by default on port **50432**, so no application connects by accident). The old cluster's global objects and the schema of every database are dumped in a special *binary-upgrade* mode and restored into the new cluster. In this mode object identifiers and file names (relfilenodes) are preserved so that the old files will match the new catalogs. **Any incompatibility makes this step fail**, before data files are touched.","**File transfer.** The user data files are copied, cloned, linked or swapped (next section).","**Counters.** Transaction ID, multixact and OID counters, and the commit status files, are carried over so that old rows remain visible and the cluster is consistent.","**Output.** Working files, logs and schema dumps are kept in `pg_upgrade_output.d` inside the **new** data directory, in a subdirectory named with a timestamp (`%Y%m%dT%H%M%S`). On success this directory is removed automatically (unless you pass `--retain`); on failure it holds the evidence."]},
+{h:"The transfer modes"},
+{svg:modesSvg},
+{t:[["Mode","What happens to the files","Same file system needed?","Old cluster after the upgrade","Typical use"],["`--copy` (default)","Every file is copied","No","Intact; can be restarted","Safe default; needs space for a second copy and time to copy"],["`--copy-file-range`","Uses the `copy_file_range` system call; on some file systems shares blocks like a clone, on others still copies through an optimised path (Linux, FreeBSD)","No","Intact","Faster copy without link risks"],["`--clone`","Reflink clones: near-instant, little extra space, old files stay independent","**Yes** (Linux 4.5+ with Btrfs or XFS created with reflink support; macOS APFS). Errors if unsupported","Intact; can be restarted even after the new cluster has run","Speed of link with safety"],["`--link` (`-k`)","Hard links: no copying, no extra space","**Yes** (tablespaces and `pg_wal` may be on other file systems)","**Shared files**: safe only until the new cluster starts","Large clusters with a short window"],["`--swap`","Old data directories are **moved** into the new cluster and the catalog files replaced","**Yes**","**Destroyed** from the moment the transfer step begins","Fastest with very many relations; use `--sync-method=fsync`"]]},
+{p:"For a **link** upgrade, the documentation offers this advice if you want link speed but do not want the old cluster to change: use clone mode; if it is not available, make a copy of the old cluster and upgrade the copy in link mode. To make a valid copy, run `rsync` to create a dirty copy while the server is running, stop the old server and run `rsync --checksum` again (the checksum is necessary because rsync only has one-second modification-time granularity). You may exclude files such as `postmaster.pid`. File system snapshots or copy-on-write copies of the old cluster and its tablespaces also work, but they must be taken at the same moment or while the server is down."},
+{h:"Option reference"},
+{t:[["Option","Meaning","Environment variable"],["`-b`, `--old-bindir`","Old executable directory","`PGBINOLD`"],["`-B`, `--new-bindir`","New executable directory; default is the directory where `pg_upgrade` resides","`PGBINNEW`"],["`-d`, `--old-datadir`","Old cluster configuration directory","`PGDATAOLD`"],["`-D`, `--new-datadir`","New cluster configuration directory","`PGDATANEW`"],["`-p`, `--old-port`","Old cluster port","`PGPORTOLD`"],["`-P`, `--new-port`","New cluster port","`PGPORTNEW`"],["`-U`, `--username`","The cluster's install user name","`PGUSER`"],["`-s`, `--socketdir`","Directory for the temporary postmaster sockets; default is the current directory. Use a short path if the current one is too long for a socket name, and make sure no other user can read or write it","`PGSOCKETDIR`"],["`-c`, `--check`","Check only; change no data. Works even while the old server runs (then the two ports must differ). Add the transfer-mode option to include mode-specific checks","-"],["`-j`, `--jobs`","Parallel connections, processes or threads; processes several databases and tablespaces at once. A good start is the number of CPU cores","-"],["`-k`, `--link`","Hard links instead of copying","-"],["`--clone`, `--copy`, `--copy-file-range`, `--swap`","The other transfer modes","-"],["`-N`, `--no-sync`","Do not wait for the files to reach disk. Faster, but an OS crash afterwards can corrupt the data directory. **Testing only**","-"],["`--sync-method=fsync|syncfs`","How files are flushed: recursively `fsync` each file (default), or on Linux `syncfs` for the whole file systems (see `recovery_init_sync_method` for caveats). With `--swap`, `fsync` is recommended","-"],["`-o`, `--old-options` and `-O`, `--new-options`","Options passed straight to the old or new `postgres` command; repeat to append","-"],["`-r`, `--retain`","Keep SQL and log files even after success","-"],["`--no-statistics`","Do not restore optimizer statistics from the old cluster (18)","-"],["`--set-char-signedness=signed|unsigned`","Set the default `char` signedness of the new cluster (18); see below","-"],["`-v`, `--verbose`","Verbose internal logging","-"],["`-V`, `--version`  `-?`, `--help`","Version, help","-"]]},
+{h:"What --check looks at"},
+{p:"`--check` reports every problem it can find without changing data and also lists the manual work needed after the upgrade. Run it repeatedly until it passes, with the same mode flag as the real run. The exact list of checks changes between versions, but they fall into these groups:"},
+{t:[["Group","Examples of what is verified","Typical fix"],["**Cluster compatibility**","Versions, `pg_controldata` values, data checksums, encoding and locale of each database, old cluster shut down cleanly, new cluster empty","Recreate the new cluster with matching `initdb` options"],["**Features that cannot be upgraded**","Columns of the `reg*` types `regcollation`, `regconfig`, `regdictionary`, `regnamespace`, `regoper`, `regoperator`, `regproc`, `regprocedure` (`regclass`, `regrole` and `regtype` are fine); obsolete data types; prepared transactions","Alter or drop the columns in the old cluster; `COMMIT PREPARED` or `ROLLBACK PREPARED`"],["**Libraries and extensions**","Shared libraries used by functions and extensions exist in the new installation","Install the matching packages; do **not** run `CREATE EXTENSION` in the new cluster"],["**Environment**","Install user, connection settings, write permission in the current directory, same-file-system rule for link, clone and swap","Run from `/tmp`, fix paths and `pg_hba.conf`"],["**Logical replication objects** (17 and later)","Slots and subscriptions can be migrated (see below)","Meet the prerequisites, or drop and recreate after the upgrade"]]},
+{h:"Statistics (PostgreSQL 18)"},
+{p:"Before 18 every upgrade left the new cluster without optimizer statistics, and the first hours were slow until `ANALYZE` had run. In 18, unless you give `--no-statistics`, `pg_upgrade` **transfers most optimizer statistics** to the new cluster. It does **not** transfer statistics created with `CREATE STATISTICS` (extended statistics), custom statistics added by an extension, or the **cumulative statistics** system (used by autovacuum and `pg_stat_*` views). The end of the run therefore tells you to regenerate them:"},
+{code:`# 1. fast: minimal statistics only for relations that have none
+vacuumdb --all --analyze-in-stages --missing-stats-only --jobs=4
+# 2. make sure every relation has cumulative statistics so autovacuum and autoanalyze trigger correctly
+vacuumdb --all --analyze-only --jobs=4
+# if vacuum_cost_delay is non-zero, speed this up for the one-off run:
+PGOPTIONS='-c vacuum_cost_delay=0' vacuumdb --all --analyze-only --jobs=4`},
+{h:"Default char signedness (PostgreSQL 18)"},
+{p:"In C, plain `char` is signed on x86 and unsigned on ARM. From PostgreSQL 18 a cluster **stores its own default char signedness** so that behaviour stays the same on both platforms. When upgrading from 17 or earlier, `pg_upgrade` adopts the signedness of the platform on which it was built; when upgrading from 18 it preserves the cluster's setting. Use `--set-char-signedness` only in one situation: you have **already moved** the cluster to a platform with the other signedness (for example from x86 to ARM) and must restore the original behaviour; then do not touch the data files between the move and `pg_upgrade`, which must be the first thing that starts the cluster on the new platform. If you plan to move to a different platform **after** the upgrade, do not use the option: upgrade on the original platform first, and migrate afterwards (the documentation's recommended and safest approach)."},
+{h:"Logical replication slots and subscriptions (17 and later)"},
+{p:"Since version 17 `pg_upgrade` can carry **logical replication slots** of a publisher and the **subscription** state of a subscriber across the upgrade, so that logical replication can continue without a new initial copy. The documentation lists prerequisites; in summary:"},
+{t:[["Object","Prerequisites (summary)"],["Logical slots on the old cluster","All transactions and decoding messages have already been **consumed** by the subscribers (nothing left to send); slots are usable (not invalidated); the output plugin library is installed in the new installation; **the new cluster has `wal_level = logical`**, enough `max_replication_slots` and no permanent logical slots of its own"],["Subscriptions on the old cluster","Every table of the subscription is in a state that can be carried over (initialising or ready); the replication origin exists; the new cluster has enough `max_active_replication_origins`"],["Whole replication clusters","All members must be version 17 or later; the documentation gives steps for two-node, cascaded and circular clusters: stop writes, wait until subscribers are caught up, disable subscriptions, upgrade each node in turn, re-enable subscriptions"]]},
+{p:"Physical slots and slots on standbys are **not** carried over by `pg_upgrade`; see the lecture on replicated clusters."},
+{h:"Files that pg_upgrade creates"},
+{t:[["File or directory","Where","Purpose"],["`pg_upgrade_output.d/<timestamp>/`","New data directory","Logs (internal, server, utility) and schema dumps of the run. Removed on success unless `--retain`; the first place to look after a failure"],["`update_extensions.sql`","Current directory","Created if installed extensions have newer versions; run it with `psql` in the databases it names"],["Rebuild or reindex scripts (for example `reindex_hash.sql` when upgrading from very old versions)","Current directory","Created only when indexes or tables need rebuilding. **Do not access the tables they reference until the script has finished**; tables not referenced can be used at once"],["`delete_old_cluster.sh`","Current directory","Deletes the old cluster's data directories. Cannot remove user tablespace directories inside the old data directory"]]},
+{code:`# every generated SQL script is run like this; scripts can run in any order and be deleted afterwards
+psql --username=postgres --file=update_extensions.sql postgres`},
+{h:"Windows notes"},
+{ul:["Log in with an **administrative account** and run `pg_upgrade.exe` with quoted directories.","Stop both services by their service names (`NET STOP postgresql-17`, `NET STOP postgresql-18`).","Use forward slashes in paths as shown in the documentation: `--old-datadir \"C:/Program Files/PostgreSQL/17/data\"`."]},
+{h:"Putting it together: a scripted run"},
+{code:`#!/bin/bash
+# upgrade17to18.sh  (run as postgres from /tmp; abort on first error)
+set -euo pipefail
+OLDBIN=/usr/pgsql-17/bin;  NEWBIN=/usr/pgsql-18/bin
+OLDDATA=/var/lib/pgsql/17/data;  NEWDATA=/var/lib/pgsql/18/data
+OPTS="-b $OLDBIN -B $NEWBIN -d $OLDDATA -D $NEWDATA --jobs=8 --link"
+
+cd /tmp
+$NEWBIN/pg_upgrade $OPTS --check                    # stop here if this fails
+read -p "Applications stopped and backup verified? (yes/no) " ans; [ "$ans" = yes ]
+$OLDBIN/pg_ctl -D $OLDDATA stop -m fast             # also guarantees a clean shutdown
+$NEWBIN/pg_upgrade $OPTS
+$NEWBIN/pg_ctl -D $NEWDATA -l /tmp/pg18.log start
+$NEWBIN/vacuumdb --all --analyze-in-stages --missing-stats-only --jobs=8
+$NEWBIN/vacuumdb --all --analyze-only --jobs=8`},
+{h:"Performance"},
+{ul:["The cost of the schema restore grows with the **number of objects** (tables, indexes, functions), not with the size of the data. A cluster with a million tables can need hours even in link mode: use `--jobs` and consider `--swap`.","`--jobs` parallelises across databases and tablespaces; a single huge database gains little.","The final synchronisation to disk takes time in copy mode. `--no-sync` removes it but is for testing only; `--sync-method=syncfs` can help on Linux but flushes whole file systems.","Place the new data directory on the **same file system** as the old one if you intend to use link, clone or swap."]},
+{h:"Troubleshooting"},
+{p:"Messages differ slightly between versions; the cause groups below are stable. Always read the log files in `pg_upgrade_output.d` first."},
+{t:[["Symptom","Cause","Fix"],["Checksum settings of the clusters differ","18 `initdb` enables checksums by default","`initdb --no-data-checksums` for the new cluster, or `pg_checksums --enable` on the stopped old cluster"],["`could not load library ...`","Extension library missing from the new installation","Install the package for version 18; never run `CREATE EXTENSION` in the new cluster"],["Your installation contains `reg*` data types","A column of an unsupported `reg*` type","`ALTER TABLE ... ALTER COLUMN ... TYPE` (for example to `text`) in the old cluster"],["The new cluster is not empty","`initdb` was followed by manual changes or a started server","Recreate the new cluster with `initdb` and do not start it"],["The source cluster was not shut down cleanly","Crash or `immediate` shutdown","Start the old server, let it recover, stop with `-m fast`"],["Prepared transactions found","Open two-phase transactions","`COMMIT PREPARED` or `ROLLBACK PREPARED`"],["Permission denied when creating files","Current directory not writable","`cd /tmp` and run from there"],["Socket path too long","Deep current directory","`--socketdir=/tmp` or another short, private directory"],["Link, clone or swap fails: not on the same file system","Old and new data directories on different mounts","Put both under one mount, or use `--copy`"],["Schema restore fails","Incompatible object, invalid extension, bad dependency","Read `pg_upgrade_output.d`; fix **in the old cluster**; revert as described below; run `--check` again"]]},
+{h:"Reverting after a failure"},
+{t:[["Situation","Old cluster usable?"],["`--check` only, or no `--link` and no `--swap` used","Yes, it was not modified; restart it"],["`--link`, failure **before** linking began","Yes"],["`--link`, finished, new cluster **not started**","Yes, after removing the `.old` suffix from `$PGDATA/global/pg_control`"],["`--link`, new cluster **started**","No: the files are shared and 18 has written to them. Restore from backup"],["`--swap`, before `pg_upgrade` reports that the old cluster is no longer safe to start","Yes"],["`--swap`, after that report","No: restore from backup"]]}],
+src:[["pg_upgrade",D+"pgupgrade.html"],["Upgrading a PostgreSQL Cluster",D+"upgrading.html"],["Upgrade (logical replication clusters)",D+"logical-replication-upgrade.html"],["vacuumdb",D+"app-vacuumdb.html"],["pg_controldata",D+"app-pgcontroldata.html"],["pg_checksums",D+"app-pgchecksums.html"],["initdb",D+"app-initdb.html"]]},
+
+/* ---------------------------------------------------------------- 9:5 */
+'pg:9:5':{blocks:[
+{p:"A standby is a **byte-for-byte physical copy** of its primary, and WAL is specific to a major version. When the primary is upgraded with `pg_upgrade`, the new cluster has new catalogs, a new **system identifier** and a fresh WAL history, so the old standbys can no longer follow it and `pg_upgrade` is **not** run on them. This lecture shows what to do with the standbys (rebuild them, or use the documented `rsync` shortcut), how to keep the HA gap short, and how to apply **minor** updates to a replicated cluster without downtime."},
+{h:"What the documentation offers"},
+{t:[["Option","Summary","Time","When"],["**A. Rebuild the standbys**","After `pg_upgrade` finishes and the new primary is running, create each standby again with `pg_basebackup` from the **new** primary","Base-backup time per standby","Default choice; always works; the only choice if you did not use link mode"],["**B. `rsync` method**","In link mode, `rsync` on the primary re-creates the hard-link structure on each standby so most files need no transfer","Minutes (only small files are copied)","Link mode, large clusters, short HA gap, you accept a more delicate procedure"],["**C. Logical replication**","The new-version cluster is built beside the old one and fed logically; standbys of the new cluster are created from it","No downtime on the old cluster","Near-zero-downtime upgrades (next lecture)"]]},
+{note:"The documentation says: if you did not use link mode, do not have or do not want to use rsync, or want an easier solution, skip the rsync steps and simply recreate the standby servers once pg_upgrade completes and the new primary is running."},
+{h:"Option A: rebuild the standbys"},
+{flow:["Upgrade the primary with pg_upgrade","Start the new primary","Install 18 binaries on each standby","Delete the old standby data directory","pg_basebackup from the new primary","Start the standby, verify streaming","Re-enable archiving and backups"]},
+{code:`# 1. on the primary: upgrade as in the previous lectures, start it, restore pg_hba.conf, enable the replication role again
+# 2. ensure a slot exists for the standby on the NEW primary (physical slots are not carried over by pg_upgrade)
+psql -c "SELECT pg_create_physical_replication_slot('standby1_slot');"
+
+# 3. on each standby
+sudo systemctl stop postgresql-17 && sudo systemctl disable postgresql-17
+sudo dnf install -y postgresql18-server postgresql18-contrib    # plus every extension package
+sudo rm -rf /var/lib/pgsql/18/data && sudo install -d -o postgres -g postgres -m 0700 /var/lib/pgsql/18/data
+sudo -u postgres pg_basebackup -h pg-primary -U replicator -D /var/lib/pgsql/18/data -X stream -R -S standby1_slot -c fast -P
+# add application_name to primary_conninfo, restore any standby-specific settings, then:
+sudo systemctl enable --now postgresql-18`},
+{ul:["**The HA gap:** between the moment the old standby is stopped and the moment the new one has caught up, the new primary has **no standby**. Plan for it: keep the old standbys running on version 17 as a *rollback* option if you used copy or clone mode, or create the standbys on **new hosts** while the old ones still exist.","Run `pg_basebackup` with `-c fast` and, for big clusters, from a **nearby standby** or a backup tool to spare the primary (Section 09).","After the rebuild, **take a new base backup** and point WAL archiving at a **new location**: WAL of version 17 and of version 18 must never share an archive."]},
+{h:"Option B: the rsync method (link mode only)"},
+{p:"In link mode, `pg_upgrade` makes the new cluster's files **hard links** to the old cluster's files. The documentation uses this to upgrade standbys quickly: `rsync` runs **on the primary**, reads the link structure there, finds the matching files in the standby's **old** cluster and creates links for them in the standby's **new** cluster. Files that were not linked on the primary (they are usually small, such as the new catalogs) are copied from the primary. You do **not** run `pg_upgrade` on the standby, and you do not need `pg_backup_start()` or a base backup, because the standbys are still synchronised with the primary."},
+{svg:upgSvg},
+{h:"Preconditions"},
+{t:[["Condition","How to check"],["The upgrade used `--link`","The standbys' old data directory must contain the same files that were hard-linked on the primary"],["The standbys were **running and caught up** while the primary was shut down","The primary's shutdown checkpoint must have reached every standby. A `fast` shutdown of the primary waits for connected walsenders to send the shutdown checkpoint (Section 03, Shutdown Modes)"],["Latest checkpoint locations match","Run `pg_controldata` on the old primary and on each old standby (all stopped) and compare the line *Latest checkpoint location*; they must be identical"],["`wal_level` is not `minimal` in the new primary's `postgresql.conf`","Standbys cannot replay `minimal` WAL"],["Same **directory structure** under the compared directories on primary and standby","`rsync` matches by path, so paths must correspond"],["New 18 binaries and all extension libraries installed on each standby","Same as on the primary"],["New standby data directories do **not** exist or are empty","Delete them if `initdb` was run there"]]},
+{code:`# all four servers stopped here. Compare the checkpoints (run as postgres)
+/usr/pgsql-17/bin/pg_controldata /var/lib/pgsql/17/data | grep "Latest checkpoint location"     # on the old primary
+/usr/pgsql-17/bin/pg_controldata /var/lib/pgsql/17/data | grep "Latest checkpoint location"     # on each standby: same value`},
+{h:"Procedure"},
+{flow:["Install 18 binaries and extensions on standbys","Make sure new standby data directories are absent or empty","Stop the standbys (after the primary has stopped)","Save the standbys' configuration files","Run pg_upgrade --link on the primary","Run rsync from the primary for each standby (and tablespaces)","Configure the standbys for streaming","Restore config, start the primary, then the standbys"]},
+{code:`# 1. on each standby, save what you need: postgresql.conf (and files it includes), postgresql.auto.conf, pg_hba.conf
+sudo -u postgres cp -a /var/lib/pgsql/17/data/{postgresql.conf,postgresql.auto.conf,pg_hba.conf} /root/standby-conf-backup/
+
+# 2. on the PRIMARY: pg_upgrade --link (previous lecture), do NOT start the new primary yet
+
+# 3. on the PRIMARY, from a directory ABOVE the old and new cluster directories (here /var/lib/pgsql):
+cd /var/lib/pgsql
+# preview with --dry-run first
+rsync --archive --delete --hard-links --size-only --no-inc-recursive --dry-run 17 18 pg-standby:/var/lib/pgsql
+rsync --archive --delete --hard-links --size-only --no-inc-recursive 17 18 pg-standby:/var/lib/pgsql
+
+# 4. one more rsync per tablespace directory, and for pg_wal if it was relocated:
+rsync --archive --delete --hard-links --size-only --no-inc-recursive /vol1/pg_tblsp/PG_17_202406281 /vol1/pg_tblsp/PG_18_202506231 pg-standby:/vol1/pg_tblsp`},
+{p:"The syntax is `rsync --archive --delete --hard-links --size-only --no-inc-recursive old_cluster new_cluster remote_dir`, where `old_cluster` and `new_cluster` are relative to the current directory on the primary and `remote_dir` is the directory **above** them on the standby. It is also possible to run `rsync` from an **already upgraded standby** (that has not been started) to upgrade other standbys. The documented caveat is that `rsync` needlessly copies the files of temporary and unlogged tables, because these do not normally exist on standbys."},
+{code:`# 5. configure each standby again (nothing needs pg_backup_start or a new base backup)
+sudo -u postgres touch /var/lib/pgsql/18/data/standby.signal
+# restore primary_conninfo / primary_slot_name / hot_standby settings in postgresql.auto.conf or postgresql.conf
+# slots: if the OLD primary was 17 or later, only its LOGICAL slots reach the new primary; recreate every PHYSICAL slot by hand
+psql -h pg-primary -c "SELECT pg_create_physical_replication_slot('standby1_slot');"
+
+# 6. restore pg_hba.conf, start the primary, then the standbys
+sudo systemctl start postgresql-18       # on the primary first
+sudo systemctl start postgresql-18       # then on each standby`},
+{note:"If the old primary was before version 17, **no** slots are copied to the new primary, so all slots must be recreated manually. From 17 on, only logical slots travel."},
+{h:"Option A or B?"},
+{t:[["Criterion","A: rebuild","B: rsync"],["Complexity","Low: repeat the standby-creation lab","Higher: ordering, preconditions and path rules"],["Time on large clusters","Hours (full copy over the network)","Minutes"],["Works without link mode","Yes","No"],["Risk of silent mistakes","Very low","Higher: `--size-only` assumes equal size means equal content, which is why the checkpoint comparison matters"],["Testing recommended","Once","**Rehearse it** at least once with the real volumes"],["Rollback","Old standbys can stay on 17 if you keep them (copy or clone mode)","None after the new cluster has started (link mode)"]]},
+{h:"After a major upgrade of a replicated cluster"},
+{t:[["Task","Detail"],["Standbys streaming","`SELECT application_name, state, sync_state FROM pg_stat_replication;`"],["`synchronous_standby_names`","Check it is still set (the configuration comes from the old files); until a sync standby reconnects, commits that need it **wait**"],["Slots","Recreated and `active`; delete slots of removed standbys"],["Statistics","`vacuumdb --all --analyze-in-stages --missing-stats-only` and `--analyze-only` on the primary; the statistics reach standbys through WAL"],["WAL archive and backups","New archive location, new base backup, restore test on 18 (Section 09)"],["Monitoring and failover manager","Update version-specific paths, service names and configuration (Patroni, repmgr, pgBackRest stanza upgrade)"],["Old cluster","Delete with `delete_old_cluster.sh` only when no rollback is wanted"]]},
+{h:"Rolling minor updates"},
+{p:"Because minor releases are compatible both ways with the same major version, a replicated cluster can be updated **one node at a time with no application downtime** beyond a short switchover. The documentation recommends updating the **standbys first**, because a standby with the newer code is more likely to understand WAL from an older primary than the other way round."},
+{svg:rollSvg},
+{t:[["Step","Action","Check before moving on"],["0","Read the release notes; confirm replication is healthy and lag is low","`pg_stat_replication`: all `streaming`; `replay_lag` small; slots active"],["1","Standby 2 (asynchronous, least critical): update packages, restart","`pg_is_in_recovery()` is `t`; `pg_stat_wal_receiver` shows `streaming`; lag falls back to near zero"],["2","Standby 1: same. **If it is the only synchronous standby**, commits on the primary wait while it is down: use quorum (`ANY 1 (s1, s2)`) beforehand, or accept lower durability for the window (see below)","As step 1"],["3","Switchover to an updated standby (Failover lecture): the old primary becomes a standby","Applications reconnect; new primary writes; the old primary has rejoined (rewind not needed after a clean switchover)"],["4","Update and restart the former primary","Streaming again; lag zero"],["5","Optionally switch back; post-checks","Monitoring clean; `SELECT version();` on all nodes"]]},
+{code:`# per node (RHEL family)
+sudo dnf update -y 'postgresql18*'
+sudo systemctl restart postgresql-18
+psql -c "SELECT pg_is_in_recovery(), version();"
+# on the primary: wait until the standby is back and caught up
+psql -c "SELECT application_name, state, sync_state, replay_lag FROM pg_stat_replication;"
+
+# if exactly ONE synchronous standby must be taken down and you accept reduced durability for a few minutes
+psql -c "ALTER SYSTEM SET synchronous_standby_names = '';" -c "SELECT pg_reload_conf();"
+# ... update and restart that standby, wait for streaming ...
+psql -c "ALTER SYSTEM SET synchronous_standby_names = 'FIRST 1 (standby1, standby2)';" -c "SELECT pg_reload_conf();"`},
+{t:[["Topology","Order for a minor update"],["Primary + 1 standby","Standby, switchover, old primary (or accept a short restart of the primary instead of switching)"],["Primary + several standbys","All standbys one by one (never more than your quorum allows to be down), switchover, old primary"],["Cascading standbys","Most downstream first, working upward; the primary last"],["Primary with a delayed standby","Update the delayed standby too, but do not count it as failover capacity"]]},
+{h:"What can go wrong"},
+{t:[["Symptom","Cause","Action"],["Standby does not start after the upgrade: *hot standby is not possible because of insufficient parameter settings*","A parameter is lower than the primary's","Raise it on the standby (the message names it)"],["Standby cannot connect: *no pg_hba.conf entry for replication connection*","`pg_hba.conf` of the new primary was not restored","Restore the `replication` line, reload"],["Standby reports *requested WAL segment ... has already been removed*","No slot on the new primary, or the standby was away too long","Create the slot; rebuild the standby (Option A)"],["Standby streams but data looks old","Standby is still the version-17 cluster started by mistake on the old port","Check `SELECT version();` and the port; stop the old service"],["Commits hang on the primary after the upgrade","`synchronous_standby_names` is set and no sync standby has connected yet","Start the standby or temporarily clear the setting (accepting the risk)"],["rsync copies far more than expected","The standby's old directory differs from the primary's old directory","Re-check the checkpoint comparison and directory layout; fall back to Option A"]]}],
+src:[["pg_upgrade (Upgrade streaming replication and log-shipping standby servers)",D+"pgupgrade.html"],["26.2 Log-Shipping Standby Servers",D+"warm-standby.html"],["Upgrading a PostgreSQL Cluster (minor releases)",D+"upgrading.html"],["pg_basebackup",D+"app-pgbasebackup.html"],["pg_controldata",D+"app-pgcontroldata.html"]]},
+
+/* ---------------------------------------------------------------- 9:6 */
+'pg:9:6':{blocks:[
+{p:"**Logical replication** copies **data changes** (inserts, updates, deletes and truncates) of selected tables from one PostgreSQL server to another, using a **publish and subscribe** model. Unlike physical replication it is not a binary copy of the cluster: the changes are decoded from WAL into row-level operations and applied by ordinary SQL-level machinery on the receiving side. The two servers may therefore have **different major versions**, different operating systems, extra tables and indexes, and the subscriber stays writable. This is what makes logical replication the standard tool for **near-zero-downtime major upgrades**, data distribution and consolidation."},
+{svg:logSvg},
+{flow:["Change committed on the publisher","WAL is decoded by the pgoutput plugin","walsender sends the decoded changes","Apply worker on the subscriber writes the rows","Subscriber commits in the same order"]},
+{h:"Physical and logical replication compared"},
+{t:[["","Physical (streaming)","Logical"],["What travels","WAL records of the whole cluster","Decoded row changes of chosen tables"],["Granularity","Whole cluster","Per table, per publication, with row filters and column lists"],["Versions","Same major version","Different major versions allowed"],["Standby / subscriber writable","Read-only (hot standby)","**Read-write**; may have other tables, indexes and triggers"],["DDL","Replayed automatically (it is WAL)","**Not replicated**: apply the same DDL on both sides"],["Sequences","Replayed automatically","**Values not replicated**"],["Typical use","High availability, disaster recovery, read replicas","Upgrades, migrations, partial copies, data integration"],["Failover target","Yes","Not normally (separate databases; see failover slots)"]]},
+{h:"Vocabulary"},
+{t:[["Term","Meaning"],["**Publisher** and **subscriber**","The server that sends the changes, and the server that applies them. A server can be both"],["**Publication**","A set of tables (or a whole schema, or all tables) and the operations to publish. Created with `CREATE PUBLICATION` on the publisher"],["**Subscription**","The connection from a subscriber to one publisher and the publications it uses. Created with `CREATE SUBSCRIPTION`"],["**Replication slot**","A **logical** slot on the publisher that remembers what the subscriber has confirmed. It keeps WAL until then"],["**Replica identity**","How an updated or deleted row is identified: primary key by default, or a unique index, or the full row"],["**Apply worker**","A background process on the subscriber that applies the changes of one subscription"],["**Table synchronisation worker**","Copies the initial contents of a table, then catches up"],["**Parallel apply worker**","Applies large in-progress transactions in parallel when `streaming = parallel`"],["**Replication origin**","Subscriber-side bookkeeping of how far each subscription has applied the remote WAL"]]},
+{h:"Configuration"},
+{t:[["Parameter","Server","Default (18)","Meaning"],["`wal_level`","Publisher","`replica`","Must be **`logical`**; changing it needs a restart"],["`max_replication_slots`","Publisher","`10`","One logical slot per subscription (plus slots for table synchronisation while they run)"],["`max_wal_senders`","Publisher","`10`","One walsender per subscription"],["`max_active_replication_origins`","Subscriber","`10`","At least the number of subscriptions plus a reserve for table synchronisation. Restart needed"],["`max_logical_replication_workers`","Subscriber","`4`","Pool for apply, parallel apply and table synchronisation workers; taken from `max_worker_processes`. Restart needed"],["`max_sync_workers_per_subscription`","Subscriber","`2`","Parallelism of the initial copy (one worker per table)"],["`max_parallel_apply_workers_per_subscription`","Subscriber","`2`","Parallel apply for streamed in-progress transactions"],["`max_worker_processes`","Subscriber","`8`","Must be large enough for all of the above plus other workers"],["`wal_sender_timeout`, `wal_receiver_timeout`","Both","`60s`","Detect a dead peer; raise for slow networks with large transactions"]]},
+{h:"Roles, authentication and security"},
+{ul:["The role used in the **subscription's connection string** needs the `REPLICATION` attribute (or superuser) and `SELECT` on the published tables (for the initial copy). Make a dedicated role, do not use `postgres`.","In `pg_hba.conf` a logical replication connection names a **real database** (the one being replicated), not the keyword `replication`; allow the subscriber's address with SCRAM and, if possible, TLS (Section 07).","Creating a subscription requires superuser, or membership of the predefined role **`pg_create_subscription`** plus `CREATE` on the database. The apply worker runs with the privileges of the subscription owner (unless `run_as_owner` is set), so the owner needs rights on the target tables.","`password_required = true` (the default) forces non-superuser subscription owners to use password authentication; leave it on.","The connection string, including a password, is stored in the subscriber's catalog and visible to superusers: prefer a `.pgpass` file or certificates for the replication role."]},
+{h:"A first example: publish one table"},
+{code:`-- PUBLISHER (version 17), as a superuser
+ALTER SYSTEM SET wal_level = logical;      -- then restart PostgreSQL
+CREATE ROLE logrepl WITH LOGIN REPLICATION PASSWORD 'ChangeMe';
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO logrepl;
+CREATE PUBLICATION orders_pub FOR TABLE public.orders, public.order_items;
+
+-- the schema is NOT replicated: create the same tables on the subscriber first
+pg_dump -h publisher -s -t public.orders -t public.order_items appdb | psql -h subscriber appdb
+
+-- SUBSCRIBER (version 18)
+CREATE SUBSCRIPTION orders_sub
+  CONNECTION 'host=publisher port=5432 dbname=appdb user=logrepl sslmode=require'
+  PUBLICATION orders_pub;               -- copy_data = true by default: initial copy, then streaming`},
+{p:"`CREATE SUBSCRIPTION` connects to the publisher, **creates a logical slot named after the subscription**, starts table synchronisation workers that copy each table, and then lets the apply worker stream changes that happened during the copy and afterwards."},
+{h:"Publications in detail"},
+{code:`CREATE PUBLICATION p_all    FOR ALL TABLES;                                 -- needs superuser; includes future tables
+CREATE PUBLICATION p_schema FOR TABLES IN SCHEMA sales, hr;                 -- all tables of schemas, including future ones
+CREATE PUBLICATION p_some   FOR TABLE customers, orders WITH (publish = 'insert, update');   -- choose the operations
+CREATE PUBLICATION p_filter FOR TABLE orders (id, customer_id, total) WHERE (region = 'EU'); -- column list and row filter
+ALTER PUBLICATION p_some ADD TABLE invoices;                                -- then ALTER SUBSCRIPTION ... REFRESH PUBLICATION on the subscriber`},
+{t:[["Feature","Detail"],["`publish`","Any of `insert`, `update`, `delete`, `truncate`; default is all four"],["**Row filter** (`WHERE`)","Publishes only rows that satisfy the condition. For `UPDATE` and `DELETE` the filter columns must be part of the replica identity"],["**Column list**","Publishes only the listed columns; the subscriber's table needs those columns"],["`publish_via_partition_root`","Publish changes of partitions under the **partitioned table's** name, so the subscriber may partition differently"],["`publish_generated_columns` (18)","Controls whether stored generated columns are published"],["Cost","Row filters and column lists are evaluated on the publisher; many subscriptions with different filters increase decoding work"]]},
+{h:"Replica identity: the rule that stops UPDATE and DELETE"},
+{p:"To apply an `UPDATE` or `DELETE`, the subscriber must find the row. The publisher therefore sends the **old key** of the row, defined by the table's **replica identity**: the primary key by default. A table without a primary key can be added to a publication that publishes only inserts, but once `UPDATE` or `DELETE` happens on a table that publishes them and has no replica identity, the operation **fails on the publisher** with an error saying the table does not have a replica identity."},
+{code:`-- tables that will be a problem: no primary key and no replica identity
+SELECT n.nspname, c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind = 'r' AND n.nspname NOT IN ('pg_catalog','information_schema')
+  AND c.relreplident = 'd' AND NOT EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid = c.oid AND i.indisprimary);
+
+ALTER TABLE audit_log REPLICA IDENTITY USING INDEX audit_log_uq;   -- a unique, non-null, non-partial index
+ALTER TABLE legacy_t   REPLICA IDENTITY FULL;                      -- last resort: compare every column (slow, big WAL)`},
+{h:"What is and is not replicated"},
+{t:[["Replicated","Not replicated (handle yourself)"],["`INSERT`, `UPDATE`, `DELETE`; `TRUNCATE` if published","**DDL**: `CREATE`, `ALTER`, `DROP` of tables, indexes, functions, roles"],["Ordinary tables; partitioned tables (with the right options)","**Sequence values**: copy them at cut-over"],["Data of the columns that exist on both sides (names must match; types must be compatible, order may differ; the subscriber may have extra columns with defaults)","Large objects, views, materialized views, foreign tables, **roles and privileges**, extensions"],["Transactions are applied in commit order per subscription","Changes made on the subscriber (it is not read-only, so keep it from diverging)"]]},
+{h:"Subscription options"},
+{t:[["Option","Meaning"],["`copy_data` (default `true`)","Copy existing data when the subscription is created or when tables are added. Use `false` if the data was loaded another way"],["`create_slot`, `slot_name`","Create the slot (default) or use an existing one; the slot name defaults to the subscription name"],["`enabled`, `connect`","Start streaming immediately, or create the subscription disabled or without connecting"],["`streaming`","`off`, `on` or `parallel`: how large in-progress transactions are sent and applied (`parallel` uses parallel apply workers). Check the default for your version on the `CREATE SUBSCRIPTION` page"],["`synchronous_commit`","Commit mode of the apply worker. Use `off` for performance when losing the last applied transactions on a subscriber crash is acceptable, because they would be re-sent"],["`two_phase`","Replicate prepared transactions at `PREPARE` time"],["`binary`","Binary transfer instead of text where types allow it"],["`origin` (`any` or `none`)","With `none`, changes that came from another subscription are not forwarded; used to avoid loops in bidirectional setups"],["`failover` (17)","Allow the slot to be synchronised to physical standbys so the subscription survives a failover"],["`disable_on_error`","Disable the subscription instead of retrying when an apply error occurs"],["`password_required`, `run_as_owner`","Security options described above"]]},
+{h:"Initial synchronisation and table states"},
+{p:"Each table of a subscription passes through states recorded in the subscriber's `pg_subscription_rel`. A subscription is fully running when all tables are in state `r`."},
+{t:[["State","Meaning"],["`i`","Initialise: waiting for a synchronisation worker"],["`d`","Data is being copied"],["`f`","Copy finished"],["`s`","Synchronised: caught up to the apply worker, handing over"],["`r`","Ready: normal replication"]]},
+{code:`-- SUBSCRIBER: progress of the initial copy
+SELECT srsubid::regclass, srrelid::regclass AS tbl, srsubstate FROM pg_subscription_rel ORDER BY srsubstate, tbl;
+SELECT subname, pid, received_lsn, latest_end_lsn, last_msg_send_time, last_msg_receipt_time FROM pg_stat_subscription;`},
+{h:"Conflicts"},
+{p:"Because the subscriber is writable, applied changes can **conflict** with local data: a row to insert already exists (unique violation), a row to update or delete is missing, or an update changes a row that was last modified by another origin. The default behaviour is that the **apply worker raises an error and retries** until the cause is removed, so replication stops at that transaction while WAL accumulates on the publisher."},
+{t:[["Conflict type","Typical cause","Resolution"],["`insert_exists`, `update_exists`","Local row with the same unique key","Delete or change the local row; or skip the transaction"],["`update_missing`, `delete_missing`","Row removed or never copied","Usually ignored by PostgreSQL (nothing to do); investigate if unexpected"],["`update_origin_differs`, `delete_origin_differs`","Row last changed by a different origin","Information only; indicates multi-writer design"]]},
+{code:`-- find the failing transaction in the subscriber's log: it names the remote transaction finish LSN
+ALTER SUBSCRIPTION orders_sub SKIP (lsn = '0/1A2B3C4D');      -- skip exactly that transaction (superuser); data is lost on purpose
+ALTER SUBSCRIPTION orders_sub SET (disable_on_error = true);   -- stop retrying and wait for a human
+
+-- from PostgreSQL 18 conflicts are logged with details and counted per subscription
+SELECT subname, apply_error_count, sync_error_count FROM pg_stat_subscription_stats;`},
+{h:"Monitoring"},
+{code:`-- PUBLISHER: one walsender and one logical slot per subscription
+SELECT application_name, state, sent_lsn, replay_lsn, replay_lag FROM pg_stat_replication;
+SELECT slot_name, plugin, active, restart_lsn, confirmed_flush_lsn, wal_status,
+       pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)) AS behind
+FROM pg_replication_slots WHERE slot_type = 'logical';
+SELECT * FROM pg_stat_replication_slots;                        -- spill and streaming counters of logical decoding
+
+-- SUBSCRIBER
+SELECT subname, subenabled, subslotname FROM pg_subscription;
+SELECT * FROM pg_stat_subscription;
+SELECT * FROM pg_stat_subscription_stats;`},
+{note:"A subscription that is disabled, stuck on a conflict or dropped without removing its slot leaves a **logical slot on the publisher that holds back WAL**. Monitor `pg_replication_slots` as described in the Replication Slots lecture."},
+{h:"Limits and restrictions"},
+{ul:["Schema, DDL and sequence values are not replicated; plan a **DDL freeze** during a migration.","UPDATE and DELETE need a replica identity; `TRUNCATE` is replicated only if published, and cascades need all related tables published.","Large objects, materialized views, foreign tables and views cannot be published.","Subscriptions do **not** protect against subscriber-side divergence; the two sides can silently differ if applications write to both.","The initial copy puts load on the publisher; the slot keeps WAL for the whole copy period.","Logical replication is not a failover mechanism by itself; combine it with physical standbys on each side for HA."]},
+{h:"Near-zero-downtime major upgrade with logical replication"},
+{p:"The idea: build a new cluster of the target version **beside** the running one, keep it synchronised, and then move the applications in a short cut-over. The documentation lists logical replication as one of the three supported ways to migrate to a new major version."},
+{flow:["Prepare the new 18 cluster","Set wal_level = logical on the old cluster","Copy roles and the schema","Create publication and subscription","Wait until all tables are ready and lag is near zero","Freeze writes and let lag reach zero","Copy sequence values","Switch applications, drop the subscription"]},
+{code:`# 1. OLD cluster (17): wal_level = logical (restart once), check primary keys (query above), then
+psql -d appdb -c "CREATE PUBLICATION upg_pub FOR ALL TABLES;"
+
+# 2. NEW cluster (18): initdb, same locale/encoding unless you deliberately change them, install extensions, then bring over the definitions
+pg_dumpall -h old-host --globals-only | psql -h new-host -d postgres          # roles (and tablespaces) are not part of any database dump
+psql -h new-host -d postgres -c "CREATE DATABASE appdb;"
+pg_dump -h old-host -d appdb --schema-only | psql -h new-host -d appdb         # tables, indexes, functions: but not data
+
+# 3. NEW cluster: create the subscription (initial copy starts at once)
+psql -h new-host -d appdb -c "CREATE SUBSCRIPTION upg_sub CONNECTION 'host=old-host dbname=appdb user=logrepl sslmode=require' PUBLICATION upg_pub;"
+
+# 4. wait: every table in state r, and the apply lag small
+psql -h new-host -d appdb -c "SELECT count(*) FILTER (WHERE srsubstate <> 'r') AS not_ready FROM pg_subscription_rel;"`},
+{p:"While the copy runs, test the new cluster with read-only application checks. After the initial copy, run `vacuumdb --all --analyze-in-stages` on the new cluster: **statistics are not replicated**. Then perform the **cut-over**:"},
+{code:`-- 5. CUT-OVER (this is the downtime): stop writers on the OLD cluster
+ALTER DATABASE appdb SET default_transaction_read_only = on;                    -- new sessions are read-only
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'appdb' AND pid <> pg_backend_pid();
+
+-- 6. wait until the subscriber has applied everything the publisher has written
+SELECT pg_current_wal_lsn();                                   -- on OLD: note the value
+SELECT received_lsn, latest_end_lsn FROM pg_stat_subscription; -- on NEW: latest_end_lsn must reach it
+
+-- 7. copy sequence values: generate statements on OLD, run them on NEW (add a safety margin if writers could still be active)
+SELECT format('SELECT setval(%L, %s, true);', schemaname || '.' || sequencename, last_value)
+FROM pg_sequences WHERE last_value IS NOT NULL;
+
+-- 8. switch applications to the new server (DNS, pooler, connection string), then remove the link
+ALTER SUBSCRIPTION upg_sub DISABLE;
+ALTER SUBSCRIPTION upg_sub SET (slot_name = NONE);   -- only if the old server is already gone; otherwise skip this line
+DROP SUBSCRIPTION upg_sub;                           -- also drops the slot on the old server when it is reachable`},
+{ul:["Downtime is only steps 5 to 8: usually seconds to a couple of minutes, plus the time your pooler or DNS needs.","Keep the **old cluster** as a fallback until the new one has been in production for the agreed period. For an easier return, set up **reverse** replication (new to old) before opening the new cluster to writes, with `origin = none` to avoid loops.","Run `ANALYZE` and take a fresh backup of the new cluster; recreate standbys for the new primary (Option A of the previous lecture)."]},
+{h:"A faster path for very large databases: pg_createsubscriber"},
+{p:"When the initial table copy would take days, **`pg_createsubscriber`** (PostgreSQL 17 and later) converts an existing **physical standby** into a logical subscriber **without copying the data again**. The documentation explains: it creates a publication (`FOR ALL TABLES`) and a replication slot per database on the source, restarts the standby with a recovery target at the slot's LSN so that it stops exactly at the replication start point, promotes it, creates a subscription on it that starts from that point, and finally changes the system identifier with `pg_resetwal`."},
+{flow:["Streaming standby of the same version","Run pg_createsubscriber on the standby","Standby becomes a logical replica","pg_upgrade the replica to 18","Re-enable subscriptions and catch up","Cut over to the 18 server"]},
+{code:`# on the standby (target): same major version as the tool and the standby must be STOPPED (the tool starts it itself and refuses to run if it is already running); preview first
+pg_createsubscriber -D /var/lib/pgsql/17/data -P "host=pg-primary port=5432 user=postgres dbname=appdb" -d appdb --dry-run
+pg_createsubscriber -D /var/lib/pgsql/17/data -P "host=pg-primary port=5432 user=postgres dbname=appdb" -d appdb --publication=upg_pub --subscription=upg_sub --replication-slot=upg_slot --verbose
+# --all creates one subscription per database (18); --clean (18) drops other publications; -T enables two_phase; -t sets a recovery timeout`},
+{t:[["Prerequisite","Detail"],["Versions","Source, target and the tool must have the **same major version**; the target must have the same system identifier as the source (it is a copy)"],["Target","Must be used as a physical standby; `max_active_replication_origins` and `max_logical_replication_workers` at least the number of databases; `max_worker_processes` greater than that number; accepts local connections"],["Source","`wal_level = logical`; `max_replication_slots` at least the databases plus existing slots; `max_wal_senders` likewise; **not in recovery**; `max_slot_wal_keep_size = -1` so that required WAL is not removed"],["Privileges","The target user can create subscriptions and use `pg_replication_origin_advance()`"],["Cautions","Avoid DDL while it runs; a synchronous standby target makes commits on the primary wait; two-phase is disabled unless `--enable-two-phase`; the standby's own downstream standbys break (system identifier change); a failure **after** promotion usually means the replica must be rebuilt"]]},
+{p:"After the conversion the target is a normal logical subscriber of the same version. Upgrade it with `pg_upgrade`: since version 17 `pg_upgrade` carries the subscription state across (see the pg_upgrade reference), so you can resume replication on version 18 without a new copy, and cut over when it has caught up."},
+{h:"Troubleshooting"},
+{t:[["Symptom","Likely cause","Fix"],["`CREATE SUBSCRIPTION` hangs or fails to create the slot","Publisher has no free `max_replication_slots` or `max_wal_senders`; wrong `wal_level`","Raise limits (restart); set `wal_level = logical`"],["`logical decoding requires wal_level >= logical`","`wal_level` not `logical` on the publisher","Set it and restart"],["`no pg_hba.conf entry` for the logical connection","Rule uses the keyword `replication` instead of the database name","Add a line for the real database and the subscriber's address"],["Tables stay in state `i` or `d`","No free worker (`max_logical_replication_workers`, `max_sync_workers_per_subscription`, `max_worker_processes`)","Raise the limits (restart) and check the logs"],["`logical replication target relation ... does not exist` or missing column","Schema not created or not identical on the subscriber","Create or fix the table; the worker retries"],["`duplicate key value violates unique constraint` in the apply worker","Conflict with local data (`insert_exists`)","Remove the local row, or `ALTER SUBSCRIPTION ... SKIP`"],["`cannot update table ... because it does not have a replica identity` (on the publisher)","Table publishes updates but has no key","Add a primary key or set a replica identity"],["`pg_wal` growing on the publisher","Subscription disabled, failing or dropped without dropping the slot","Fix the subscription, or drop the slot (Replication Slots lecture)"],["Replication lag keeps growing","Single apply worker saturated by a huge transaction","Use `streaming = parallel`, tune, split the work, or add indexes on the subscriber's tables (an apply without an index on the key scans the table)"]]}],
+src:[["Chapter 29: Logical Replication",D+"logical-replication.html"],["29.13 Upgrade (logical replication)",D+"logical-replication-upgrade.html"],["CREATE PUBLICATION",D+"sql-createpublication.html"],["CREATE SUBSCRIPTION",D+"sql-createsubscription.html"],["Logical Replication Configuration Settings",D+"logical-replication-config.html"],["pg_createsubscriber",D+"app-pgcreatesubscriber.html"],["19.6 Replication (parameters)",D+"runtime-config-replication.html"]]},
+
+/* ---------------------------------------------------------------- 9:7 */
+'pg:9:7':{blocks:[
+{p:"Replication works only while the primary still has the WAL that a standby needs. Three mechanisms decide how long WAL is kept: a **fixed retention** (`wal_keep_size`), **replication slots** (keep WAL until the consumer confirms it) and the **WAL archive** (kept outside `pg_wal`). Slots are the most reliable way to protect a standby, and also the **most common cause of a full `pg_wal` disk**. This lecture explains slots completely, shows how to limit the damage an abandoned slot can do, and teaches how to measure and alert on **replication lag**."},
+{h:"Three ways to keep WAL for standbys"},
+{svg:slotSvg},
+{t:[["Mechanism","What it keeps","Protects against","Risk","Setting"],["**`wal_keep_size`**","At least this much past WAL in `pg_wal`, independent of the standbys","A standby that is away briefly","Not enough for a long outage; wastes disk if set high","`wal_keep_size` (MB by default; `0` means none extra)"],["**Replication slot**","Every segment from the slot's `restart_lsn` onward, **until the consumer advances**","A standby or subscriber that is away for any time","An inactive slot keeps WAL **without limit** by default and can fill the disk","`max_slot_wal_keep_size` (default `-1`, unlimited); `idle_replication_slot_timeout` (18)"],["**WAL archive** with `restore_command`","Complete WAL history on separate storage","Long outages and disaster recovery; also PITR (Section 09)","Archive must be monitored and sized","`archive_mode`, `archive_command`"],["Checkpoint rules","WAL since the last checkpoint(s)","Crash recovery only","Not a replication guarantee","`max_wal_size`, `min_wal_size`, `checkpoint_timeout`"]]},
+{p:"A robust setup combines them: a **slot with a size limit** for normal operation, and an **archive** as the last resort when the limit is exceeded. A standby that falls behind the limit can then still catch up from the archive instead of being rebuilt."},
+{h:"Kinds of slots"},
+{t:[["Slot type","Used by","Retains","Created by"],["**Physical**","A streaming standby or `pg_basebackup`","WAL from `restart_lsn`; with `hot_standby_feedback` also holds back removal of dead rows (`xmin`)","`pg_create_physical_replication_slot()`, `pg_basebackup -C -S`, or automatically if `wal_receiver_create_temp_slot = on`"],["**Logical**","A logical subscription or any logical decoding client","WAL from `restart_lsn` **and** catalog rows needed for decoding (`catalog_xmin`); is tied to one database","`CREATE SUBSCRIPTION` (automatic), `pg_create_logical_replication_slot()`"],["**Temporary**","Either type, for a single session","Same as above, but dropped automatically when the session ends or on error","`temporary => true`"],["**Synchronised (failover)**","A logical slot copied from the primary to a physical standby (17 and later)","Allows logical subscribers to continue after a failover","`failover` option plus `sync_replication_slots` on the standby"]]},
+{h:"Managing slots"},
+{code:`-- create: the second argument "true" reserves WAL immediately (otherwise restart_lsn stays NULL until the first connection!)
+SELECT pg_create_physical_replication_slot('standby1_slot', true);
+SELECT pg_create_logical_replication_slot('app_slot', 'pgoutput');       -- normally a subscription creates its own
+
+-- inspect
+SELECT * FROM pg_replication_slots;
+
+-- remove (only if it is inactive; a slot used by a running walsender cannot be dropped)
+SELECT pg_drop_replication_slot('old_standby_slot');
+
+-- move a slot forward by hand (data between the old and new position is discarded for that consumer)
+SELECT pg_replication_slot_advance('app_slot', pg_current_wal_lsn());`},
+{h:"The pg_replication_slots view"},
+{t:[["Column","Meaning"],["`slot_name`, `slot_type`","Name; `physical` or `logical`"],["`database`, `plugin`","Logical slots only: the database and the output plugin (usually `pgoutput`)"],["`active`, `active_pid`","Whether a walsender is currently using the slot, and which process"],["`inactive_since` (17)","Since when the slot has been inactive; basis of `idle_replication_slot_timeout`"],["`restart_lsn`","Oldest WAL position that the slot still needs. Everything from here on is kept"],["`confirmed_flush_lsn`","Logical slots: position up to which the subscriber has confirmed receipt"],["`xmin`, `catalog_xmin`","Oldest transaction whose row versions (or catalog rows) the slot prevents `VACUUM` from removing"],["`wal_status`","`reserved`, `extended`, `unreserved` or `lost` (next table)"],["`safe_wal_size`","Bytes that can still be written before the slot risks becoming `lost` (only when `max_slot_wal_keep_size` is set)"],["`invalidation_reason`","Why a slot became unusable: for example `wal_removed`, `rows_removed`, `wal_level_insufficient`, and from 18 `idle_timeout`"],["`failover`, `synced` (17)","Whether the slot is marked for synchronisation to standbys, and whether this copy was synchronised from a primary"]]},
+{t:[["wal_status","Meaning","Action"],["`reserved`","The WAL the slot needs is within the `max_wal_size` limits","Normal"],["`extended`","The needed WAL exceeds `max_wal_size` but is still kept because of the slot or `wal_keep_size`","Watch: the consumer is behind or away; disk use is growing"],["`unreserved`","The slot no longer holds WAL; some will be removed at the next checkpoint. The consumer can still catch up if it reconnects in time","Reconnect the consumer now"],["`lost`","Required WAL has been removed; the slot cannot be used any more","Rebuild the standby (or recreate the subscription); drop the slot"]]},
+{code:`-- one query for a dashboard or a check script
+SELECT slot_name, slot_type, active, wal_status,
+       pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS wal_held_back,
+       pg_size_pretty(safe_wal_size) AS safe_wal_size,
+       age(xmin) AS xmin_age, age(catalog_xmin) AS catalog_xmin_age, inactive_since
+FROM pg_replication_slots
+ORDER BY pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn) DESC;`},
+{h:"The abandoned slot: the classic incident"},
+{p:"A standby is decommissioned, a subscriber is dropped on the other side, or a test environment is switched off, but the **slot on the primary is left behind**. The slot's `restart_lsn` never moves, so `pg_wal` grows by every WAL segment generated from that day on. Weeks later the data volume fills; PostgreSQL cannot write WAL, panics and stops. Typical signs:"},
+{ul:["The disk-usage alert on the `pg_wal` volume rises steadily, and **checkpoints do not reduce it**.","`pg_replication_slots` shows `active = f` and a very old `restart_lsn` (and `wal_status` of `extended` or `unreserved`).","Log lines about WAL files being retained, and eventually *No space left on device* and a PANIC while writing WAL."]},
+{flow:["Find slots with active = f and huge wal_held_back","Decide: is the consumer really gone?","If yes: pg_drop_replication_slot()","CHECKPOINT so old segments are recycled","Confirm disk space returns","Add limits and monitoring"]},
+{code:`SELECT slot_name, active, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS held FROM pg_replication_slots WHERE NOT active;
+SELECT pg_drop_replication_slot('standby_old');
+CHECKPOINT;                                  -- segments that are no longer needed are removed or recycled at this point
+-- NEVER delete files from pg_wal by hand to make room: see Section 08, WAL Lifecycle`},
+{h:"Limiting the damage: three safety nets"},
+{t:[["Setting","Effect","Trade-off"],["**`max_slot_wal_keep_size`** (default `-1`)","At checkpoint time, a slot whose `restart_lsn` is further behind than this size no longer retains WAL; its status becomes `unreserved` then `lost`","The standby or subscriber **must be rebuilt** if it is lost; choose a value your disk can survive with margin (the disk must hold the limit **plus** normal WAL)"],["**`idle_replication_slot_timeout`** (18; default `0`, disabled)","Slots that have been **inactive** longer than this are invalidated (reason `idle_timeout`) at the next checkpoint, using `inactive_since`. Not applied to slots that reserve no WAL or to synchronised slots on a standby. A forced checkpoint triggers it sooner","A standby that is down for a long maintenance window would lose its slot; set it above your longest planned outage"],["**Monitoring and ownership**","Alert on `wal_held_back`, inactive slots older than an hour, free space of the `pg_wal` volume","Needs a process: who owns each slot, and a runbook"]]},
+{note:"Using `max_slot_wal_keep_size` together with a **WAL archive** gives a safe design: an invalidated standby can still catch up from the archive if the needed segments are there. For logical replication there is no archive fallback: a lost logical slot means a new initial copy."},
+{h:"Slots and dead rows: hot_standby_feedback and catalog_xmin"},
+{p:"A physical slot used by a standby with `hot_standby_feedback = on` stores the standby's oldest running transaction in `xmin`. `VACUUM` on the primary will not remove row versions newer than that, which prevents query cancellations on the standby but can cause **table bloat on the primary** if a long query runs on the standby. A logical slot holds back removal of **catalog** rows (`catalog_xmin`), which can bloat `pg_catalog` tables and, in extreme cases, delay transaction ID freezing. Check `age(xmin)` and `age(catalog_xmin)` in the monitoring query above."},
+{h:"Failover slots for logical replication (17 and later)"},
+{p:"A logical subscriber normally cannot survive a failover of its publisher: the slot exists only on the old primary. PostgreSQL 17 introduced **failover slots**: a logical slot created with `failover = true` (for a subscription, `CREATE SUBSCRIPTION ... WITH (failover = true)`) is **synchronised to the physical standbys**, so after promotion the subscriber can reconnect to the new primary and continue."},
+{t:[["Setting","Where","Purpose"],["`failover = true`","Slot or subscription","Mark the logical slot for synchronisation"],["`sync_replication_slots = on`","Standby","Let the standby synchronise failover slots from the primary (off by default). Needs `hot_standby_feedback = on`, a `primary_slot_name`, and a `dbname` in `primary_conninfo`"],["`synchronized_standby_slots`","Primary","Names the physical slots of the standbys that logical walsenders must wait for, so a subscriber never gets ahead of the standbys that would be promoted"],["`pg_sync_replication_slots()`","Standby","Manual one-time synchronisation (for planned switchover)"]]},
+{p:"The documentation points out that logical replication will not proceed if the slots named in `synchronized_standby_slots` do not exist or are invalidated, so keep that list accurate."},
+{h:"Measuring lag"},
+{svg:lagSvg},
+{p:"**Lag** is the distance between the primary and the standby. It can be measured in **bytes** of WAL (how much is outstanding) or in **time** (how long a commit takes to appear). Both are needed: bytes tell you how long catching up will take; time tells you how stale reads are."},
+{t:[["Column of `pg_stat_replication` (on the primary)","Meaning"],["`sent_lsn`","WAL sent to the standby"],["`write_lsn`","WAL the standby has written to its operating system"],["`flush_lsn`","WAL the standby has flushed to disk (what a synchronous commit with `on` waits for)"],["`replay_lsn`","WAL the standby has **applied**: this is what queries on the standby can see"],["`write_lag`, `flush_lag`, `replay_lag`","Elapsed time between flushing a WAL position locally and receiving the confirmation that the standby wrote, flushed or applied it. Measured for recent commits; they return to `NULL` after the standby has been idle for a while"],["`state`, `sync_state`","`startup`, `catchup`, `streaming`, `backup`, `stopping`; and `async`, `potential`, `sync` or `quorum`"]]},
+{code:`-- PRIMARY: lag in bytes and time for every standby (and every logical subscription)
+SELECT application_name, client_addr, state, sync_state,
+       pg_wal_lsn_diff(pg_current_wal_lsn(), sent_lsn)   AS send_gap_bytes,
+       pg_wal_lsn_diff(sent_lsn, write_lsn)               AS network_to_write_bytes,
+       pg_wal_lsn_diff(write_lsn, flush_lsn)              AS write_to_flush_bytes,
+       pg_wal_lsn_diff(flush_lsn, replay_lsn)             AS replay_gap_bytes,
+       pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn)  AS total_lag_bytes,
+       write_lag, flush_lag, replay_lag
+FROM pg_stat_replication ORDER BY total_lag_bytes DESC;
+
+-- STANDBY: how far behind am I?
+SELECT pg_last_wal_receive_lsn() AS received, pg_last_wal_replay_lsn() AS replayed,
+       pg_wal_lsn_diff(pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn()) AS unreplayed_bytes,
+       now() - pg_last_xact_replay_timestamp() AS apparent_delay,
+       pg_is_wal_replay_paused() AS paused;`},
+{note:"`now() - pg_last_xact_replay_timestamp()` grows steadily when the primary is **idle** (no commits to replay), even if the standby is perfectly in sync. Use the byte lag, `replay_lag`, or a **heartbeat table** (a row updated every second on the primary whose timestamp you read on the standby) for reliable time lag."},
+{h:"Causes of lag and what to do"},
+{t:[["Cause","How to recognise it","Remedy"],["Network too slow or interrupted","Gap is between `sent_lsn` and `write_lsn`; `state` flips between `startup`, `catchup` and `streaming`","Bandwidth, `wal_compression`, checks on the link; tune `wal_sender_timeout` and `wal_receiver_timeout`"],["Standby disk too slow","Gap between `write_lsn` and `flush_lsn`","Faster storage for the standby's `pg_wal`"],["Replay is single-threaded and cannot keep up","Gap between `flush_lsn` and `replay_lsn`; the startup process is at 100% CPU or I/O","Faster storage and CPU; keep `recovery_prefetch` at its default (`try`) so replay reads blocks ahead of time; reduce full-page writes on the primary"],["Replay waiting for a conflicting query","Replay stops while a long query runs; `pg_stat_database_conflicts` counters rise","Hot Standby lecture: delays, feedback, dedicated reporting standby"],["Huge transaction or bulk load on the primary","Lag spikes then recovers","Expected; split large jobs; check the standby catches up"],["`recovery_min_apply_delay` is set","Lag equals the delay by design","Not a problem; exclude delayed standbys from lag alerts"],["`VACUUM`, index builds, `CREATE INDEX`","High WAL volume","Schedule heavy maintenance off-peak"]]},
+{h:"Alert thresholds (starting points)"},
+{t:[["Metric","Warning","Critical","Why"],["Slot `wal_held_back`","10 percent of the `pg_wal` volume","30 percent, or `wal_status` is `unreserved`","Disk exhaustion is a primary outage"],["Slot inactive","More than 15 minutes","More than 1 hour","Likely abandoned or consumer down"],["`pg_wal` volume free space","Below 30 percent","Below 15 percent","Margin for sudden WAL bursts"],["Standby streaming","`state` not `streaming` for 2 minutes","Not streaming for 10 minutes","No redundancy"],["`replay_lag`","More than 30 seconds for HA standbys","More than 5 minutes","Failover would lose or delay data; stale reads"],["Standby count","Fewer standbys than designed","No standby connected","HA lost"],["`wal_status = lost`","-","Any","Standby or subscriber must be rebuilt"]]},
+{p:"Values depend on your RPO (Section 09) and workload; adjust them to what is normal for your system, using a week of baseline data. The predefined role **`pg_monitor`** (Section 07) lets a monitoring account read these views without superuser rights."},
+{h:"Troubleshooting"},
+{t:[["Symptom","Check","Action"],["`pg_wal` growing, no standby problem visible","Inactive or slow slots; `archive_command` failing (Section 09); long-running logical subscription","Drop or fix the slot; fix archiving; see WAL Lifecycle"],["Standby log: *requested WAL segment ... has already been removed*","Slot `lost`, or no slot and no archive","Restore from archive or rebuild with `pg_basebackup`; add a slot and a limit"],["Slot shows `active = t` but `restart_lsn` does not move","Consumer connected but not confirming (stuck apply worker, huge transaction)","Look at the subscriber's log and `pg_stat_subscription`"],["`replay_lag` NULL","Standby idle, or no recent commits","Generate a heartbeat commit; this is normal on a quiet system"],["After promotion the old slots are gone","Physical slots are not carried to a new primary","Recreate slots on the new primary; use failover slots for logical ones"],["`ERROR: replication slot ... is active for PID`","Another process uses it","Stop the other consumer; one slot per consumer"]]}],
+src:[["26.2.6 Replication Slots",D+"warm-standby.html#STREAMING-REPLICATION-SLOTS"],["pg_replication_slots",D+"view-pg-replication-slots.html"],["19.6 Replication (max_slot_wal_keep_size, idle_replication_slot_timeout)",D+"runtime-config-replication.html"],["pg_stat_replication",D+"monitoring-stats.html#MONITORING-PG-STAT-REPLICATION-VIEW"],["47.2.3 Replication Slot Synchronization",D+"logicaldecoding-explanation.html#LOGICALDECODING-REPLICATION-SLOTS-SYNCHRONIZATION"],["Replication Management Functions",D+"functions-admin.html#FUNCTIONS-REPLICATION"]]},
+
+/* ---------------------------------------------------------------- 9:8 */
+'pg:9:8':{blocks:[
+{p:"A **hot standby** is a standby that accepts **read-only connections** while it continues to replay WAL. It is the default behaviour (`hot_standby = on`) once the standby has reached a consistent state. Hot standby turns an idle failover server into a useful machine for **reports, read scaling, monitoring and backups**. It also introduces the single biggest operational question of replication: **what happens when replay needs to change something that a running query is still using?** This lecture explains what a standby can do, why queries are cancelled, and the settings that trade freshness against cancellations."},
+{h:"What you can and cannot run"},
+{t:[["Allowed on a hot standby","Not allowed"],["`SELECT`, `COPY ... TO`, cursors (`DECLARE`, `FETCH`)","Any data change: `INSERT`, `UPDATE`, `DELETE`, `COPY ... FROM`, `MERGE`, `TRUNCATE`"],["`EXPLAIN`, `SHOW`, `SET`, `RESET`, `LOAD`","Any DDL: `CREATE`, `ALTER`, `DROP` (including **temporary tables**)"],["`BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT` (read-only transactions)","`SELECT ... FOR UPDATE` and `FOR SHARE` (they write row locks)"],["`PREPARE`, `EXECUTE`, `DEALLOCATE`","`nextval()` and `setval()`: sequences cannot be advanced"],["`LOCK TABLE` only in `ACCESS SHARE`, `ROW SHARE` or `ROW EXCLUSIVE` mode","Two-phase commit commands (`PREPARE TRANSACTION`), `LISTEN` and `NOTIFY`"],["Functions that only read, `pg_dump` and `pg_basebackup` against the standby, `pg_stat_*` views","`VACUUM`, `ANALYZE`, `REINDEX`, `GRANT`/`REVOKE`: everything comes from the primary through WAL"],["`CHECKPOINT` (performs a restartpoint)","`SERIALIZABLE` isolation level (use `REPEATABLE READ`)"]]},
+{code:`INSERT INTO t VALUES (1);
+-- ERROR:  cannot execute INSERT in a read-only transaction
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+-- ERROR:  cannot use serializable mode in a hot standby
+-- HINT:  You can use REPEATABLE READ instead.`},
+{p:"Roles, privileges, indexes, extensions and settings are **the same as on the primary** because they arrive through WAL. Per-session `SET` commands work, and `ALTER SYSTEM` changes the standby's own configuration file. Some settings can differ per server (for example `work_mem`, `max_standby_streaming_delay`), others must not be lower than on the primary (next section)."},
+{h:"Parameters that must be at least as large as on the primary"},
+{p:"The standby replays records of lock and transaction counts that the primary produced under its own limits. If the standby's limits are lower, it **refuses to start accepting queries** (or stops replay) with a message such as `hot standby is not possible because max_connections = 100 is a lower setting than on the primary server (its value was 200)`."},
+{t:[["Parameter","Rule"],["`max_connections`","Standby value **greater than or equal** to the primary's"],["`max_prepared_transactions`","Standby value greater than or equal to the primary's"],["`max_locks_per_transaction`","Standby value greater than or equal to the primary's"],["`max_wal_senders`","Standby value greater than or equal to the primary's (as the documentation states for running a standby)"],["`max_worker_processes`","Standby value greater than or equal to the primary's"]]},
+{ul:["When you **increase** one of them, raise it on the **standbys first**, then on the primary.","When you **decrease** one, lower it on the **primary first**, then on the standbys.","All of them need a restart, so plan the order in a maintenance window."]},
+{h:"Why queries are cancelled: recovery conflicts"},
+{svg:hotSvg},
+{p:"On the primary, `VACUUM` is free to remove dead row versions that **no running transaction on the primary** can see. The primary knows nothing about queries running on the standby. The cleanup is written to WAL and, when the standby replays it, it may remove a version that a **long query on the standby still needs**. This is a **recovery conflict**. Replay then has two choices: wait for the query, or cancel it. PostgreSQL waits for a limited time, then cancels the query:"},
+{code:`ERROR:  canceling statement due to conflict with recovery
+DETAIL:  User query might have needed to see row versions that must be removed.`},
+{t:[["Conflict","Caused by replay of","Standby reaction","Counter in `pg_stat_database_conflicts`"],["**Snapshot**","`VACUUM` or page pruning removing row versions the query's snapshot can still see","Wait up to the delay, then cancel the query","`confl_snapshot`"],["**Lock**","An `ACCESS EXCLUSIVE` lock taken on the primary (`DROP TABLE`, `TRUNCATE`, `VACUUM` truncating a table, `ALTER TABLE`, `LOCK ...`)","Wait up to the delay, then cancel the query","`confl_lock`"],["**Buffer pin**","`VACUUM` needing exclusive access to a page that a query holds pinned","Wait, then cancel","`confl_bufferpin`"],["**Tablespace**","`DROP TABLESPACE` while sessions use temporary files in it","Cancels the sessions concerned","`confl_tablespace`"],["**Database**","`DROP DATABASE` replayed","Disconnects sessions of that database **immediately**","(connection terminated)"],["**Deadlock**","A replay lock wait that would deadlock with the query","Cancels the query","`confl_deadlock`"],["**Logical slot** (16 and later)","The primary invalidating a logical slot on the standby (for example because `wal_level` fell or rows it needs were removed)","Slot invalidated; decoding stops","`confl_active_logicalslot`"]]},
+{h:"How long does replay wait?"},
+{t:[["Parameter","Applies to WAL arriving from","Default","Meaning"],["`max_standby_streaming_delay`","Streaming replication","`30s`","Maximum **total** time replay may be delayed while waiting for conflicting queries, counted from when the data was received"],["`max_standby_archive_delay`","The WAL archive (`restore_command`)","`30s`","The same, for WAL read from the archive, counted per segment"],["`-1` (either setting)","","","Wait **forever**: no cancellations, but replay can stall behind a long query and lag grows without bound"]]},
+{p:"The documentation stresses that these are **not** per-query timeouts. They are the maximum total time allowed to apply the WAL data that is waiting. If one long query has already caused a delay, the next conflicting query gets much less grace time until the standby has caught up. That is why a standby with a small delay still cancels *short* queries during busy periods."},
+{h:"The choices"},
+{t:[["Approach","Effect","Cost"],["**Increase `max_standby_streaming_delay`** (for example to `15min`, or `-1` for a pure reporting standby)","Fewer cancellations","Replication lag grows while a query runs; a failover from this standby takes longer; WAL accumulates on it"],["**`hot_standby_feedback = on`**","The standby tells the primary the oldest transaction it needs; the primary's `VACUUM` keeps those row versions, so snapshot conflicts largely disappear","**Table bloat on the primary** while long standby queries run; does not prevent lock conflicts; feedback is passed up cascades; interacts with `recovery_min_apply_delay`. With a **slot**, the feedback survives disconnects"],["**Dedicated reporting standby**","One standby for reports (`-1` delay, feedback off or on as acceptable), another for HA with the default `30s` and no feedback","Another machine; clear routing needed"],["**Short queries and retries**","Applications retry on SQLSTATE `40001` (serialization-type failure) or on the conflict error","Application work"],["**Pause replay deliberately**","`SELECT pg_wal_replay_pause();` ... query ... `SELECT pg_wal_replay_resume();`","No new data visible meanwhile; WAL piles up; do not forget to resume"],["**Avoid primary-side causes**","Avoid frequent `VACUUM FULL`, `TRUNCATE` and lock-heavy DDL during reporting hours","Operational discipline"]]},
+{p:"The old parameter `vacuum_defer_cleanup_age` was removed in PostgreSQL 16; use `hot_standby_feedback` instead."},
+{h:"Recommended settings by role"},
+{t:[["Standby role","`max_standby_streaming_delay`","`hot_standby_feedback`","Notes"],["**High-availability standby** (failover target)","`30s` (default) or lower","`off`","Prioritises low lag and small RTO; accept cancellations of long queries; no reporting here"],["**Read-scaling standby** (short OLTP reads)","`30s` to `1min`","`on` if the primary's bloat is acceptable","Application must retry on conflicts"],["**Reporting or analytics standby**","`-1` or minutes to hours","`on` (or off with a large delay)","Not a failover target; monitor lag"],["**Backup or `pg_dump` standby**","Larger than the backup runtime, or `-1`","`on`","A cancelled dump wastes hours; see Section 09"],["**Delayed standby** (human-error protection)","default","`off`","`recovery_min_apply_delay` set; never a failover target"]]},
+{h:"Pausing and inspecting replay"},
+{code:`SELECT pg_wal_replay_pause();                  -- stop applying WAL; the standby still receives and stores it
+SELECT pg_get_wal_replay_pause_state();        -- 'not paused', 'pause requested' or 'paused'
+SELECT pg_is_wal_replay_paused();
+SELECT pg_wal_replay_resume();
+
+SELECT pg_last_xact_replay_timestamp();        -- commit time of the last replayed transaction
+SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn();`},
+{p:"Pausing is the standard way to freeze a standby at a known moment, for example to check what the data looked like before a mistaken `DELETE` replicates, or to run a very long query without conflicts. While replay is paused, no cleanup is applied, so no conflict can occur. **Always resume**: a paused standby is a growing backlog and an idle failover target."},
+{h:"The delayed standby"},
+{p:"`recovery_min_apply_delay = '1h'` makes the standby apply each **commit** only when its commit time on the primary is at least one hour old. Other records are replayed immediately; visibility is controlled by the commit record, so queries see the data as it was an hour ago. WAL is kept in `pg_wal` until applied, so disk use rises with the delay and the write rate. The documentation warns that `hot_standby_feedback` is delayed by this feature, which can cause bloat on the primary, and that with `synchronous_commit = remote_apply` every commit would wait for the delay."},
+{code:`# postgresql.conf on the delayed standby
+recovery_min_apply_delay = '1h'
+hot_standby_feedback = off
+
+-- after someone ran DROP TABLE on the primary at 10:03, at 10:20 on the delayed standby:
+SELECT pg_wal_replay_pause();                  -- before the DROP reaches the replay position
+-- copy the table out:   pg_dump -t important_table -Fc appdb > important_table.dump   (standby is still readable)
+-- then restore it on the primary, and resume replay on the standby:
+SELECT pg_wal_replay_resume();`},
+{p:"This gives a quick, **online** recovery of the single table for the delay window. For anything older, use point-in-time recovery (Section 09)."},
+{h:"Connecting applications to standbys"},
+{t:[["Technique","Example","Remark"],["libpq multiple hosts and `target_session_attrs`","`postgresql://pg1,pg2,pg3/appdb?target_session_attrs=prefer-standby`","Values: `any`, `read-write`, `read-only`, `primary`, `standby`, `prefer-standby`. Works with libpq-based drivers; some drivers have equivalents"],["`load_balance_hosts=random`","Combine with the above","Spreads connections over equivalent hosts (libpq 16 and later)"],["Connection pooler or proxy with separate read and write endpoints","pgBouncer, HAProxy, Pgpool-II","Health checks should test `pg_is_in_recovery()`"],["Two connection strings in the application","`primary_dsn` and `replica_dsn`","Simple and explicit; the application decides what may read stale data"]]},
+{note:"Standbys are slightly behind. A user who writes on the primary and immediately reads from a standby may not see the change. Options: read your own writes from the primary, wait on the standby until `pg_last_wal_replay_lsn()` reaches the commit LSN, or use `synchronous_commit = remote_apply` for the transactions that need it (Synchronous Replication lecture)."},
+{h:"Monitoring a hot standby"},
+{code:`-- cancellations by type, per database (on the standby)
+SELECT datname, confl_tablespace, confl_lock, confl_snapshot, confl_bufferpin, confl_deadlock, confl_active_logicalslot
+FROM pg_stat_database_conflicts WHERE datname NOT IN ('template0','template1');
+
+-- queries currently delaying replay: wait events show the conflict kind
+SELECT pid, state, wait_event_type, wait_event, now() - query_start AS running, left(query, 60) AS query
+FROM pg_stat_activity WHERE backend_type = 'startup' OR state <> 'idle' ORDER BY running DESC NULLS LAST;`},
+{p:"The startup process (the one replaying WAL) shows wait events such as `RecoveryConflictSnapshot`, `RecoveryConflictTablespace` or `RecoveryApplyDelay`; they tell you whether replay is stalled by a conflicting query or by the configured delay."},
+{h:"Troubleshooting"},
+{t:[["Symptom","Cause","Fix"],["Queries cancelled with *conflict with recovery*","Replay reached its delay limit","Increase `max_standby_streaming_delay`; enable feedback; move long queries to a reporting standby"],["Lag grows while a report runs","`max_standby_streaming_delay` is large or `-1`","Expected; schedule reports, or accept; monitor"],["Primary table bloat after enabling `hot_standby_feedback`","Long query on the standby holds the oldest xmin","Find the query (`pg_stat_replication.backend_xmin`), shorten it, or turn feedback off"],["Standby refuses connections: *the database system is starting up*","Not yet consistent, or still replaying a long backlog","Wait; check the log for *consistent recovery state reached*"],["*hot standby is not possible because of insufficient parameter settings*","A required parameter is lower than on the primary","Raise it on the standby; restart"],["Sessions disappear after `DROP DATABASE`","Database conflict","Expected; avoid dropping databases that standby users use"],["Errors using sequences or temporary tables","Read-only restriction","Do the write on the primary; use CTEs instead of temp tables"]]}],
+src:[["26.4 Hot Standby",D+"hot-standby.html"],["26.4.2 Handling Query Conflicts",D+"hot-standby.html#HOT-STANDBY-CONFLICT"],["19.6.3 Standby Servers (parameters)",D+"runtime-config-replication.html#RUNTIME-CONFIG-REPLICATION-STANDBY"],["pg_stat_database_conflicts",D+"monitoring-stats.html#MONITORING-PG-STAT-DATABASE-CONFLICTS-VIEW"],["Recovery Control Functions",D+"functions-admin.html#FUNCTIONS-RECOVERY-CONTROL"],["Connection Strings (target_session_attrs)",D+"libpq-connect.html"]]},
+
+/* ---------------------------------------------------------------- 9:9 */
+'pg:9:9':{blocks:[
+{p:"By default replication is **asynchronous**: the primary tells the client that a transaction is committed as soon as the WAL is safely on the primary's own disk, without waiting for any standby. If the primary is destroyed at that moment, the last transactions that had not yet reached a standby are lost. **Synchronous replication** closes this window for chosen transactions: the commit is not acknowledged until a standby has confirmed that it has the WAL. The price is a longer commit time and a **dependency on the standby**. This lecture explains the durability levels, the `synchronous_standby_names` syntax, per-transaction control, performance and the availability design that makes synchronous replication safe to run."},
+{svg:syncSvg},
+{h:"Durability levels: synchronous_commit"},
+{p:"`synchronous_commit` decides how far WAL must have travelled before a `COMMIT` returns. It can be set in `postgresql.conf`, per database or role (`ALTER ROLE`, `ALTER DATABASE`), per session and per transaction (`SET LOCAL`)."},
+{t:[["Value","The commit returns when ...","Primary crash","Primary OS crash","Loss of primary **and** standby OS"],["`off`","The record is in WAL buffers; the WAL writer flushes later (within about three times `wal_writer_delay`)","Last few commits can be **lost** (database stays consistent)","Same","Same"],["`local`","WAL is flushed to the **local** disk; synchronous standbys are ignored","Safe locally; may not be on the standby","Safe locally","Standby may lack it"],["`remote_write`","Local flush **and** a synchronous standby has received the WAL and written it to its operating system (not yet to disk)","Safe (standby has it)","Safe","May be lost if the standby's OS crashes at the same time"],["**`on`** (default)","Local flush **and** a synchronous standby has **flushed** the WAL to disk","Safe","Safe","Safe unless both disks are lost"],["`remote_apply`","Local flush and a synchronous standby has **applied** (replayed) the WAL","Safe","Safe","Safe; and queries on that standby **see the commit** (read your writes)"]]},
+{p:"If `synchronous_standby_names` is empty (the default), the values `on`, `remote_write`, `remote_apply` and `local` all behave the same: only the local flush matters. Synchronous replication is switched on by naming standbys. The documentation also notes that **`off` can never corrupt the database**: it only risks losing the very latest transactions after a crash, which makes it an acceptable choice for non-critical bulk work."},
+{h:"Choosing the synchronous standbys"},
+{p:"A standby is identified by its **`application_name`**, which you set in its `primary_conninfo` (it defaults to `cluster_name` if set, otherwise `walreceiver`). Only standbys that are **connected and streaming** (`state = streaming` in `pg_stat_replication`) can act as synchronous standbys. For logical replication the name defaults to the subscription name."},
+{code:`# postgresql.conf on the PRIMARY (reload is enough; no restart)
+synchronous_standby_names = 'FIRST 1 (standby1, standby2)'    # priority based
+synchronous_standby_names = 'ANY 1 (standby1, standby2, standby3)'   # quorum based
+synchronous_standby_names = ''                                 # default: asynchronous`},
+{t:[["Syntax","Method","Meaning","Example behaviour"],["`FIRST num_sync (s1, s2, ...)`  or the older `s1, s2`","**Priority**","Commits wait for the `num_sync` standbys that come **first in the list** among those currently connected. If one of them disconnects, the next one in the list takes its place immediately","`FIRST 1 (s1, s2)`: `s1` is synchronous, `s2` is *potential*; if `s1` fails, `s2` becomes synchronous"],["`ANY num_sync (s1, s2, ...)`","**Quorum**","Commits proceed as soon as **at least `num_sync`** of the listed standbys have replied. Any of them may be the one that answers","`ANY 1 (s1, s2, s3)`: whichever replies first counts; one standby may fail or be slow without any effect"],["`*`","Wildcard","Matches any standby name","`FIRST 1 (*)`"]]},
+{p:"Names are compared case-insensitively. If a standby is called `first` or `any`, its name must be written in double quotes. Duplicate names are not prevented; avoid them. The column `sync_state` in `pg_stat_replication` shows the role of each standby:"},
+{t:[["sync_state","Meaning"],["`async`","Not listed in `synchronous_standby_names`"],["`potential`","Listed in a `FIRST` list but currently a spare"],["`sync`","Currently a synchronous standby (priority method)"],["`quorum`","Listed in an `ANY` list: counts toward the quorum"]]},
+{code:`SELECT application_name, state, sync_state, sync_priority, flush_lsn, replay_lag FROM pg_stat_replication ORDER BY sync_priority;
+SHOW synchronous_standby_names;  SHOW synchronous_commit;`},
+{h:"What a waiting commit looks like"},
+{ul:["The backend writes its commit record, flushes it locally, and then **waits** for the standby(s). While it waits it still counts as *running* for other sessions and **keeps its locks**: the transaction becomes visible only after the confirmation. Waiters show `wait_event = SyncRep` in `pg_stat_activity`.","Standbys report their progress at the latest every `wal_receiver_status_interval` (default 10 seconds), but they send a reply **immediately** whenever a synchronous commit needs one, so commit time is not tied to that interval.","If the needed standby is down, the commit **waits indefinitely**. An administrator can cancel the wait with `pg_cancel_backend()` or by terminating the session: the client then receives a warning that the transaction **has already been committed locally but might not have been replicated**.","Changing `synchronous_standby_names` and reloading the configuration **releases** all commits that were waiting for standbys no longer required."]},
+{code:`SELECT pid, usename, wait_event_type, wait_event, now() - xact_start AS waiting_for, left(query, 40) AS query
+FROM pg_stat_activity WHERE wait_event = 'SyncRep';`},
+{h:"Per-transaction durability"},
+{p:"Synchronous replication does not have to apply to everything. A busy system usually has a small set of transactions that must never be lost (payments, orders) and a large set that can be recomputed (sessions, logs, bulk loads). Use the setting that matches the data:"},
+{code:`ALTER DATABASE shop SET synchronous_commit = on;            -- default for the application
+ALTER ROLE etl_loader SET synchronous_commit = local;       -- bulk loads do not wait for standbys
+ALTER ROLE web_sessions SET synchronous_commit = off;       -- losing the last seconds is acceptable
+
+BEGIN;
+SET LOCAL synchronous_commit = remote_apply;                -- this one transaction also becomes visible on the standby
+INSERT INTO payments ...;
+COMMIT;`},
+{h:"Performance"},
+{t:[["Factor","Effect","Advice"],["**Network round trip time**","Adds directly to each commit (about one RTT)","Put synchronous standbys in the same site or availability zone as the primary (under 1 to 2 ms); use asynchronous standbys for distant sites"],["**Standby flush time**","`on` waits for the standby's disk flush","Fast storage and a battery-backed or NVMe write path for the standby's `pg_wal`"],["**`remote_apply`**","Also waits for replay, so a conflicting query on the standby (or `recovery_min_apply_delay`) delays commits on the primary","Use only for transactions that need read-your-writes; never with a delayed standby"],["**Group commit**","Many concurrent commits share a flush and a round trip","Throughput suffers far less than latency; single-session loops suffer most (use batching)"],["**Number of required standbys**","`FIRST 2` or `ANY 2` waits for the second-slowest","Require only as many as your RPO needs"]]},
+{p:"Measure before and after with `pgbench` and a realistic client count; single-client latency tests overstate the cost, high-concurrency tests understate it."},
+{h:"Designing for availability, not just durability"},
+{p:"Synchronous replication protects **data** but endangers **availability**: with one synchronous standby, if that standby (or the link to it) fails, **all synchronous commits on the primary stop**. The design below decides who may fail without anyone noticing."},
+{t:[["Design","Configuration","Loses data if the primary is lost?","Primary keeps accepting commits if ...","Remarks"],["1 standby, synchronous","`FIRST 1 (s1)`","No","`s1` is alive. **Otherwise commits block**","Needs automation to relax or fail over; many sites avoid it"],["2 standbys, priority","`FIRST 1 (s1, s2)`","No","`s1` **or** `s2` is alive","`s1` is preferred; `s2` takes over automatically"],["3 standbys, quorum","`ANY 1 (s1, s2, s3)`","No (at least one standby has every commit)","Any one standby is alive","Good fit for three availability zones"],["3 standbys, stronger quorum","`ANY 2 (s1, s2, s3)`","No, even if one standby is lost together with the primary","Any two standbys alive","Higher commit latency; survives a zone failure plus one"],["Sync + async","`FIRST 1 (s1)` and an async DR standby","No for `s1`; yes for the DR site","`s1` alive","DR site receives data a little later"]]},
+{note:"Rule of thumb: tolerate N-M failures by listing N standbys and requiring M. The simplest robust choice for most clusters is `ANY 1` over two or three standbys in different zones."},
+{h:"Failing over without losing data"},
+{ul:["Zero data loss is only guaranteed for transactions that were **acknowledged** by a synchronous standby. Promote a standby that is part of the set that confirmed commits: with `FIRST 1 (s1, s2)` that is `s1` (or `s2` if `s1` was already gone); with `ANY k` it must be a standby that has the **highest WAL position** among those reachable (check `pg_last_wal_receive_lsn()` on each).","After promotion, the new primary has no synchronous standby until others reconnect: either commits wait (strict mode) or you accept asynchronous operation for a while. Failover managers expose this decision (for example a *strict synchronous mode* option). Decide it **before** the incident.","A primary that is merely **partitioned** from its standbys will block its synchronous commits, which is what protects you from split brain: it cannot acknowledge commits that no standby has."]},
+{h:"Temporary relaxation: a documented procedure"},
+{code:`-- standby 1 must go down for maintenance and you accept asynchronous operation for a few minutes
+ALTER SYSTEM SET synchronous_standby_names = '';
+SELECT pg_reload_conf();                          -- waiting commits are released
+-- ... maintenance, standby back and state = streaming ...
+ALTER SYSTEM SET synchronous_standby_names = 'FIRST 1 (standby1, standby2)';
+SELECT pg_reload_conf();`},
+{p:"Record this in the change log: for the duration, the cluster's RPO is no longer zero."},
+{h:"Related parameters"},
+{t:[["Parameter","Where","Role"],["`synchronous_standby_names`","Primary","Which standbys, method and count. Reload"],["`synchronous_commit`","Any level","Durability level"],["`wal_receiver_status_interval`","Standby","Maximum time between progress reports (default 10 seconds)"],["`wal_sender_timeout` and `wal_receiver_timeout`","Primary, standby","Detect dead peers (default 60 seconds); a dead synchronous standby blocks commits until detected, so do not set them too high"],["`recovery_min_apply_delay`","Standby","With `remote_apply` every commit would wait for the delay: never combine them"],["`application_name` in `primary_conninfo`","Standby","The name that `synchronous_standby_names` matches"]]},
+{h:"Troubleshooting"},
+{t:[["Symptom","Cause","Action"],["All commits hang","Required synchronous standby down or not streaming","Restore the standby, or clear `synchronous_standby_names` and reload (documented procedure above)"],["`sync_state = async` for the standby you wanted synchronous","`application_name` does not match the list","Set `application_name` in `primary_conninfo`; reload"],["Commit latency doubled after enabling","Network RTT to the standby, slow standby fsync","Move the standby closer, faster disks, `remote_write`, or fewer required standbys"],["Standby listed but `sync_state = potential` forever","`FIRST` priority list: a better standby is alive","Expected"],["Reads on the standby miss a fresh commit","Level is `on` (flushed, not yet replayed)","Use `remote_apply` for that transaction, or read from the primary"],["Wait cancelled warning in the application log","Someone cancelled a waiting commit","Treat that transaction as possibly not replicated; verify after failover"]]}],
+src:[["26.2.8 Synchronous Replication",D+"warm-standby.html#SYNCHRONOUS-REPLICATION"],["synchronous_commit",D+"runtime-config-wal.html#GUC-SYNCHRONOUS-COMMIT"],["synchronous_standby_names",D+"runtime-config-replication.html#GUC-SYNCHRONOUS-STANDBY-NAMES"],["Asynchronous Commit",D+"wal-async-commit.html"],["pg_stat_replication",D+"monitoring-stats.html#MONITORING-PG-STAT-REPLICATION-VIEW"]]},
+
+/* ---------------------------------------------------------------- 9:10 */
+'pg:9:10':{blocks:[
+{p:"Sooner or later the primary must be replaced: deliberately (maintenance, an upgrade, moving to new hardware) or because it has failed. PostgreSQL provides the **building blocks**: promotion of a standby, timelines, and `pg_rewind` to bring the old primary back. It does **not** decide on its own that a primary is dead and which standby takes over; that is the job of a failover manager or of a DBA following a runbook. This lecture covers the manual procedures and the mechanisms behind them, so that you can both perform them and judge what an automatic tool is doing."},
+{h:"Vocabulary"},
+{t:[["Term","Meaning"],["**Promotion**","Ending recovery on a standby so that it becomes a read-write primary on a **new timeline**"],["**Switchover**","A **planned** role change with a clean shutdown of the old primary: **no data loss**, and the old primary can rejoin as a standby almost at once"],["**Failover**","An **unplanned** promotion after the primary was lost; possible loss of unreplicated transactions (RPO), and the old primary must be rewound or rebuilt"],["**Fencing (STONITH)**","Making sure the old primary can no longer accept writes: power off, stop the VM, cut the network or the virtual IP"],["**Split brain**","Two servers both accepting writes as primary: the data diverges and cannot be merged automatically"],["**Failback**","Returning to the original primary afterwards (just another switchover)"],["**Timeline**","Numbered branch of WAL history; each promotion starts a new one"]]},
+{svg:failSvg},
+{h:"What promotion does"},
+{p:"A standby is promoted with one of two equivalent commands. Older trigger-file settings no longer exist in current versions."},
+{code:`# from the operating system (as the postgres user)
+pg_ctl promote -D /var/lib/pgsql/18/data -w -t 60          # -w waits until promotion is complete
+
+-- or from SQL on the standby (superuser; waits up to wait_seconds, default 60)
+SELECT pg_promote(wait => true, wait_seconds => 60);       -- returns true when finished`},
+{flow:["Promote request arrives","Replay all WAL already available (archive or pg_wal)","Stop contacting the old primary","Select a new timeline ID and write its history file","Leave recovery and remove standby.signal","Checkpoint, accept read-write connections"]},
+{code:`LOG:  received promote request
+LOG:  redo done at 0/5000060
+LOG:  selected new timeline ID: 2
+LOG:  archive recovery complete
+LOG:  database system is ready to accept connections`},
+{t:[["Effect","Detail"],["New **timeline**","The timeline ID increases (for example 1 to 2); WAL segment names now start with `00000002`"],["`.history` file","`00000002.history` records where the new timeline branched from the old one; it is written to `pg_wal` and archived. Keep these files: they are needed for recovery across the branch"],["`recovery_target_timeline`","`latest` is the default, so other standbys and recoveries follow the newest timeline automatically"],["Replication slots","Physical slots **of the old primary do not move**; create the standbys' slots again on the new primary. Failover-enabled logical slots are already synchronised (Replication Slots lecture)"],["Settings that become active","`synchronous_standby_names`, `archive_mode` and `archive_command`, `wal_keep_size` of the new primary (set them on every standby in advance)"],["Time needed","Seconds, plus the time to replay any WAL that the standby had received but not yet applied (a large backlog or a long `recovery_min_apply_delay` lengthens promotion)"]]},
+{h:"Planned switchover, step by step"},
+{p:"A clean shutdown of the old primary guarantees something important: during a `smart` or `fast` shutdown the primary **waits for its walsenders to send all WAL, including the shutdown checkpoint record**, before it exits (Section 03). So the standby can have **everything** the old primary wrote, and nothing is lost. An `immediate` shutdown or a crash gives no such guarantee."},
+{flow:["Pre-checks","Stop the applications","Fast shutdown of the old primary","Verify the standby has all WAL","Promote the standby","Switch connections","Attach the old primary as a standby","Verify"]},
+{code:`# 0. PRE-CHECKS on the primary: lag near zero, standby streaming, free space, recent backup
+psql -c "SELECT application_name, state, sync_state, replay_lag FROM pg_stat_replication;"
+
+# 1. stop the applications or pause the pooler; confirm there are no active writers
+psql -c "SELECT count(*) FROM pg_stat_activity WHERE state <> 'idle' AND backend_type = 'client backend' AND pid <> pg_backend_pid();"
+
+# 2. stop the OLD PRIMARY cleanly (fast = roll back sessions, write a shutdown checkpoint, ship all WAL)
+pg_ctl -D /var/lib/pgsql/18/data stop -m fast
+pg_controldata /var/lib/pgsql/18/data | egrep "cluster state|Latest checkpoint location"     # state: shut down
+
+# 3. on the STANDBY: replay position must be at or beyond that checkpoint location
+psql -c "SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn();"
+
+# 4. promote and wait
+pg_ctl promote -D /var/lib/pgsql/18/data -w
+psql -c "SELECT pg_is_in_recovery();"                           # f
+
+# 5. switch connections: virtual IP, DNS, pooler target, load balancer
+# 6. re-create the slot of the old primary's new role, if you use slots
+psql -c "SELECT pg_create_physical_replication_slot('oldprimary_slot', true);"`},
+{p:"**Re-attach the old primary.** After a clean switchover its WAL ends exactly where the new timeline begins, so it can simply become a standby of the new primary **without `pg_rewind`**:"},
+{code:`# on the old primary (still stopped)
+touch /var/lib/pgsql/18/data/standby.signal
+cat >> /var/lib/pgsql/18/data/postgresql.auto.conf <<'EOF'
+primary_conninfo = 'host=pg-standby port=5432 user=replicator application_name=standby1 sslmode=require'
+primary_slot_name = 'oldprimary_slot'
+EOF
+pg_ctl -D /var/lib/pgsql/18/data start
+# the log shows it switching to the new timeline and streaming; verify on the new primary:
+psql -h pg-standby -c "SELECT application_name, state, sync_state FROM pg_stat_replication;"`},
+{h:"Unplanned failover"},
+{p:"The hard part of failover is not the command, it is the **decision**. The sequence below is what failover managers automate; a DBA doing it by hand follows the same logic."},
+{flow:["Confirm the primary is really down","Fence the old primary","Choose the most advanced standby","Promote it","Repoint the other standbys","Redirect applications","Rebuild or rewind the old primary","Post-incident review"]},
+{ul:["**Confirm** from more than one vantage point. A primary that is unreachable from one network may be perfectly alive for the applications. Promoting a standby while the old primary still accepts writes creates **split brain**.","**Fence**: power it off through the management interface, stop the instance through the cloud API, remove the virtual IP and block the port in the firewall. Do this **before** promoting. If you cannot fence it, you cannot safely fail over automatically.","**Choose** the candidate: compare `pg_last_wal_receive_lsn()` and `pg_last_wal_replay_lsn()` on every reachable standby, and prefer the **synchronous** standby (it has every acknowledged commit). The difference between the old primary's last known position and the candidate's position is the data at risk.","**Promote** the candidate, then change `primary_conninfo` on every other standby (a reload is enough) so that they follow the new timeline. A standby that is **ahead** of the new primary (it received WAL the candidate never got) cannot follow and must be rewound or rebuilt.","**Redirect** the applications and **re-create** slots and the synchronous settings on the new primary.","**Old primary**: when its hardware is back, do not start it as primary. Rewind or rebuild it (below)."]},
+{code:`# on each reachable standby: who is the most advanced?
+psql -h standby1 -Atc "SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn();"
+psql -h standby2 -Atc "SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn();"
+# promote the winner
+ssh standby1 "pg_ctl promote -D /var/lib/pgsql/18/data -w"
+# point the other standby at the new primary and let it follow timeline 2
+psql -h standby2 -c "ALTER SYSTEM SET primary_conninfo = 'host=standby1 port=5432 user=replicator application_name=standby2 sslmode=require';" -c "SELECT pg_reload_conf();"`},
+{h:"Split brain and fencing"},
+{t:[["Mechanism","How it prevents two primaries","Notes"],["**STONITH** (power fencing, IPMI, cloud API)","The old primary is switched off","The most reliable; needs an out-of-band path"],["**Virtual IP / DNS / load balancer moves only to the new primary**","Clients cannot reach the old one","Not sufficient alone: direct connections still work"],["**Quorum and a leader lock** (a distributed store such as etcd, Consul, ZooKeeper, or the Kubernetes API, used by Patroni)","A node may be primary only while it holds the lock; it demotes itself when it loses it","Needs at least three voters"],["**Synchronous replication** (`FIRST` or `ANY`)","A partitioned old primary cannot acknowledge commits without a standby","Stops commits, not connections"],["**`pg_hba.conf` and service shutdown on the old node**","Reject or stop clients","Needs a working agent on the old node"],["**Clients with `target_session_attrs=read-write`**","Applications find the node that really accepts writes","Helps clients, does not prevent a second primary"]]},
+{h:"Bringing the old primary back: pg_rewind"},
+{p:"After a failover the old primary may contain transactions that the new primary never saw, so the two histories **diverged** at some point. It cannot simply be started as a standby. The classic cure is a new base backup, which for a large cluster takes hours. **`pg_rewind`** is faster: it finds the point where the timelines forked, reads the old primary's own WAL from that point to learn **which blocks changed**, and copies **only those blocks** (and the non-relation files) from the new primary. Afterwards the old primary replays WAL from the new primary like a normal standby."},
+{svg:rewindSvg},
+{t:[["Requirement","Detail"],["Data checksums **or** `wal_log_hints = on`","Needed on the old primary **before** the failure. PostgreSQL 18 `initdb` enables checksums by default, which satisfies it; older clusters need `wal_log_hints`"],["`full_page_writes = on`","The default"],["The target (old primary) is **stopped**","If it was not shut down cleanly, `pg_rewind` starts it in single-user mode to complete crash recovery and stops it again, unless you pass `--no-ensure-shutdown`"],["The **source** is the new primary","Either a running server (`--source-server`, a connection string; needs a superuser or a role with `EXECUTE` on the few functions listed in the documentation) or a stopped data directory (`--source-pgdata`)"],["WAL of the old primary from the divergence point is still available","In `pg_wal`, or in the archive together with `--restore-target-wal` (it uses the target's `restore_command`)"],["Same major version and architecture","As for any physical copy"]]},
+{code:`# 1. the old primary is stopped (stop -m fast if possible). Keep a copy of its config files: pg_rewind overwrites non-relation files with the source's
+cp -a /var/lib/pgsql/18/data/postgresql.conf /var/lib/pgsql/18/data/pg_hba.conf /root/oldprimary-conf/
+
+# 2. dry run first
+pg_rewind --target-pgdata=/var/lib/pgsql/18/data --source-server="host=pg-standby port=5432 user=postgres dbname=postgres" --dry-run --progress
+
+# 3. rewind and let it write standby.signal and primary_conninfo (-R needs --source-server)
+pg_rewind --target-pgdata=/var/lib/pgsql/18/data --source-server="host=pg-standby port=5432 user=postgres dbname=postgres" --write-recovery-conf --progress
+
+# 4. restore your host-specific settings, set application_name and slot, then start it as a standby
+pg_ctl -D /var/lib/pgsql/18/data start`},
+{t:[["Option","Meaning"],["`-D`, `--target-pgdata`","Data directory to rewind (the old primary)"],["`--source-server`","Connection string of the running source"],["`--source-pgdata`","Data directory of a stopped source"],["`-R`, `--write-recovery-conf`","Create `standby.signal` and add `primary_conninfo` (requires `--source-server`)"],["`-n`, `--dry-run`","Do everything except modify the target"],["`-P`, `--progress`","Show progress"],["`-c`, `--restore-target-wal`","Use the target's `restore_command` to fetch WAL it no longer has"],["`--config-file`","Use a configuration file located outside the data directory"],["`--no-ensure-shutdown`","Do not try to shut the target down cleanly first"],["`--no-sync`, `--sync-method`","Control flushing of the result to disk (do not use `--no-sync` in production)"]]},
+{note:"`pg_rewind` **discards** the old primary's transactions that were never replicated. If those matter, export them first (start the old primary read-only or read the WAL with `pg_waldump`, Section 08) and reapply them manually on the new primary. Make a copy of the old primary's data directory first if you are unsure."},
+{h:"Rewind or rebuild?"},
+{t:[["Situation","Use"],["Checksums or `wal_log_hints` were on, WAL since divergence is available, cluster is large","`pg_rewind`"],["Neither checksums nor `wal_log_hints` were enabled","Rebuild with `pg_basebackup` (and enable one of them now)"],["WAL needed since the fork has been removed and no archive has it","Rebuild"],["The old primary's disk is damaged","Rebuild, on new storage"],["Small cluster (a few GB)","Rebuild: simpler, with the same result"],["Unsure about the state of the data files","Rebuild"]]},
+{h:"After a failover: the checklist"},
+{t:[["Item","What to do"],["Applications","Reconnect to the new primary; check error rates and transactions in flight (some may have failed)"],["Remaining standbys","`pg_stat_replication` on the new primary shows each one streaming on the new timeline"],["Slots","Recreate physical slots; check logical failover slots"],["Synchronous settings","`synchronous_standby_names` contains the right names; decide if the cluster runs asynchronously meanwhile"],["Archiving and backups","`archive_command` works from the new primary; take a new base backup; old timeline's `.history` files are kept in the archive (Section 09)"],["Old primary","Rewound or rebuilt and streaming, or retired"],["Evidence","Save logs, LSNs and the sequence of events for the review; compute the RPO actually achieved"],["Monitoring","Update roles (alerts for the primary now apply to the new node)"]]},
+{h:"Troubleshooting"},
+{t:[["Symptom","Cause","Action"],["`pg_ctl promote` takes very long","Large WAL backlog still to replay, or `recovery_min_apply_delay` set","Wait; check `pg_last_wal_replay_lsn()` moves; remove the delay before an emergency promotion"],["Standby log: *requested timeline 2 is not a child of this server's history*","The standby was ahead of the new primary's fork point","Rewind or rebuild this standby"],["Standby cannot follow the new primary: *could not find ... history file* or timeline errors","History file missing, or `recovery_target_timeline` pinned to an old value","Ensure `latest`; provide the `.history` file from the archive"],["`pg_rewind`: *target server needs to use either data checksums or wal_log_hints*","Neither was enabled","Rebuild; enable checksums or `wal_log_hints` for the next time"],["`pg_rewind`: *could not find common ancestor* or missing WAL","WAL older than the divergence was removed","Provide it from the archive (`--restore-target-wal`) or rebuild"],["`pg_rewind`: *target server must be shut down cleanly*","Crash or `immediate` stop","Let it ensure shutdown (default) or start and stop the old primary cleanly"],["Two servers accept writes","Split brain","Stop one immediately; decide which has the data to keep; rewind or rebuild the other; export lost transactions for manual merge"],["Applications still connect to the old primary","DNS or pooler cache; direct connection strings","Fence the old node; shorten DNS TTL; use `target_session_attrs=read-write`"]]}],
+src:[["26.3 Failover",D+"warm-standby-failover.html"],["26.2 Log-Shipping Standby Servers (standby operation, promotion)",D+"warm-standby.html"],["pg_ctl (promote)",D+"app-pg-ctl.html"],["pg_promote",D+"functions-admin.html#FUNCTIONS-RECOVERY-CONTROL"],["pg_rewind",D+"app-pgrewind.html"],["Recovery Target Settings and Timelines",D+"continuous-archiving.html#BACKUP-TIMELINES"]]},
+
+/* ---------------------------------------------------------------- 9:11 */
+'pg:9:11':{blocks:[
+{p:"**High availability (HA)** means that the database service keeps working, or returns quickly, when a component fails: a disk, a server, a network link or a whole site. PostgreSQL supplies the **building blocks**: streaming replication, hot standby, replication slots, synchronous commit, promotion, timelines, `pg_rewind` and logical replication. The earlier lectures of this section taught each block. This lecture assembles them into **architectures**, adds the parts that PostgreSQL deliberately leaves to other software (failure detection, leader election, fencing, connection routing), and finishes with the **operations** side: monitoring, runbooks, game days and a troubleshooting matrix for replication and upgrade problems."},
+{h:"Vocabulary and targets"},
+{t:[["Term","Meaning","Example"],["**Availability**","The share of time the service is usable","99.95% per month"],["**RPO** (recovery point objective)","How much committed data you can afford to lose, measured in time","0 seconds with synchronous replication; seconds with asynchronous"],["**RTO** (recovery time objective)","How long the service may be down before it is back","30 seconds with automatic failover; hours with a restore from backup"],["**Single point of failure (SPOF)**","A component whose failure stops the service","One primary, one network switch, one power feed, one DNS server"],["**Switchover**","A planned, controlled role swap between primary and standby, with no data loss","Maintenance on the primary host"],["**Failover**","An unplanned promotion of a standby after the primary is lost","Host crash, storage failure"],["**Disaster recovery (DR)**","Recovering after the loss of a whole site, usually from another site","Standby or backups in a second data centre"],["**Backup**","An independent, point-in-time copy that survives mistakes such as `DROP TABLE`","Section 09"]]},
+{p:"Availability targets translate into a **downtime budget**. A budget is useful because it shows whether manual failover (minutes) is acceptable or whether automation is required."},
+{t:[["Availability","Downtime per year","Downtime per month (30 days)","What it usually needs"],["99%","About 3.65 days","About 7.2 hours","One server and good backups"],["99.9%","About 8.76 hours","About 43 minutes","A standby with a documented manual failover"],["99.99%","About 52.6 minutes","About 4.3 minutes","Automatic failover, tested routinely, no long maintenance windows"],["99.999%","About 5.3 minutes","About 26 seconds","Multiple sites, automation everywhere and a very disciplined operation"]]},
+{h:"What PostgreSQL provides and what it does not"},
+{p:"The documentation (Section 26.3, *Failover*) states plainly that PostgreSQL does **not** include the system software that detects a primary failure and tells the standby to take over. Promotion is a command (`pg_ctl promote` or `pg_promote()`); *deciding* when to run it, making sure the old primary cannot return as a second writer, and moving the applications are separate problems."},
+{t:[["Need","Built into PostgreSQL?","How it is covered"],["Copy the data to another server","**Yes**","Streaming replication (physical) and logical replication"],["Serve reads from the copy","**Yes**","Hot standby (`hot_standby = on`)"],["Keep committed data safe on two servers","**Yes**","`synchronous_commit` and `synchronous_standby_names`"],["Keep WAL for a lagging standby","**Yes**","Replication slots, `wal_keep_size`, the WAL archive"],["Promote a standby","**Yes**","`pg_ctl promote` or `pg_promote()` (the old `promote_trigger_file` setting was removed in PostgreSQL 16)"],["Reattach the old primary quickly","**Yes**","`pg_rewind`"],["Detect that the primary has failed","No","Failover manager, cluster software or an operator"],["Elect one new primary when several standbys exist","No","Failover manager with a consensus store, or an operator"],["Make sure the old primary is really off (**fencing**)","No","STONITH, cloud API, switch port, or the failover manager's own rules"],["Send applications to the new primary","Partly","`libpq` multi-host connection strings; otherwise a router, virtual IP or DNS"],["Alerting","No","External monitoring"]]},
+{h:"Replication and HA solutions compared (documentation 26.1)"},
+{p:"Chapter 26 opens with a comparison of the families of solutions. Knowing the whole map prevents the common mistake of using a tool for a job it was not designed for."},
+{t:[["Solution","Where it comes from","Granularity","Comment"],["**Shared-disk failover**","Storage or cluster software","Whole cluster","Only one server runs at a time; avoids data sync, but the storage is a SPOF"],["**File system (block device) replication**","For example DRBD","Whole cluster","Mirrors writes below PostgreSQL; the standby is not queryable"],["**Write-ahead log shipping and streaming**","**Built in**","Whole cluster","The subject of this section; a standby may be read-only queryable"],["**Logical replication**","**Built in**","Chosen tables and operations","Can differ in version, platform and extra tables; used for upgrades and data distribution"],["**Trigger-based leader-follower**","Add-on software such as Slony-I","Chosen tables","Historic approach; largely replaced by logical replication"],["**Statement-based replication middleware**","Add-on such as Pgpool-II","Chosen statements","Sends each statement to several servers; non-deterministic functions need care"],["**Asynchronous multi-leader**","Add-on such as Bucardo","Chosen tables","Conflict resolution is the user's responsibility"],["**Synchronous multi-leader**","Not provided by core PostgreSQL","Whole database","Every server accepts writes; costly in coordination"]]},
+{note:"Product names in this lecture (Patroni, repmgr, pg_auto_failover, Pacemaker, HAProxy, PgBouncer, Pgpool-II) are **separate projects**, not parts of PostgreSQL. Their features change between releases: confirm details in their own documentation before designing around them."},
+{h:"A reference architecture"},
+{svg:haSvg},
+{p:"The picture shows the usual layout: applications reach the **current primary** through a router or a multi-host connection string; one standby is **synchronous** (same site, low latency) and another is **asynchronous** (a different site); a failover manager decides roles; backups and the WAL archive protect against logical mistakes and disasters; monitoring watches lag, slots and the manager itself."},
+{h:"Choosing a design"},
+{t:[["Design","Components","Typical RPO","Typical RTO","Cost and complexity","Good for"],["**A. Single server with backups**","One server, `pg_basebackup` or pgBackRest, WAL archive (Section 09)","Seconds to minutes (archive interval)","Hours (restore)","Lowest","Development, internal tools, non-critical data"],["**B. Primary and one asynchronous standby**","Streaming replication, replication slot, archive","Seconds (current lag)","Minutes with a runbook; seconds with automation","Low to medium","Most business systems that tolerate losing the last moments"],["**C. Primary and two standbys, quorum commit**","`synchronous_standby_names = 'ANY 1 (s1, s2)'`, failover manager, router","Close to **zero** for acknowledged commits","Seconds to a minute","Medium; commits wait for a standby","Financial or order data where acknowledged work must survive"],["**D. Multi-site**","Synchronous standby in site 1, asynchronous cascaded standby in site 2, delayed replica, archive in a third place","Zero locally; seconds across sites","Local failover in seconds; site failover in minutes by decision","High","Systems that must survive the loss of a data centre"]]},
+{ul:["**Same major version everywhere.** Physical replication requires it. Minor versions can differ briefly during a rolling update (lecture *Upgrading Replicated Clusters*).","**Similar hardware and configuration on every node.** After a failover the standby carries the full load. The parameters `max_connections`, `max_worker_processes`, `max_wal_senders`, `max_prepared_transactions` and `max_locks_per_transaction` on a hot standby must be **at least as large as on the primary**, or the standby stops replay.","**Same operating system library versions** (glibc) where possible, because a different collation library can change index order (see the next lecture).","**Odd number of voting members** for any automatic election (see quorum below).","**Failure domains.** Put the nodes on different hosts, racks, power feeds and, for DR, sites. Two virtual machines on one hypervisor are one failure domain.","**Keep the old primary out of the way.** The design must say how the old primary is stopped (fenced) before a standby is promoted.","**Document the manual path.** Automation fails sometimes; the runbook for doing the same steps by hand must exist and be tested."]},
+{h:"Failover managers and quorum"},
+{p:"A failover manager monitors the cluster, decides when to promote, chooses which standby wins, reconfigures the others and (ideally) fences the old primary. To avoid two managers making conflicting decisions, they share a **consensus store** or a majority of voting nodes, called a **quorum**."},
+{t:[["Tool (third party)","Approach","State and election","Fencing"],["**Patroni**","A Python agent beside every PostgreSQL node; holds a leader key","A distributed configuration store (DCS) such as etcd, Consul, ZooKeeper or the Kubernetes API","Leader lease expiry plus a watchdog; external fencing optional"],["**repmgr**","`repmgr` tools and the `repmgrd` daemon","Metadata in the PostgreSQL cluster; optional witness node to break ties","Operator or scripts decide how to fence"],["**pg_auto_failover**","A separate **monitor** node decides states of the data nodes","State machine on the monitor","Node-level rules; monitor loss pauses automatic decisions"],["**Pacemaker and Corosync** (with a PostgreSQL resource agent)","Generic cluster resource manager","Corosync membership and quorum","**STONITH** devices are a core part"],["**Managed cloud services**","The provider runs the manager","Provider internal","Provider internal"]]},
+{t:[["Voting members","Failures tolerated while keeping a majority","Comment"],["1","0","No redundancy"],["2","0","Losing either member stops the majority: a tie-breaker is needed"],["3","**1**","The smallest useful size"],["4","1","No better than 3; one more member without one more tolerated failure"],["5","**2**","Common for multi-site designs"]]},
+{p:"The consensus store is **itself** a critical system: it should have its own odd-sized cluster on separate failure domains, with a monitored health state. A failover manager that loses its store typically refuses to promote, which is the safe behaviour but also an outage."},
+{h:"Routing applications to the right server"},
+{flow:["Application opens a connection","Router or driver chooses a host","Check: is it the writable primary?","Yes: session starts","No: try the next host or wait"]},
+{t:[["Method","How it works","Strengths","Watch out for"],["**`libpq` multiple hosts**","`host=a,b` or `postgresql://a,b/db?target_session_attrs=read-write`: the client tries each host until one has the requested role","No extra component; works in most `libpq`-based drivers","Connection attempts to a dead host take time: set `connect_timeout`"],["**JDBC and other drivers**","Equivalent options such as `targetServerType=primary` and a host list in the URL","Same idea in Java","Syntax differs per driver: read the driver documentation"],["**TCP load balancer (HAProxy)**","Health checks decide which backend receives traffic; one port for writes, another for reads","Language independent; central control","The health check must test the **role**, not just the port"],["**Virtual IP (keepalived or cluster software)**","The address moves to the new primary","Applications use one address","The old primary must be fenced or the address can appear twice"],["**DNS name**","Update a record after failover","Simple","Client caching and TTL: failover is as slow as the TTL and caches"],["**Connection pooler (PgBouncer)**","Pool in front of the server; `PAUSE` waits for in-flight transactions, `RESUME` continues after the target changes","Short, controlled switchover without breaking client sessions; fewer server connections","Another component to make highly available; pooling modes change what session features work"]]},
+{p:"`target_session_attrs` has these values in the documentation: `any`, `read-write`, `read-only`, `primary`, `standby` and `prefer-standby`. Since PostgreSQL 16, `load_balance_hosts=random` also spreads new connections over the listed hosts, which suits read-only connections to several standbys."},
+{code:`# libpq / psql: first host that accepts writes wins
+psql "postgresql://pg1:5432,pg2:5432,pg3:5432/app?target_session_attrs=read-write&connect_timeout=3"
+
+# reporting connections: prefer a standby, fall back to the primary
+psql "postgresql://pg1,pg2,pg3/app?target_session_attrs=prefer-standby&load_balance_hosts=random"
+
+# HAProxy fragment (example with a Patroni REST health check on port 8008)
+listen postgres_write
+    bind *:5000
+    option httpchk GET /primary
+    http-check expect status 200
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server pg1 10.0.0.11:5432 check port 8008
+    server pg2 10.0.0.12:5432 check port 8008
+    server pg3 10.0.0.13:5432 check port 8008`},
+{note:"`on-marked-down shutdown-sessions` closes existing connections to a server that stopped being primary. Without it, applications can keep writing to a demoted node through old connections."},
+{h:"Monitoring: what to watch"},
+{t:[["Check","Where","Alert when (starting values: tune to your workload)"],["Standby connected and streaming","`pg_stat_replication.state` on the primary","A standby is missing or not `streaming` for more than 1 to 2 minutes"],["Replay lag in time","`replay_lag` in `pg_stat_replication`, or `now() - pg_last_xact_replay_timestamp()` on the standby","Above the freshness your reads can accept, for example 30 s"],["Replay lag in bytes","`pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn)`","Growing for several minutes in a row"],["Synchronous standby present","`sync_state` of at least the required number of standbys","Fewer than required: commits will block"],["Slot health","`pg_replication_slots`: `active`, `wal_status`, `safe_wal_size`, `inactive_since`","Inactive for longer than a few minutes; `wal_status` of `unreserved` or `lost`"],["WAL disk space","File system holding `pg_wal`","Above 70% used, or retained WAL by slots above a limit"],["Archiving","`pg_stat_archiver.failed_count`, `last_failed_time`","Any new failure; `last_archived_time` older than the expected interval"],["Receiver status on the standby","`pg_stat_wal_receiver.status`, `last_msg_receipt_time`","Not `streaming`, or no message for more than `wal_receiver_timeout` should allow"],["Query conflicts","`pg_stat_database_conflicts`","Rising cancellations on a reporting standby"],["Role of each node","`pg_is_in_recovery()`","Zero or more than one node answering `f` (no primary or split brain)"],["Timeline","`pg_control_checkpoint()` column `timeline_id`, or the WAL file name","Two nodes on different timelines that both accept writes"],["Failover manager and consensus store","Their own health endpoints","Any member down; leader changes more than expected"],["Logical replication","`pg_stat_subscription`, `pg_stat_subscription_stats`","Worker not running; `apply_error_count` or `sync_error_count` increasing"]]},
+{code:`-- on the primary: replication overview with lag in bytes and time
+SELECT application_name, client_addr, state, sync_state,
+       pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn) AS replay_lag_bytes,
+       write_lag, flush_lag, replay_lag
+FROM pg_stat_replication
+ORDER BY application_name;
+
+-- on the primary: slots and how much WAL each one holds back
+SELECT slot_name, slot_type, active, wal_status,
+       pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS retained_wal,
+       pg_size_pretty(safe_wal_size) AS safe_wal_size
+FROM pg_replication_slots;
+
+-- on a standby: is it receiving and how stale is it?
+SELECT pg_is_in_recovery() AS in_recovery,
+       status, sender_host, last_msg_receipt_time,
+       now() - pg_last_xact_replay_timestamp() AS replay_age
+FROM pg_stat_wal_receiver;
+
+-- anywhere: which role does this node have?
+SELECT CASE WHEN pg_is_in_recovery() THEN 'standby' ELSE 'primary' END AS role;`},
+{note:"`now() - pg_last_xact_replay_timestamp()` grows on an **idle** primary, because no new transactions arrive to be replayed. Compare it with `replay_lag` from the primary, or generate a heartbeat row, before alerting on it."},
+{h:"Runbook 1: planned switchover"},
+{flow:["Announce the window; check lag is near zero","Pause or drain the application (pooler PAUSE)","Stop the primary cleanly (fast mode)","Wait until the chosen standby has replayed all WAL","Promote the standby","Point the router or pooler to the new primary; RESUME","Rewind or rebuild the old primary as a standby","Verify and record"]},
+{t:[["Step","Command or check","Why"],["Check readiness","`pg_stat_replication`: chosen standby `streaming`, lag small","Avoid a long wait at the stop"],["Stop the old primary","`pg_ctl stop -m fast`","A **clean shutdown** sends all WAL to connected standbys and lets `pg_rewind` run without a recovery"],["Compare positions","Last checkpoint location in `pg_controldata` of the old primary against `pg_last_wal_replay_lsn()` of the standby","Prove that nothing was left behind"],["Promote","`pg_ctl promote -D ...` or `SELECT pg_promote();`","Ends recovery and starts a new timeline"],["Reconfigure the others","Change `primary_conninfo` to the new primary and reload (or restart)","They follow the new timeline"],["Old primary","Create `standby.signal`, set `primary_conninfo`, start; use `pg_rewind` only if the histories diverged","It rejoins as a standby"]]},
+{h:"Runbook 2: emergency failover"},
+{flow:["Confirm the primary is truly down (from more than one place)","Fence it: power off or isolate","Pick the standby with the highest replayed LSN","Promote it","Move applications","Reconfigure the remaining standbys","Investigate and rebuild the old primary"]},
+{ul:["**Confirm from more than one vantage point.** A network problem between the monitor and the primary does not mean the primary is dead.","**Fence before promoting.** If the old primary is merely cut off and still accepts writes from some clients, promoting a standby creates **two writers** (split brain). Power fencing or a network isolation rule is the safe answer.","**Choose by LSN, not by name.** `SELECT pg_last_wal_replay_lsn();` on each standby; the highest is the most advanced. With `synchronous_standby_names = 'ANY 1 (...)'`, at least one standby holds every acknowledged commit but you do not know which one, so compare the LSNs of all of them.","**Record what was lost.** On an asynchronous design, note the last LSN the old primary reached (from logs or monitoring) so the business can reconcile the missing transactions.","**Do not reuse the old primary blindly.** It may contain transactions that exist nowhere else. Keep a copy before rewinding if the business needs them."]},
+{h:"Runbook 3: after any failover"},
+{t:[["Check","Command","Expected"],["Exactly one writable node","`SELECT pg_is_in_recovery();` on every node","One `f`, the rest `t`"],["All standbys follow the new primary","`pg_stat_replication` on the new primary","One row per standby, `streaming`"],["New timeline","Look at the newest `.history` file in the archive","Timeline number increased by one"],["Archiving works from the new primary","`pg_stat_archiver`","`archived_count` increasing, no new failures"],["Slots","`pg_replication_slots`","Slots recreated where needed; no abandoned ones"],["Backups","Run a base backup from the new primary soon","The backup chain continues on the new timeline"],["Applications","Error rate, connection counts, write latency","Back to baseline"],["Monitoring and alert rules","Dashboards use the new primary address","No stale targets"]]},
+{h:"Testing: game days"},
+{p:"An HA design that has never failed on purpose has not been shown to work. Schedule practice failures in a test environment first, then carefully in production, and write down the measured RPO and RTO."},
+{t:[["Scenario","How to create it","What you learn"],["Standby loses its network","Block the replication port for a few minutes, then restore","Does it catch up? Does a slot protect it? How much WAL piled up?"],["Primary process crash","`kill -9` of the postmaster on a test system","Crash recovery time; failover manager reaction"],["Primary host loss","Power off the VM","End-to-end RTO; are applications routed correctly?"],["Planned switchover","Run runbook 1","Duration, errors seen by clients"],["Network partition (split brain test)","Isolate the primary from the manager and standbys but not from clients","Does fencing stop the old primary? Are any writes accepted on both sides?"],["Disk full on `pg_wal`","Create an inactive slot and generate WAL on a test system","Alert timing; effect of `max_slot_wal_keep_size`"],["Consensus store member loss","Stop one member, then two","Does the cluster keep its leader when a majority remains?"],["Restore from backup","Rebuild a node from the archive only","Whether the backup and the runbook really work (Section 09)"]]},
+{h:"Replication is not a backup"},
+{ul:["A `DROP TABLE`, a bad `UPDATE` or a ransomware encryption is replicated to every standby within seconds.","A **delayed replica** (`recovery_min_apply_delay`) gives a short window to stop replay before a mistake arrives, but it is not a substitute for tested backups.","Keep **base backups and a WAL archive** on separate storage, and rehearse point-in-time recovery (Section 09).","Cascaded and logical replicas increase the number of copies; they do not provide history."]},
+{h:"Troubleshooting matrix: replication"},
+{t:[["Symptom","Likely cause","Action"],["Standby does not start streaming; log shows *no pg_hba.conf entry for replication connection*","Missing or wrong line in `pg_hba.conf`; the `replication` keyword is separate from a database name","Add `host replication repl 192.168.1.0/24 scram-sha-256`, reload, retry"],["*password authentication failed* for the replication role","Wrong password in `primary_conninfo` or `.pgpass`; different `password_encryption`","Fix the credential; test with `psql 'replication=true ...'` or `pg_basebackup`"],["*number of requested standby connections exceeds max_wal_senders*","All senders in use (standbys, backups, slots clients)","Raise `max_wal_senders` (restart) and keep spare capacity for backups"],["*requested WAL segment ... has already been removed*","The primary recycled WAL before the standby used it","Use a slot or `restore_command` from the archive; otherwise rebuild the standby"],["*replication slot ... does not exist*","Slot never created, or lost after rebuilding the primary","Create the slot, or remove `primary_slot_name`"],["Lag grows steadily","Slow replay (single-threaded startup process), I/O on the standby, heavy write bursts, long conflicting queries","Check I/O and CPU on the standby; look for `wal_receiver` versus replay gap; tune `max_standby_streaming_delay`"],["`pg_wal` fills on the primary","Inactive slot, failing `archive_command`, high `wal_keep_size`","`pg_replication_slots`, `pg_stat_archiver`; drop the abandoned slot; set `max_slot_wal_keep_size`"],["*canceling statement due to conflict with recovery* on a standby","Replay needed to remove rows the query still sees","Shorter queries, larger `max_standby_streaming_delay`, or `hot_standby_feedback` (with bloat risk on the primary)"],["Commits hang on the primary","Synchronous standby unreachable","`pg_stat_replication.sync_state`; reconfigure `synchronous_standby_names`; see the synchronous lecture"],["Standby stuck in *recovery paused*","`pg_wal_replay_pause()` or `recovery_target_action = pause`","`SELECT pg_wal_replay_resume();`"],["Standby will not follow the new primary after a failover","Timeline history missing; `recovery_target_timeline` pinned; wrong `primary_conninfo`","Provide the `.history` file; use `latest`; fix the host"],["Standby stops with *hot standby is not possible because of insufficient parameter settings*","Settings lower than the primary's (`max_connections` and the others)","Raise them on the standby to at least the primary's values and restart"],["Walsender repeatedly times out","Network drops; `wal_sender_timeout` too low","Check network; `wal_sender_timeout` and `wal_receiver_timeout` default to 60 s"]]},
+{h:"Troubleshooting matrix: upgrades and logical replication"},
+{t:[["Symptom","Likely cause","Action"],["`pg_upgrade --check`: *could not connect* or *lock file exists*","An old server is running, or `postmaster.pid` remains after a crash","Start and stop the old server cleanly; remove only a truly stale lock file"],["*old and new cluster ... incompatible* (block size, WAL segment size, checksums, locale)","`initdb` options differ","Re-run `initdb` with matching options; checksums can be changed with `pg_checksums` on a stopped cluster"],["*could not load library* for an extension","Extension package not installed for the new version","Install the new version's package; run `--check` again"],["*Your installation contains ... data types* (`reg*` types in user tables)","The `reg*` OID types cannot be carried over","Drop or convert those columns, upgrade, then recreate"],["Different port needed","Both clusters would use 5432","Use `-p 5432 -P 5433` (old and new ports) for the run"],["Applications slow right after the upgrade","Statistics missing or not transferred (older source version) or not refreshed","Run `vacuumdb --all --analyze-in-stages` (see the pg_upgrade lecture for what PostgreSQL 18 carries over)"],["Subscription never becomes ready","Initial table sync failed, missing table or permission on the subscriber","`pg_stat_subscription`, `pg_subscription_rel.srsubstate`, the subscriber log"],["Subscription stops with a *duplicate key* error","The subscriber already holds the row, or a local write happened","Fix the data; use `ALTER SUBSCRIPTION ... SKIP` only with the exact LSN from the log and understanding of the consequence"],["`UPDATE` or `DELETE` fails on the publisher: *cannot update table ... does not have a replica identity*","The table has no primary key and no `REPLICA IDENTITY`","Add a key or `ALTER TABLE ... REPLICA IDENTITY FULL` (costly) or a unique index"],["Sequences on the new server restart at 1 after the cut-over","Logical replication does not carry sequence values","Set them with `setval()` from the old values during the cut-over (see the logical replication lecture)"],["Publisher disk grows after dropping a subscription badly","The slot was left behind","`SELECT pg_drop_replication_slot('...');` on the publisher"]]},
+{h:"Common mistakes"},
+{t:[["Mistake","Consequence","Prevention"],["Treating a replica as a backup","Mistakes and corruption replicate","Independent backups and archive, restored on a schedule"],["Automatic failover with no fencing","Two primaries","STONITH, watchdog or equivalent; test partitions"],["Health check tests the TCP port only","Traffic goes to a standby or a hung server","Check the role (`pg_is_in_recovery()` or the manager's API)"],["Different parameter values on the standby","Standby refuses to start or stops replay","Manage configuration as code, same on every node"],["Forgotten replication slots","Full `pg_wal` and a primary outage","Alerts, `max_slot_wal_keep_size`, review at every decommission"],["Never testing failover","Surprises during the real event","Game days with measured RPO and RTO"],["Only monitoring the primary","A broken standby is found when it is needed","Monitor lag and state of every standby, and the manager itself"],["Upgrading the primary first in a rolling update","A standby may not understand new WAL behaviour","Standbys first, primary last"]]},
+{note:"The best HA design is the **simplest one that meets the written RPO and RTO**. Every extra component (manager, consensus store, router, pooler) also needs its own redundancy, monitoring and practice."}],
+src:[["Chapter 26: High Availability, Load Balancing, and Replication",D+"high-availability.html"],["26.1 Comparison of Different Solutions",D+"different-replication-solutions.html"],["26.2 Log-Shipping Standby Servers",D+"warm-standby.html"],["26.3 Failover",D+"warm-standby-failover.html"],["26.4 Hot Standby",D+"hot-standby.html"],["Connection Strings and target_session_attrs",D+"libpq-connect.html"],["Cumulative Statistics: pg_stat_replication",D+"monitoring-stats.html#MONITORING-PG-STAT-REPLICATION-VIEW"],["pg_replication_slots",D+"view-pg-replication-slots.html"],["19.6 Replication (parameters)",D+"runtime-config-replication.html"],["Chapter 29: Logical Replication",D+"logical-replication.html"],["pg_upgrade",D+"pgupgrade.html"],["pg_rewind",D+"app-pgrewind.html"],["Patroni documentation","https://patroni.readthedocs.io/"],["repmgr documentation","https://www.repmgr.org/docs/current/"],["PgBouncer","https://www.pgbouncer.org/"]]},
+
+/* ---------------------------------------------------------------- 9:12 */
+'pg:9:12':{blocks:[
+{p:"Four topics fall between the other lectures of this section and are often needed on the day of an upgrade or an incident: **`pg_receivewal`** (streaming WAL to a directory without a standby), **`pg_recvlogical`** (streaming logical changes to a file), the **slot management functions** that both tools rely on, and the **maintenance that follows an upgrade or a move to another operating system**: collation versions, extension versions and a post-upgrade checklist. The end of the lecture is a one-page map of every tool used in Section 10."},
+{h:"pg_receivewal: streaming WAL to a directory"},
+{p:"`pg_receivewal` connects with the **streaming replication protocol** like a standby does, but instead of replaying the WAL it **writes it to files** in a directory. It is the documented alternative to `archive_command`: WAL reaches the archive continuously, not only when a 16 MB segment is complete, so the RPO is much shorter than with archiving a finished segment alone."},
+{flow:["Primary generates WAL","walsender streams it","pg_receivewal writes segment files","Current file ends in .partial","Segment completes: .partial removed","restore_command copies files back during recovery"]},
+{t:[["Option","Meaning","Notes"],["`-D dir`, `--directory`","Directory that receives the WAL files","Required; must be on separate storage from the primary"],["`-h`, `-p`, `-U`","Host, port and role","The role needs the `REPLICATION` attribute and a `replication` line in `pg_hba.conf`"],["`-S slot`, `--slot`","Use this replication slot","Without a slot, WAL needed after a long pause may already be gone"],["`--create-slot`, `--drop-slot`","Create or remove the physical slot, then exit","Combine with `-S`"],["`--synchronous`","Flush WAL to disk immediately and report it to the primary","Lets it act as a **synchronous standby** by its `application_name`; it never replays, so `remote_apply` cannot be satisfied"],["`--compress=METHOD:LEVEL`","Compress the files (`gzip`, `lz4`, `zstd` where built in)","Compressed files must be unpacked by the `restore_command`"],["`--no-loop`, `-n`","Do not retry after a connection failure","Default is to reconnect"],["`--endpos=LSN`","Stop after this position","Useful for tests and scripted runs"],["`--no-sync`","Do not wait for files to be flushed","Faster, but unsafe for a real archive"],["`-v`, `--verbose`","Print progress","Helpful when first testing"]]},
+{code:`-- on the primary: a role for the receiver
+CREATE ROLE walreceiver LOGIN REPLICATION PASSWORD 'change-me';
+
+# pg_hba.conf on the primary
+host  replication  walreceiver  192.168.1.20/32  scram-sha-256
+
+# on the archive host: create a slot once, then run the receiver
+pg_receivewal -h pg-primary -U walreceiver -D /archive/wal -S archive_slot --create-slot
+pg_receivewal -h pg-primary -U walreceiver -D /archive/wal -S archive_slot --synchronous --compress=zstd:3
+
+# as a systemd service the command is the same; make it restart on failure
+
+# recovery uses the files (uncompressed example)
+restore_command = 'cp /archive/wal/%f "%p"'`},
+{t:[["","`archive_command`","`pg_receivewal`"],["Unit of transfer","Completed 16 MB segment","Continuous stream of WAL records"],["Data at risk after a crash","Up to the unarchived part of the current segment","A fraction of a second (with `--synchronous`, none that was acknowledged)"],["Where it runs","On the primary, in the archiver process","On any host that can connect"],["Failure handling","Primary retries; `pg_wal` grows while it fails","Primary keeps WAL only if a **slot** is used; an idle slot has the same danger as any other"],["Cleanup","`pg_archivecleanup`","`pg_archivecleanup` (it does not delete by itself)"],["Monitoring","`pg_stat_archiver`","`pg_stat_replication` row for the receiver; file times in the directory"]]},
+{note:"`pg_receivewal` with a slot is a consumer like any standby: if it stops for a long time the primary keeps all WAL for it. Set `max_slot_wal_keep_size` and alert on the slot, as in the slots lecture."},
+{h:"pg_recvlogical: streaming logical changes"},
+{p:"`pg_recvlogical` creates and uses a **logical replication slot**, and writes the decoded changes to a file or to standard output. Logical decoding turns WAL into row-level changes through an **output plugin**: `pgoutput` is what logical replication itself uses; `test_decoding` (in `contrib`) produces readable text and is the usual way to explore the feature. The server needs `wal_level = logical`."},
+{t:[["Option","Meaning"],["`--create-slot`, `--drop-slot`, `--start`","The action to perform (exactly one)"],["`-d dbname`","Database to decode: a logical slot belongs to one database"],["`-S slot`","Slot name"],["`-P plugin`, `--plugin`","Output plugin used when creating the slot"],["`-f file`","Output file, `-` for standard output"],["`-o name=value`, `--option`","Plugin option, for example `include-xids=1` for `test_decoding`"],["`-I`, `-E`","Start position and end position (LSN)"],["`--two-phase`","Decode prepared transactions at `PREPARE`"]]},
+{code:`-- primary: wal_level = logical (restart required)
+pg_recvlogical -d app -S demo_slot -P test_decoding --create-slot
+pg_recvlogical -d app -S demo_slot -f - --start -o include-xids=0 &
+
+-- in another session
+INSERT INTO accounts(id, owner) VALUES (1, 'A');
+
+-- the receiver prints, for example
+BEGIN
+table public.accounts: INSERT: id[integer]:1 owner[text]:'A'
+COMMIT
+
+pg_recvlogical -d app -S demo_slot --drop-slot     -- always drop when finished`},
+{p:"Logical slots follow the same rules as physical slots about retention (they keep WAL **and** the catalog rows needed for decoding, `catalog_xmin`) and about danger when abandoned. They additionally require that the table has a **replica identity** for `UPDATE` and `DELETE` to be decodable."},
+{h:"Slot management functions"},
+{t:[["Function","Purpose","Notes"],["`pg_create_physical_replication_slot(name, immediately_reserve, temporary)`","Create a physical slot","`immediately_reserve = true` starts keeping WAL at once; `temporary` removes it at the end of the session"],["`pg_create_logical_replication_slot(name, plugin, temporary, twophase, failover)`","Create a logical slot","`failover = true` lets standbys synchronise it (PostgreSQL 17 and later)"],["`pg_drop_replication_slot(name)`","Remove a slot","Fails if the slot is active: stop the consumer first"],["`pg_replication_slot_advance(name, upto_lsn)`","Move a slot forward without consuming","Frees WAL; the consumer will skip those changes"],["`pg_copy_physical_replication_slot` and `pg_copy_logical_replication_slot`","Copy a slot at its current position","Used to prepare a second consumer or a test"],["`pg_logical_slot_peek_changes` and `pg_logical_slot_get_changes`","Read decoded changes through SQL","`peek` does not consume, `get` does"],["`pg_sync_replication_slots()`","On a standby: synchronise failover slots once","The `sync_replication_slots` setting does this continuously"]]},
+{ul:["**Temporary slots** disappear when the session ends or errors. `pg_basebackup` using `-X stream` creates one automatically (unless `--no-slot` is given), which protects the WAL needed by that one backup without leaving anything behind.","**Permanent slots** need an owner: write down which consumer each slot belongs to, and drop the slot when that consumer is decommissioned.","`idle_replication_slot_timeout` (PostgreSQL 18) can invalidate slots that stay inactive for too long. It is a safety net, not a replacement for monitoring."]},
+{h:"After an upgrade or an operating system change: collations"},
+{p:"Text indexes store values in the **sort order of the collation**. If the collation library changes its rules (for example a new `glibc` or ICU version on the new operating system), an index built under the old rules can return wrong results or allow duplicates. This risk is real in three situations of this section: a **physical standby** on a different OS image, an upgrade done by **logical replication to new servers**, and an in-place `pg_upgrade` after the OS was also upgraded. PostgreSQL records the version of each collation and warns when it differs."},
+{code:`-- warning seen at connection time
+WARNING:  database "app" has a collation version mismatch
+DETAIL:  The database was created using collation version 2.28, but the operating system provides version 2.34.
+HINT:  Rebuild all objects in this database that use the default collation and run ALTER DATABASE app REFRESH COLLATION VERSION, or build PostgreSQL with the right library version.
+
+-- see recorded and actual versions
+SELECT datname, datcollversion, pg_database_collation_actual_version(oid)
+FROM pg_database;
+
+SELECT collname, collversion, pg_collation_actual_version(oid)
+FROM pg_collation
+WHERE collversion IS DISTINCT FROM pg_collation_actual_version(oid);`},
+{flow:["Warning or version query shows a mismatch","Take a backup","REINDEX every index that uses the collation","Check unique constraints for new duplicates","ALTER DATABASE ... REFRESH COLLATION VERSION","Record the library version in the build notes"]},
+{ul:["`REINDEX DATABASE CONCURRENTLY app;` rebuilds the indexes without blocking writes, but a unique index that now sees duplicates will fail and needs data repair first.","`ALTER COLLATION name REFRESH VERSION` does the same record update for a single collation.","Since PostgreSQL 17 the **`builtin` locale provider** (for example `C.UTF-8`) has rules that do not depend on the operating system, which removes this class of problem for databases that can use it.","Binary or `C` collation databases are not affected; `pg_upgrade` requires the same collation and encoding settings in both clusters."]},
+{h:"After an upgrade: extensions"},
+{p:"`pg_upgrade` carries the **definitions** of extensions (rows in `pg_extension` and their objects) but not their **files**. The new installation must have the same extensions installed for the new major version, or the check stops with *could not load library*. After the upgrade, the extension may still be at its old SQL version and can be updated."},
+{code:`-- installed version versus the newest available
+SELECT e.extname, e.extversion AS installed, a.default_version AS available
+FROM pg_extension e
+JOIN pg_available_extensions a ON a.name = e.extname
+WHERE e.extversion <> a.default_version;
+
+ALTER EXTENSION pg_stat_statements UPDATE;
+ALTER EXTENSION postgis UPDATE;          -- read the extension's own upgrade notes first
+
+-- libraries that must be preloaded again in the new cluster
+SHOW shared_preload_libraries;`},
+{t:[["Extension type","Before the upgrade","After the upgrade"],["Contrib (`pg_stat_statements`, `pgcrypto`)","Install the `-contrib` package for the new version","`ALTER EXTENSION ... UPDATE`; reset statistics if needed"],["Third party (PostGIS, TimescaleDB, pgvector)","Check the supported-version table; install the new package; follow the project's upgrade guide","Run the project's update steps; some need a special upgrade procedure"],["`shared_preload_libraries` entries","Note the old value","Set in the new `postgresql.conf`, restart"],["Own C functions or procedural languages","Rebuild against the new headers","Test before production"]]},
+{h:"Post-upgrade and post-failover maintenance checklist"},
+{t:[["When","Task","Detail"],["Immediately","Compare settings","`pg_upgrade` does not copy `postgresql.conf` or `pg_hba.conf`: re-apply every changed setting and review new defaults"],["Immediately","Statistics","Run `vacuumdb --all --analyze-in-stages` unless the statistics were transferred (see the pg_upgrade lecture); extended statistics may still need `ANALYZE`"],["Immediately","Standbys","Rebuild or rsync them (lecture *Upgrading Replicated Clusters*), then check `pg_stat_replication`"],["Immediately","Backups","Take a **new** base backup of the new cluster; old backups and archives belong to the old major version and cannot be combined with new WAL"],["First day","Monitoring","Update host, port and data directory in dashboards; check slot and lag alerts"],["First day","Applications","Driver compatibility, connection errors, slow queries (`pg_stat_statements`, slow log)"],["First day","Authentication","PostgreSQL 18 deprecates **MD5** passwords and can warn about them: plan the move to SCRAM (Section 07)"],["First week","Collations and extensions","The two previous sections of this lecture"],["First week","Old cluster","Keep it, unchanged, until the rollback window ends (not possible after `--link` or `--swap` once the new cluster has run); then run the generated `delete_old_cluster` script and remove old packages"],["First week","Document","Record versions, durations, problems and the measured downtime for the next upgrade"]]},
+{h:"Tool map for Section 10"},
+{t:[["Task","Tool or feature","Lecture"],["Move to a new major version in place","`pg_upgrade`","Upgrade Strategy; pg_upgrade Reference"],["Check a cluster is ready for the upgrade","`pg_upgrade --check`, `pg_controldata`, `pg_checksums`","pg_upgrade Reference"],["Upgrade with seconds of downtime","Logical replication, `pg_createsubscriber`","Logical Replication and Near-Zero-Downtime Upgrades"],["Create a standby","`pg_basebackup -R`","Streaming Replication Setup"],["Update standbys of an upgraded primary","Rebuild or documented `rsync`","Upgrading Replicated Clusters"],["Protect a standby from missing WAL","Slots, `wal_keep_size`, archive","Replication Slots"],["Tune reads on a standby","Hot standby settings","Hot Standby"],["Choose durability per transaction","`synchronous_commit`, `synchronous_standby_names`","Synchronous Replication"],["Switch roles or fail over","`pg_ctl promote`, `pg_promote()`, `pg_rewind`","Failover, Switchover, Promotion and pg_rewind"],["Stream WAL to an archive","`pg_receivewal`","This lecture"],["Stream decoded changes","`pg_recvlogical`","This lecture"],["Design and operate the whole system","Failover manager, router, monitoring, runbooks","High Availability Architecture"],["Clean up WAL files","`pg_archivecleanup`","Section 09"]]}],
+src:[["pg_receivewal",D+"app-pgreceivewal.html"],["pg_recvlogical",D+"app-pgrecvlogical.html"],["Replication Management Functions",D+"functions-admin.html#FUNCTIONS-REPLICATION"],["Logical Decoding",D+"logicaldecoding.html"],["Collation Support (versions)",D+"collation.html"],["ALTER DATABASE",D+"sql-alterdatabase.html"],["REINDEX",D+"sql-reindex.html"],["ALTER EXTENSION",D+"sql-alterextension.html"],["pg_upgrade",D+"pgupgrade.html"],["Replication Slots (streaming replication)",D+"warm-standby.html#STREAMING-REPLICATION-SLOTS"]]}
+});
+
+/* ---------- back-fill notes into earlier lessons (Section 10) ---------- */
+const X=(k,blocks,src)=>{const L=window.LESSONS[k];if(!L){console.warn('LearnSphere back-fill: missing lesson '+k);return}L.blocks.push(...blocks);if(src)L.src=(L.src||[]).concat(src)};
+
+X('pg:0:1',[
+{h:"MVCC, replication and upgrades (Section 10)"},
+{ul:["**Hot standby query conflicts** come from MVCC: when `VACUUM` on the primary removes old row versions, replay on the standby must remove them too, and a long query on the standby may still need them. `hot_standby_feedback` tells the primary to keep them, at the cost of bloat on the primary.","**Logical replication** sends row changes (committed transactions in commit order), not pages, which is why the two servers may differ in version and layout.","**Upgrades** never rewrite MVCC row versions: `pg_upgrade` keeps the user data files in place or copies them, because the on-disk format of tables is unchanged between major versions."]}],
+[["Hot Standby",D+"hot-standby.html"]]);
+
+X('pg:0:2',[
+{h:"Where upgrade, replication and HA duties are taught (Section 10)"},
+{t:[["DBA duty","Where to learn it"],["Plan minor and major upgrades, rollback","Upgrade Strategy; pg_upgrade Reference"],["Build and monitor standbys","Streaming Replication Setup; Replication Slots; Hot Standby"],["Decide durability versus latency","Synchronous Replication and Durability Levels"],["Switchover, failover, fencing","Failover, Switchover, Promotion and pg_rewind"],["Near-zero-downtime migration","Logical Replication and Near-Zero-Downtime Upgrades"],["Design, monitor and test HA","High Availability Architecture, Operations and Troubleshooting"]]}],
+[["High Availability, Load Balancing, and Replication",D+"high-availability.html"]]);
+
+X('pg:0:3',[
+{h:"Upgrade planning from the release calendar (Section 10)"},
+{ul:["Each major version is supported for **five years** after its first release; a minor release comes at least every quarter. Put the end-of-support date of every cluster in the inventory and start the upgrade project **at least a year earlier**.","Minor updates are the routine, low-risk activity (replace binaries, restart; standbys first). Major upgrades use `pg_upgrade`, logical replication or dump and restore, chosen as described in the *Upgrade Strategy* lecture.","Read the release notes section **Migration to Version N** before every major upgrade: it lists incompatibilities that can break applications."]}],
+[["Versioning Policy","https://www.postgresql.org/support/versioning/"],["Release Notes",D+"release.html"]]);
+
+X('pg:1:2',[
+{h:"Installing two major versions side by side (Section 10)"},
+{p:"`pg_upgrade` needs the **old and the new** binaries at the same time. PGDG packages make this natural, because every major version lives in its own directory. Install the new server and `-contrib` packages, plus the same extension packages as the old cluster, **without removing the old ones**, and keep the old packages until the upgrade is accepted."},
+{code:`sudo dnf install -y postgresql18-server postgresql18-contrib
+ls -d /usr/pgsql-*                       # /usr/pgsql-17 and /usr/pgsql-18
+/usr/pgsql-18/bin/pg_upgrade --version`},
+{note:"The new cluster is created with `initdb` by the **new** version and does not start until `pg_upgrade` has filled it. Do not start the packaged service of the new version before the upgrade."}],
+[["pg_upgrade",D+"pgupgrade.html"]]);
+
+X('pg:1:3',[
+{h:"Minor updates with RPM (Section 10)"},
+{p:"A minor update replaces the packages of the **same** major version (`rpm -Uvh` or `dnf update`) and then restarts the server. On a replicated cluster the order matters: update the **standbys first**, the primary last, one node at a time, and check `pg_stat_replication` between steps. The lecture *Upgrading Replicated Clusters and Rolling Minor Updates* gives the full procedure."}],
+[["Upgrading a PostgreSQL Cluster",D+"upgrading.html"]]);
+
+X('pg:1:6',[
+{h:"Checklist items added by replication and upgrades (Section 10)"},
+{ul:["Install the **same major version and architecture** on every node of a replication group.","Open the firewall for replication between nodes (the normal port), not just for applications.","Plan separate disks and alerts for `pg_wal`: a stalled replica can fill it.","Keep an inventory of extensions: every one must exist for the next major version before an upgrade."]}],
+[["Post-installation setup",D+"install-post.html"]]);
+
+X('pg:2:1',[
+{h:"Second clusters for upgrades and replicas (Section 10)"},
+{ul:["`pg_upgrade` normally runs the old cluster on one port (for example 5432) and the new one on another (5433, via `-p` and `-P`). Both data directories, both binary directories and both sockets must be distinct.","A **standby on the same host** as its primary (a lab) needs its own data directory, its own port and its own socket directory, set in `postgresql.conf` and `pg_ctl -o`.","Name each cluster's service, log directory and `PGDATA` clearly: during an upgrade it must be obvious which cluster a command touches."]}],
+[["pg_upgrade",D+"pgupgrade.html"]]);
+
+X('pg:2:2',[
+{h:"Shutdown modes in upgrades and failover (Section 10)"},
+{t:[["Situation","Use","Reason"],["Stop the old cluster before `pg_upgrade`","`fast` (the new cluster is also stopped cleanly)","`pg_upgrade` requires clean shutdowns; after a crash start and stop once"],["Planned switchover of a primary","`fast`","Connected standbys receive all WAL up to the shutdown checkpoint"],["Stopping the old primary before `pg_rewind`","`fast`","`pg_rewind` needs a cleanly shut down target (it can run recovery itself if allowed)"],["Standby maintenance","`fast` or `smart`","A standby has no clients that write; reconnect is automatic"],["Emergency or fencing","`immediate` or power off","Crash recovery on the next start, and possibly a rewind"]]}],
+[["pg_ctl",D+"app-pg-ctl.html"]]);
+
+X('pg:2:3',[
+{h:"Files and lines used by replication (Section 10)"},
+{t:[["File","Replication-related content"],["`pg_hba.conf`","A line with the keyword `replication` in the database column for each standby, `pg_basebackup` or `pg_receivewal` client"],["`postgresql.conf`","`wal_level`, `max_wal_senders`, `max_replication_slots`, `hot_standby`, `synchronous_standby_names`, `primary_conninfo`, `primary_slot_name`"],["`postgresql.auto.conf`","Written by `pg_basebackup -R` with `primary_conninfo`; overrides `postgresql.conf`"],["`standby.signal`","Empty file that makes the server start as a standby"]]},
+{note:"`pg_upgrade` does not copy configuration files. Re-apply the settings in the new cluster and review new default values."}],
+[["Replication parameters",D+"runtime-config-replication.html"]]);
+
+X('pg:3:2',[
+{h:"Replication processes (Section 10)"},
+{t:[["Process","Where","Job"],["**walsender**","Primary (or a cascading standby)","One per connected standby, backup or subscriber; streams WAL"],["**walreceiver**","Standby","Receives WAL and writes it to `pg_wal`"],["**startup process**","Standby (and during crash recovery)","Replays WAL into the data files; also applies recovery conflicts"],["**logical replication launcher and apply workers**","Subscriber","Start and run one apply worker per subscription, plus table-sync workers"],["**slot synchronisation worker**","Standby with `sync_replication_slots`","Copies failover logical slots from the primary"],["**archiver**","Primary","Runs `archive_command` for completed segments"]]}],
+[["Monitoring Database Activity",D+"monitoring.html"]]);
+
+X('pg:3:4',[
+{h:"WAL as the replication stream (Section 10)"},
+{p:"The WAL described here is the **same** stream that physical replication ships: a standby is a server in permanent recovery. `wal_level = replica` is enough for physical replication and archiving; `logical` adds the information needed for logical decoding. The WAL a standby still needs is kept by `wal_keep_size`, by **replication slots**, or by the archive. The lecture *Replication Slots, WAL Retention and Monitoring Lag* shows how to watch it."}],
+[["WAL Configuration",D+"wal-configuration.html"]]);
+
+X('pg:3:6',[
+{h:"Replication and upgrade files in PGDATA (Section 10)"},
+{t:[["Name","Meaning"],["`standby.signal`, `recovery.signal`","Start in standby mode or in archive recovery"],["`backup_label`, `tablespace_map`","Written by a base backup; used by recovery"],["`pg_replslot/`","State of replication slots (each slot a directory)"],["`pg_logical/`","Logical decoding and replication origin state"],["`pg_upgrade_output.d/`","Logs and scripts of a `pg_upgrade` run, created under the new data directory"],["`pg_wal/*.history`","Timeline history files written at promotion"]]}],
+[["Database Physical Storage",D+"storage.html"]]);
+
+X('pg:4:0',[
+{h:"Catalog and statistics views for replication (Section 10)"},
+{t:[["View","Shows"],["`pg_stat_replication`","Primary side: each walsender, LSN positions, lag and sync state"],["`pg_stat_wal_receiver`","Standby side: the receiver's status and sender"],["`pg_replication_slots`","Slots, retention and `wal_status`"],["`pg_stat_replication_slots`","Logical decoding statistics per slot"],["`pg_stat_subscription`, `pg_stat_subscription_stats`","Logical replication workers and errors"],["`pg_publication`, `pg_publication_tables`, `pg_subscription`, `pg_subscription_rel`","Definitions and table sync state"],["`pg_stat_database_conflicts`","Queries cancelled on a standby, by cause"]]}],
+[["System Views",D+"views.html"]]);
+
+X('pg:4:4',[
+{h:"Terminating replication connections (Section 10)"},
+{p:"A walsender appears in `pg_stat_activity` with `backend_type = 'walsender'`. `pg_terminate_backend(pid)` disconnects that standby; it reconnects automatically within seconds, which is a quick way to test reconnection but never a fix for lag. Long queries on a hot standby are cancelled by the server itself when they conflict with replay (see *Hot Standby*)."},
+{code:`SELECT pid, backend_type, application_name, state, client_addr
+FROM pg_stat_activity
+WHERE backend_type IN ('walsender','walreceiver','logical replication apply worker');`}],
+[["pg_stat_activity",D+"monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW"]]);
+
+X('pg:4:8',[
+{h:"Collations across servers and upgrades (Section 10)"},
+{p:"A physical standby, an upgraded cluster and a logical-replication target must all sort text the same way as the source, or indexes can return wrong results. PostgreSQL records the collation **version** and warns on a mismatch. The full procedure (`REINDEX`, then `ALTER DATABASE ... REFRESH COLLATION VERSION`) is in the lecture *Replication Utilities and Post-Upgrade Maintenance*. `pg_upgrade` requires the same encoding and locale settings in the old and new clusters."}],
+[["Collation Support",D+"collation.html"]]);
+
+X('pg:4:10',[
+{h:"Replication monitoring in the statistics views (Section 10)"},
+{p:"Add these to your regular monitoring: `pg_stat_replication` (state, lag), `pg_stat_wal_receiver`, `pg_replication_slots` (retained WAL), `pg_stat_archiver` (archiving failures) and `pg_stat_database_conflicts`. Thresholds and queries are in *High Availability Architecture, Operations and Troubleshooting*."}],
+[["Monitoring Database Activity",D+"monitoring-stats.html"]]);
+
+X('pg:5:3',[
+{h:"Replication parameters and their context (Section 10)"},
+{t:[["Parameter","Change needs","Note"],["`wal_level`, `max_wal_senders`, `max_replication_slots`, `hot_standby`","**Restart**","Plan before building replication; raise `max_wal_senders` above the number of consumers"],["`max_connections`, `max_worker_processes`, `max_prepared_transactions`, `max_locks_per_transaction`","**Restart**","On a standby they must be at least the primary's values"],["`synchronous_standby_names`, `wal_keep_size`, `max_slot_wal_keep_size`, `primary_conninfo`, `primary_slot_name`, `max_standby_streaming_delay`, `hot_standby_feedback`","Reload","Can be changed without downtime"],["`synchronous_commit`","Per session or transaction","Can be set per role, database or statement"]]}],
+[["Replication",D+"runtime-config-replication.html"]]);
+
+X('pg:5:6',[
+{h:"WAL settings that replication depends on (Section 10)"},
+{ul:["`wal_level = replica` (default) supports streaming replication and archiving; `logical` is needed for publications and logical decoding.","`wal_log_hints = on` or **data checksums** are required before `pg_rewind` can be used. `initdb` of PostgreSQL 18 enables checksums by default.","`max_wal_size` is a soft limit: replication slots, `wal_keep_size` and failing archiving can make `pg_wal` grow beyond it. `max_slot_wal_keep_size` puts a hard cap on what slots may hold back."]}],
+[["WAL Configuration",D+"wal-configuration.html"]]);
+
+X('pg:5:11',[
+{h:"Timeouts that decide how fast a failure is noticed (Section 10)"},
+{t:[["Parameter","Default","Effect on replication"],["`wal_sender_timeout`","60 s","Primary closes a walsender connection that stops responding"],["`wal_receiver_timeout`","60 s","Standby gives up on a silent primary and reconnects"],["`wal_retrieve_retry_interval`","5 s","How long a standby waits before trying WAL sources again"],["`tcp_keepalives_idle`, `tcp_keepalives_interval`, `tcp_keepalives_count`","OS defaults","Detect dead peers on idle connections"],["`connect_timeout` (client)","None","Set it in multi-host connection strings so a dead host does not delay failover"]]}],
+[["Connections and Authentication",D+"runtime-config-connection.html"]]);
+
+X('pg:6:1',[
+{h:"Replication lines in pg_hba.conf (Section 10)"},
+{code:`# TYPE  DATABASE     USER      ADDRESS            METHOD
+host    replication  repl      192.168.1.0/24     scram-sha-256
+host    all          appuser   10.0.0.0/16        scram-sha-256`},
+{p:"The word `replication` in the **database** column does not name a database; it matches physical replication connections (standbys, `pg_basebackup`, `pg_receivewal`). A connection for **logical** replication names the real database. Use `hostssl` with certificates between sites."}],
+[["The pg_hba.conf File",D+"auth-pg-hba-conf.html"]]);
+
+X('pg:6:3',[
+{h:"Roles for replication (Section 10)"},
+{code:`CREATE ROLE repl LOGIN REPLICATION PASSWORD 'change-me' CONNECTION LIMIT 5;
+-- logical replication: publisher side needs REPLICATION or a role that can create slots
+-- subscriber side: the subscription owner needs pg_create_subscription and CREATE on the database`},
+{p:"Give the replication role no other rights. Do not use a superuser for streaming replication; use `pg_basebackup`, `pg_receivewal` and standbys with a role that has only `REPLICATION` and `LOGIN`."}],
+[["CREATE ROLE",D+"sql-createrole.html"]]);
+
+X('pg:6:7',[
+{h:"Predefined roles used in replication work (Section 10)"},
+{t:[["Role","Use"],["`pg_create_subscription`","Lets a non-superuser create subscriptions (which must then use password authentication)"],["`pg_monitor`","Read monitoring views such as `pg_stat_replication` without superuser rights"],["`pg_read_all_stats`","Read all statistics, including other roles' statements"],["`pg_checkpoint`","Run `CHECKPOINT`, useful before `pg_rewind` or switchover checks"]]}],
+[["Predefined Roles",D+"predefined-roles.html"]]);
+
+X('pg:6:9',[
+{h:"Passwords, upgrades and replication (Section 10)"},
+{ul:["Role passwords are stored in `pg_authid` and travel through `pg_upgrade` and physical replication unchanged. Standbys therefore accept the same credentials; the `primary_conninfo` of each standby needs its own stored password (`.pgpass` or the connection string) or a certificate.","`pg_dumpall` and logical replication do **not** move roles automatically: create the roles on the new server before the cut-over.","PostgreSQL 18 deprecates MD5 password storage; use the upgrade as the moment to move roles to `scram-sha-256`."]}],
+[["Password Authentication",D+"auth-password.html"]]);
+
+X('pg:7:1',[
+{h:"Tablespaces and standbys (Section 10)"},
+{p:"`CREATE TABLESPACE` is written to WAL, and a standby replays it by creating the symbolic link to the **same absolute path**. If that directory does not exist or is not owned by the standby's `postgres` user, replay stops. Create the directory on every standby **before** creating the tablespace on the primary. With `pg_basebackup`, use `-T OLD=NEW` or `--tablespace-mapping` to place tablespaces elsewhere. See *Tablespaces in Backup, Replication and Upgrade* for the details."}],
+[["CREATE TABLESPACE",D+"sql-createtablespace.html"]]);
+
+X('pg:7:6',[
+{h:"WAL retention and replicas (Section 10)"},
+{p:"Three things keep WAL in `pg_wal` beyond the normal limit: **slots**, **`wal_keep_size`** and **failing archiving**. They are explained, with queries and limits, in *Replication Slots, WAL Retention and Monitoring Lag*. When `pg_wal` is full, check `pg_replication_slots` first, then `pg_stat_archiver`."}],
+[["Replication Slots",D+"warm-standby.html#STREAMING-REPLICATION-SLOTS"]]);
+
+X('pg:8:7',[
+{h:"From a base backup to a standby (Section 10)"},
+{p:"`pg_basebackup -R` writes `standby.signal` and `primary_conninfo`, so the backup becomes a standby when started. `-C -S name` creates a slot at the start, and `-X stream` collects the WAL needed for a consistent start. The full lab is in *Streaming Replication Setup* (Section 10). A standby is **not** a backup: it replays mistakes as faithfully as good changes."},
+{code:`pg_basebackup -h pg-primary -U repl -D /var/lib/pgsql/18/data -X stream -C -S standby1 -R -P`}],
+[["pg_basebackup",D+"app-pgbasebackup.html"]]);
+
+X('pg:8:10',[
+{h:"Streaming the archive with pg_receivewal (Section 10)"},
+{p:"Instead of `archive_command`, a separate host can run `pg_receivewal` to write WAL continuously (and with `--synchronous`, durably) into an archive directory. The options, a systemd-style setup and a comparison with `archive_command` are in *Replication Utilities and Post-Upgrade Maintenance* (Section 10)."}],
+[["pg_receivewal",D+"app-pgreceivewal.html"]]);
+
+X('pg:8:13',[
+{h:"HA tools and the disaster recovery runbook (Section 10)"},
+{p:"The runbook above covers recovery from backups. For recovery by **promotion** of a standby (much faster, but replicating any logical mistake), use the runbooks in *High Availability Architecture, Operations and Troubleshooting* and the failover lecture. A mature design has both: a standby for hardware failure, backups and a WAL archive for everything else."}],
+[["High Availability",D+"high-availability.html"]]);
+
+})();
