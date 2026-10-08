@@ -8874,3 +8874,419 @@ H.noteBefore('pg:1:14',null,'A script that collects a support bundle, and the yu
  d('Troubleshooting Installation and First Start','A method for diagnosing problems, where logs live, server start failures, client connection errors and installation-time problems.');
 })();
 })();
+
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - Section 3 (PostgreSQL Architecture), PART 1 of 4
+   Part 1 covers lectures 3.1 to 3.4 (Postmaster, Backend, Background processes, Memory).
+   Part 2: 3.5 WAL, 3.6 Life of a query, 3.7 PGDATA.  Part 3: 3.8 to 3.10.  Part 4: 3.11, 3.12.
+   Load LAST in pg-lesson.js, after the Section 2 block (uses window.LS_ADDL). Lecture indexes never change.
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL;
+if(!H){try{console.warn('LS_ADDL: helpers missing, Section 3 part 1 skipped')}catch(e){}return}
+const warn=(...a)=>{try{console.warn('LS_ADDL:',...a)}catch(e){}};
+const dedupe=a=>{const s=new Set();return (a||[]).filter(r=>!s.has(r[1])&&s.add(r[1]))};
+const tidy=k=>{if(L[k]&&L[k].src)L[k].src=dedupe(L[k].src)};
+const S=3;
+const T_PM='Postmaster Internals: Signals, the Lock File and Process Limits';
+const T_BE='Backend Internals: Wire Protocol, Wait Events, Timeouts, Connection Counts and Errors';
+const T_BG='Background Processes in Depth: Full Catalogue, Checkpoints, WAL Writer and Autovacuum';
+const T_MEM='Memory in Depth: Ring Buffers, Double Buffering, Huge Pages, SLRU Caches, Lock Table and Sizing';
+
+/* 0) 3.2 has the heading "The cost of many connections" twice: rename the second (the in-depth one) so it can be cut out on its own */
+(function(){const b=L['pg:3:1']&&L['pg:3:1'].blocks;if(!b)return warn('no lecture pg:3:1');
+ const i=b.findIndex(x=>x.h==='The cost of many connections'),j=b.findIndex((x,n)=>n>i&&x.h==='The cost of many connections');
+ if(i<0||j<0)return warn('duplicate heading not found in pg:3:1');
+ b[j].h='Connection counts and pooling in depth'})();
+
+/* 1) pointer fixes first, so the changed wording travels with any block that moves later */
+H.rep('pg:2:2','explains what the postmaster does with each signal and what happens when a child process dies, and the *Background Process* lecture explains the checkpoint that a clean shutdown performs','explains what happens when a child process dies (what the postmaster does with each signal is in the Additional content of Section 3), and the *Background Process* lecture introduces the checkpoint that a clean shutdown performs (checkpoint internals are in the Additional content of Section 3)');
+H.rep('pg:3:8','cached as the *transaction* SLRU, see the Memory lecture','cached as the *transaction* SLRU, see "Memory in Depth" in the Additional content of this section');
+H.rep('pg:3:10','wait events on the subtransaction SLRU cache, see the Memory lecture','wait events on the subtransaction SLRU cache, see "Memory in Depth" in the Additional content of this section');
+H.rep('pg:3:11','The earlier lecture on background processes explains when checkpoints start.','The lecture "Background Processes in Depth" (Additional content of this section) explains when checkpoints start.');
+
+/* 2) split the overloaded core lectures into new additional lectures */
+/* 3.1 Postmaster */
+const s0=H.srcFor('pg:3:0',/server-shutdown|storage-file-layout|FUNCTIONS-ADMIN-SIGNAL/,true);
+H.add(S,{title:T_PM,order:1,
+ desc:'Every signal the postmaster handles and the pg_ctl and SQL ways to send them, the postmaster.pid lock file line by line, and the limits on how many processes the postmaster can create.',
+ blocks:[{p:'This lesson holds the reference material about the postmaster that goes beyond the core lecture (what a process is, what the postmaster does, how it starts the server and what happens when a child process dies). Read it when you need to signal the server by hand, understand the lock file or work out process limits.'}].concat(
+  H.take('pg:3:0',['Signals: how the postmaster is controlled','The lock file: postmaster.pid','How many processes can the postmaster create?'])),
+ src:s0});
+
+/* 3.2 Backend */
+const s1=H.srcFor('pg:3:1',/protocol\.html|WAIT-EVENT-TABLE|CLIENT-CONFIG-STATEMENT|RUNTIME-CONFIG-CLIENT-STATEMENT/i);
+H.add(S,{title:T_BE,order:2,
+ desc:'The frontend/backend protocol, session states and wait events in pg_stat_activity, the timeouts that protect the server, connection counts with pooling advice and the common connection errors with fixes.',
+ blocks:[{p:'This lesson goes deeper into the backend process than the core lecture (a process per connection, the connection step by step, the query stages and what a backend owns). Use it when you read wait events, set timeouts, size connections or diagnose a connection error.'}].concat(
+  H.take('pg:3:1',['The frontend/backend protocol in brief','Session states and wait events','Timeouts that protect the server','Connection counts and pooling in depth','Connection errors and what they mean'])),
+ src:s1});
+
+/* 3.3 Background processes */
+const s2=H.srcFor('pg:3:2',/wal-configuration|STAT-CHECKPOINTER|runtime-config-vacuum/);
+H.add(S,{title:T_BG,order:3,
+ desc:'The complete catalogue of server processes, checkpoints in depth, the WAL writer and commit behaviour, and autovacuum at a glance.',
+ blocks:[{p:'This lesson holds the detail that the core lecture on background processes only introduces: every process in the server, how checkpoints work and are tuned, the WAL writer, and how autovacuum is launched. Several of these are taught again in the WAL, Logging and Parameters and Backup sections; read this lesson for the first full picture.'}].concat(
+  H.take('pg:3:2',['Complete catalogue of server processes','Checkpoints in depth','The WAL writer and commit behaviour','Autovacuum at a glance'])),
+ src:s2});
+
+/* 3.4 Memory */
+const s3=H.srcFor('pg:3:3',/LINUX-HUGE-PAGES|STAT-SLRU|pg_stat_slru|runtime-config-locks/);
+H.add(S,{title:T_MEM,order:4,
+ desc:'Ring buffers, double buffering with the operating-system cache, huge pages, the SLRU caches, lock table sizing and a memory sizing checklist.',
+ blocks:[{p:'This lesson holds the advanced memory topics. The core lecture explains shared and local memory, the 8 KB page, the buffer manager and work_mem; this one adds how big scans are kept from flushing the cache, the operating-system cache, huge pages, the small special-purpose caches and how to size everything.'}].concat(
+  H.take('pg:3:3',['Ring buffers: protecting the cache from big scans','Double buffering and the operating-system cache','Huge pages','The SLRU caches','Lock table sizing','A sizing checklist'])),
+ src:s3});
+
+/* 3) pointer notes go in after ALL cuts, so a note placed just before a heading is never swallowed by a cut above it */
+H.noteBefore('pg:3:0',null,'The full list of signals, the `postmaster.pid` file line by line and the limits on process counts are in the **Additional content** of this section: "'+T_PM+'".');
+H.noteBefore('pg:3:1',null,'The frontend/backend protocol, session states and wait events, timeouts, connection counts with pooling advice and the table of connection errors are in the **Additional content** of this section: "'+T_BE+'".');
+H.noteBefore('pg:3:2',null,'The complete catalogue of server processes, checkpoints in depth, the WAL writer and autovacuum are in the **Additional content** of this section: "'+T_BG+'".');
+H.noteBefore('pg:3:3',null,'Ring buffers, double buffering, huge pages, the SLRU caches, lock table sizing and the sizing checklist are in the **Additional content** of this section: "'+T_MEM+'".');
+['pg:3:0','pg:3:1','pg:3:2','pg:3:3','pg:2:2','pg:3:8','pg:3:10','pg:3:11'].forEach(tidy);
+})();
+
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - Section 3 (PostgreSQL Architecture), PART 2 of 4
+   Part 2 covers lectures 3.5 WAL, 3.6 Life of a Query and 3.7 PGDATA Directory Layout.
+   Load after Part 1 (same section; uses window.LS_ADDL). Lecture indexes never change.
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL;
+if(!H){try{console.warn('LS_ADDL: helpers missing, Section 3 part 2 skipped')}catch(e){}return}
+const dedupe=a=>{const s=new Set();return (a||[]).filter(r=>!s.has(r[1])&&s.add(r[1]))};
+const tidy=k=>{if(L[k]&&L[k].src)L[k].src=dedupe(L[k].src)};
+const S=3;
+const T_WAL='WAL Internals: Record Format, wal_level, What Is Not Logged, WAL Positions and Durability';
+const T_QRY='Query Stages in Depth: Parser, Analysis, Rewriter, Planner and Executor';
+const T_PGD='PGDATA in Depth: relfilenode and Forks, Data Checksums, Disk Planning and Relocation';
+
+/* 1) pointer fixes first, so the changed wording travels with any block that moves later */
+H.rep('pg:3:1','are expanded in the *Life of a Query* lecture: parser, parse analysis, rewriter, planner and executor, with the data structure each one produces and a diagnosis table that maps an error message to the stage that raised it.','are summarised in the *Life of a Query* lecture, which also has a diagnosis table that maps an error message to the stage that raised it. The detail of each stage (parser, parse analysis, rewriter, planner and executor, and the data structure each one produces) is in the Additional content of this section: "'+T_QRY+'".');
+
+/* 2) split the overloaded core lectures into new additional lectures */
+/* 3.5 WAL */
+const s4=H.srcFor('pg:3:4',/wal-internals|wal-reliability/,true);
+H.add(S,{title:T_WAL,order:5,
+ desc:'What a WAL record contains, wal_level in detail, what is not WAL-logged, the insert, write, flush and redo positions with their functions, and a durability summary of what survives which failure.',
+ blocks:[{p:'This lesson holds the reference detail behind the core WAL lecture (the write-ahead rule, a crash example, how a change becomes a WAL record, the commit path, synchronous_commit and full-page writes). Read it when you want the record format, the exact meaning of wal_level, the list of changes that are not logged, how to read WAL positions, or a table of which failures lose committed data.'}].concat(
+  H.take('pg:3:4',['What a WAL record contains','wal_level in detail','What is not WAL-logged','The positions in the WAL stream','What survives what: a durability summary'])),
+ src:s4});
+
+/* 3.6 Life of a Query */
+const s5=H.srcFor('pg:3:5',/parser-stage|rules\.html|planner-optimizer|executor\.html|runtime-config-logging/);
+H.add(S,{title:T_QRY,order:6,
+ desc:'Each of the five query stages in detail with the structure it produces, a worked example through all five, how to look at each stage yourself, what is cached between executions, where time goes and what a data-modifying statement does inside the executor.',
+ blocks:[{p:'This lesson takes the five stages from the core lecture "Life of a Query" one at a time. The core lecture has the worked UPDATE example, the read path and write path, the short overview of the five stages and a table that tells you which stage raised an error. Read this lesson when you need to know exactly what the parser, analyzer, rewriter, planner and executor do and how to observe each of them.'}].concat(
+  H.take('pg:3:5',['Stage 1: the parser','Stage 2: parse analysis','Stage 3: the rewriter (views, rules and row-level security)','Stage 4: the planner / optimizer','Stage 5: the executor','A worked example through all five stages','Looking at each stage yourself','What is repeated for every execution, and what is cached','Where the time goes: reading planning versus execution time','Inside a data-modifying statement'])),
+ src:s5});
+
+/* 3.7 PGDATA */
+const s6=H.srcFor('pg:3:6',/storage-page-layout|storage-fsm|storage-vm|app-pgchecksums/);
+H.add(S,{title:T_PGD,order:7,
+ desc:'How a table name becomes a file (relfilenode) and the fork files that go with it, data checksums, what grows in PGDATA and how to plan disk, and how to move PGDATA safely.',
+ blocks:[{p:'This lesson goes below the directory map in the core PGDATA lecture. The core lecture shows what every directory is for, what may be deleted, the control file, permissions, how to look at PGDATA from SQL and how to read file-level errors. This one explains the files of a single table, data checksums, disk planning and relocation.'}].concat(
+  H.take('pg:3:6',['From a table name to a file: relfilenode and forks','Data checksums','What grows in PGDATA: disk planning','Moving or relocating PGDATA safely'])),
+ src:s6});
+
+/* 3) pointer notes go in after ALL cuts, so a note placed just before a heading is never swallowed by a cut above it */
+H.noteBefore('pg:3:4',null,'The contents of a WAL record, `wal_level` in detail, what is not WAL-logged, the WAL positions and the durability summary table are in the **Additional content** of this section: "'+T_WAL+'".');
+H.noteBefore('pg:3:5',null,'The stages one by one (parser, parse analysis, rewriter, planner, executor), the worked example through all five, how to look at each stage, what is cached between executions, where the time goes and what happens inside a data-modifying statement are in the **Additional content** of this section: "'+T_QRY+'".');
+H.noteBefore('pg:3:6',null,'How a table name becomes a file (relfilenode and the fork files), data checksums, disk planning for growth and moving PGDATA are in the **Additional content** of this section: "'+T_PGD+'".');
+['pg:3:1','pg:3:4','pg:3:5','pg:3:6'].forEach(tidy);
+})();
+
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - Section 3 (PostgreSQL Architecture), PART 3 of 4
+   Part 3 moves three whole lectures to Additional content: 3.8 Parallel Query/JIT, 3.9 MVCC Internals, 3.10 Query Planner.
+   Load after Part 2 (uses window.LS_ADDL). Lecture indexes never change, so saved progress and lesson keys stay valid.
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL;
+if(!H){try{console.warn('LS_ADDL: helpers missing, Section 3 part 3 skipped')}catch(e){}return}
+const S=3;
+
+/* 1) pointer fixes: lectures that name the three lectures now say where they are */
+H.rep('pg:0:1','The *MVCC Internals* lecture in Section 3 opens the heap page itself','The *MVCC Internals* lecture in the Additional content of Section 3 opens the heap page itself');
+H.rep('pg:0:1','Read it before the sections on table storage and replication, because','It is optional, but worth reading before the sections on table storage and replication, because');
+H.rep('pg:3:2','*Parallel Query, Background Workers and JIT* lecture.','*Parallel Query, Background Workers and JIT* lecture (Additional content of this section).');
+H.rep('pg:3:3','The *Query Planner, Statistics and EXPLAIN* lecture shows how to see the effect','The *Query Planner, Statistics and EXPLAIN* lecture (Additional content of this section) shows how to see the effect');
+H.rep('pg:3:4','see the MVCC lecture','see the MVCC lecture in the Additional content of this section');
+H.rep('pg:3:4','The *MVCC Internals* lecture explains hint bits','The *MVCC Internals* lecture (Additional content of this section) explains hint bits');
+H.rep('pg:3:5','The *MVCC Internals* lecture shows these bytes with `pageinspect`, and the *Parallel Query, Background Workers and JIT* lecture shows how','The *MVCC Internals* lecture (Additional content of this section) shows these bytes with `pageinspect`, and the *Parallel Query, Background Workers and JIT* lecture (also Additional content) shows how');
+H.rep('pg:3:6','shown with `pageinspect` in *MVCC Internals*.','shown with `pageinspect` in *MVCC Internals* (Additional content of this section).');
+H.rep('pg:3:10','see the MVCC lecture','see the MVCC lecture in the Additional content of this section');
+H.rep('pg:5:5','The *Query Planner, Statistics and EXPLAIN* lecture explains how','The *Query Planner, Statistics and EXPLAIN* lecture (Section 3, Additional content) explains how');
+H.rep('pg:5:8','The planner lecture, *Query Planner, Statistics and EXPLAIN*, shows','The planner lecture, *Query Planner, Statistics and EXPLAIN* (Section 3, Additional content), shows');
+
+/* 2) whole lectures that move to Additional content (their indexes stay the same) */
+H.flag(S,'Parallel Query, Background Workers and JIT',8);
+H.flag(S,'MVCC Internals: Tuples, Snapshots and Visibility',9);
+H.flag(S,'Query Planner, Statistics and EXPLAIN',10);
+})();
+
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - Section 3 (PostgreSQL Architecture), PART 4 of 4
+   Part 4 covers 3.11 Transactions, Locking and Deadlocks (trimmed) and 3.12 Crash Recovery, Checkpoints and Timelines in Depth (moved whole).
+   Load after Part 3 (uses window.LS_ADDL). Lecture indexes never change, so saved progress and lesson keys stay valid.
+   After this part Section 3 has 8 core lectures (3.1 to 3.7 and Transactions, Locking and Deadlocks).
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL;
+if(!H){try{console.warn('LS_ADDL: helpers missing, Section 3 part 4 skipped')}catch(e){}return}
+const dedupe=a=>{const s=new Set();return (a||[]).filter(r=>!s.has(r[1])&&s.add(r[1]))};
+const tidy=k=>{if(L[k]&&L[k].src)L[k].src=dedupe(L[k].src)};
+const S=3;
+const T_LOCK='Locking in Depth: Lock Modes, Advisory Locks, Serializable and Prepared Transactions';
+const T_CRASH='Crash Recovery, Checkpoints and Timelines in Depth';
+
+/* 1) pointer fixes first, so the changed wording travels with any block that moves later */
+/* lectures that name the Crash Recovery lecture (it moves whole to Additional content) */
+H.rep('pg:2:2','explained in the lecture *Crash Recovery, Checkpoints and Timelines in Depth* in Section 03.','explained in the lecture *Crash Recovery, Checkpoints and Timelines in Depth* in the Additional content of Section 3.');
+H.rep('pg:3:4','covered in *Crash Recovery, Checkpoints and Timelines in Depth*, the last lecture of this section.','covered in *Crash Recovery, Checkpoints and Timelines in Depth* (Additional content of this section).');
+H.rep('pg:3:6','is covered in *Crash Recovery, Checkpoints and Timelines in Depth*.','is covered in *Crash Recovery, Checkpoints and Timelines in Depth* (Additional content of this section).');
+H.rep('pg:5:6','is explained in *Crash Recovery, Checkpoints and Timelines in Depth* and in the WAL lecture of the Architecture section.','is explained in the WAL lecture of the Architecture section and, in full, in *Crash Recovery, Checkpoints and Timelines in Depth* (Section 3, Additional content).');
+/* lectures that name the lock-mode material (it moves to "Locking in Depth") */
+H.rep('pg:4:4','lecture in the Architecture section explains the table-lock and row-lock modes, why one waiting `ALTER TABLE` can stop all traffic on a table, and gives','lecture in the Architecture section explains why one waiting `ALTER TABLE` can stop all traffic on a table and gives');
+H.rep('pg:4:4','Use it before deciding whom to cancel.','Use it before deciding whom to cancel. The full tables of table-lock and row-lock modes are in the Additional content of Section 3: \"'+T_LOCK+'\".');
+H.rep('pg:3:8','The lecture *Transactions, Locking and Deadlocks* gives the lock modes and conflict tables, explains lock queues and deadlocks, and shows how to find the session that blocks the others.','The lecture *Transactions, Locking and Deadlocks* explains lock queues and deadlocks and shows how to find the session that blocks the others. The lock modes and conflict tables are in \"'+T_LOCK+'\" (Additional content of this section).');
+/* the opening paragraph of 3.11 called the MVCC lecture "the previous lecture"; it is Additional content since Part 3 */
+H.rep('pg:3:10','**MVCC** (the previous lecture) lets readers','**MVCC** (see the *MVCC Internals* lecture in the Additional content of this section) lets readers');
+H.rep('pg:3:10','This lecture explains the transaction, the lock types, how queues of waiting sessions form, how deadlocks are found, and the query patterns a DBA uses to find and resolve blocking.','This lecture explains the transaction and savepoints, the kinds of lock, how queues of waiting sessions form, how deadlocks are found, and the query patterns a DBA uses to find and resolve blocking. The full lock-mode tables, advisory locks, serializable transactions and prepared transactions are in the Additional content of this section.');
+
+/* lectures that still named the planner lecture without saying it is Additional content now (found in the final check of Section 3) */
+H.rep('pg:3:1','has its own lecture, *Query Planner, Statistics and EXPLAIN*.','has its own lecture, *Query Planner, Statistics and EXPLAIN*, in the Additional content of this section.');
+H.rep('pg:3:7','explained in *Query Planner, Statistics and EXPLAIN*. That lecture also lists','explained in *Query Planner, Statistics and EXPLAIN* (also Additional content). That lecture also lists');
+H.rep('pg:3:17','the lecture *Query Planner, Statistics and EXPLAIN* later in this section gives it a full treatment','the lecture *Query Planner, Statistics and EXPLAIN* (Additional content of this section) gives it a full treatment');
+H.rep('pg:3:5','Statistics, row estimates and the plan (next lectures)','Statistics, row estimates and the plan (*Query Planner, Statistics and EXPLAIN*, Additional content of this section)');
+
+/* 2) the core part of 3.11 keeps the ideas the rest of the section relies on: say in two sentences which table-lock modes matter */
+(function(){const lec=L['pg:3:10'];if(!lec){try{console.warn('LS_ADDL: no lecture pg:3:10')}catch(e){}return}
+ const i=lec.blocks.findIndex(b=>b.h==='What happens at READ COMMITTED when a row is locked');
+ if(i<0){try{console.warn('LS_ADDL: READ COMMITTED heading not found in pg:3:10')}catch(e){}return}
+ lec.blocks.splice(i,0,{h:'The two table-lock modes to remember'},{p:'Of the eight table-lock modes, two explain most of what a DBA sees. **`ACCESS SHARE`** is taken by every `SELECT` and conflicts only with `ACCESS EXCLUSIVE`. **`ACCESS EXCLUSIVE`** is taken by `DROP`, `TRUNCATE` and most `ALTER TABLE` statements and conflicts with **every** mode, so it must wait until all other use of the table has ended. That wait is what builds the lock queue described below. Ordinary writes take `ROW EXCLUSIVE`, which does not conflict with itself, so normal reads and writes run side by side all day. The complete table of modes, the conflict matrix and the four row-lock modes are in the Additional content of this section.'})})();
+
+/* 3) whole lecture that moves to Additional content (its index stays the same) */
+H.flag(S,T_CRASH,12);
+
+/* 4) split the overloaded core lecture 3.11 into a new additional lecture */
+const sLock=H.srcFor('pg:3:10',/explicit-locking|ADVISORY-LOCKS|sql-prepare-transaction|transaction-iso|runtime-config-locks/,true);
+H.add(S,{title:T_LOCK,order:11,
+ desc:'The eight table-lock modes with the statements that take them and the conflict matrix, the four row-lock modes with NOWAIT and SKIP LOCKED, advisory locks, serializable transactions with the retry error codes, and prepared transactions.',
+ blocks:[{p:'This lesson holds the lock reference that goes beyond the core lecture on transactions, lock queues, deadlocks and finding the blocker. Read it when you need to know which lock a statement takes, read a conflict matrix, build a job queue with `SKIP LOCKED`, use advisory locks, handle serialization failures or clean up orphaned prepared transactions.'}].concat(
+  H.take('pg:3:10',['Table-level lock modes','Row-level lock modes','Advisory locks','Serializable transactions and retries','Prepared transactions (two-phase commit)'])),
+ src:sLock});
+
+/* 5) pointer note goes in after ALL cuts, so it is never swallowed by a cut above it */
+H.noteBefore('pg:3:10',null,'The table of all eight table-lock modes with the conflict matrix, the four row-lock modes with `NOWAIT` and `SKIP LOCKED`, advisory locks, serializable transactions with their retry error codes, and prepared transactions are in the **Additional content** of this section: \"'+T_LOCK+'\".');
+['pg:3:10','pg:3:11','pg:2:2','pg:3:4','pg:3:6','pg:3:8','pg:4:4','pg:5:6'].forEach(tidy);
+
+/* 6) refresh the outline description of the trimmed core lecture */
+(function(){const ex=window.EXTRA_LECTURES&&window.EXTRA_LECTURES[3]||[];
+ const e=ex.find(x=>x[0]==='Transactions, Locking and Deadlocks');
+ if(e)e[2]='Transaction IDs, savepoints and long transactions, the kinds of lock, how a lock queue forms and why DDL can freeze a table, deadlock detection and prevention, finding the root blocker and a troubleshooting checklist.';
+ else{try{console.warn('LS_ADDL: outline entry not found: Transactions, Locking and Deadlocks')}catch(err){}}})();
+})();
+
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - Section 4 (Basic Configuration and Connectivity) and Section 5 (Database and Storage Management)
+   Section 4: nothing moves. Its five lectures are short and basic (remote connection, several clusters, shutdown modes, configuration files, psql).
+   Section 5: all eleven lectures stay core. From 5.9 Encoding, Locale and Collation the locale-provider table and the two blocks that look ahead to
+   restores (Section 09) and upgrades (Section 10) move to one Additional lecture. Load after the Section 3 blocks (uses window.LS_ADDL).
+   Lecture indexes never change, so saved progress and lesson keys stay valid.
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL;
+if(!H){try{console.warn('LS_ADDL: helpers missing, Sections 4-5 skipped')}catch(e){}return}
+const dedupe=a=>{const s=new Set();return (a||[]).filter(r=>!s.has(r[1])&&s.add(r[1]))};
+const tidy=k=>{if(L[k]&&L[k].src)L[k].src=dedupe(L[k].src)};
+const S=4;
+const T_LOC='Locale Providers and Collations Across Restores and Upgrades';
+
+/* 1) pointer fixes first, so the changed wording travels with any block that moves later */
+H.rep('pg:9:2','(Section 05, Encoding, Locale and Collation)','(Section 05, Encoding, Locale and Collation, and its Additional content)');
+H.rep('pg:9:3','(Section 05, Encoding, Locale and Collation)','(Section 05, Encoding, Locale and Collation, and its Additional content)');
+
+/* 2) split 5.9 into a new additional lecture */
+const sLoc=H.srcFor('pg:4:8',/locale\.html|collation\.html|app-pgdump/,true);
+H.add(S,{title:T_LOC,order:1,
+ desc:'The three locale providers (libc, icu and builtin), what to do about encoding and collation when you restore a dump or a physical backup, and how to keep collations identical on standbys, upgraded clusters and logical-replication targets.',
+ blocks:[{p:'This lesson holds the parts of \"Encoding, Locale and Collation\" that look ahead to later sections: the locale providers, and what encoding and collation mean for restores (Section 9) and for upgrades and replication (Section 10). Read it after you have taken your first backups, or before you move a database to a server with a different operating system.'}].concat(
+  H.take('pg:4:8',['Locale providers','Encoding and collation across restores (Section 09)','Collations across servers and upgrades (Section 10)'])),
+ src:sLoc});
+
+/* 3) pointer note goes in after ALL cuts */
+H.noteBefore('pg:4:8',null,'The three locale providers, and what encoding and collation mean when you restore a backup or move to a new server or version, are in the **Additional content** of this section: \"'+T_LOC+'\".');
+['pg:4:8','pg:9:2','pg:9:3'].forEach(tidy);
+})();
+
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - Section 6 (Logging and Parameters)
+   All twelve lectures stay core. Four reference blocks move to one Additional lecture:
+   from 6.7 WAL and Checkpoint Parameters: "Other WAL parameters worth knowing" and "synchronous_commit values" (synchronous_commit is also taught in the WAL lecture of Section 3);
+   from 6.11 Reading and Analysing the Server Log: "Structured formats" and "Tools".
+   "Security and privacy" in 6.8 stays core (it warns that log_statement can write passwords into the log).
+   Load after the Sections 4-5 block (uses window.LS_ADDL). Lecture indexes never change, so saved progress and lesson keys stay valid.
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL;
+if(!H){try{console.warn('LS_ADDL: helpers missing, Section 6 skipped')}catch(e){}return}
+const dedupe=a=>{const s=new Set();return (a||[]).filter(r=>!s.has(r[1])&&s.add(r[1]))};
+const tidy=k=>{if(L[k]&&L[k].src)L[k].src=dedupe(L[k].src)};
+const S=5;
+const T_REF='Parameter and Log Reference: Other WAL Parameters, synchronous_commit Values, Log Formats and Tools';
+
+const sWal=H.srcFor('pg:5:6',/runtime-config-wal|wal-configuration/,true);
+const sLog=H.srcFor('pg:5:10',/csv|runtime-config-logging|auto-explain|pgstatstatements|pgbadger/i,true);
+H.add(S,{title:T_REF,order:1,
+ desc:'A table of the other WAL parameters (fsync, full_page_writes, wal_compression, wal_buffers, archiving), the synchronous_commit values, the log formats (stderr, csvlog, jsonlog, syslog) with a csvlog-to-table example, and the tools used on logs (pgBadger, pg_stat_statements, auto_explain, log shippers).',
+ blocks:[{p:'This lesson collects four reference tables from the core lectures \"WAL and Checkpoint Parameters\" and \"Reading and Analysing the Server Log\": the other WAL parameters, the values of `synchronous_commit`, the log formats, and the tools that work on logs. Use it when you tune WAL behaviour beyond `wal_level` and the checkpoint settings, or when you set up log analysis.'}].concat(
+  H.take('pg:5:6',['Other WAL parameters worth knowing','synchronous_commit values']),
+  H.take('pg:5:10',['Structured formats','Tools'])),
+ src:sWal.concat(sLog)});
+
+/* pointer notes go in after ALL cuts */
+H.noteBefore('pg:5:6',null,'The table of other WAL parameters (`fsync`, `full_page_writes`, `wal_compression`, `wal_buffers`, archiving and more) and the `synchronous_commit` values are in the **Additional content** of this section: \"'+T_REF+'\".');
+H.noteBefore('pg:5:10',null,'The log formats (`csvlog`, `jsonlog`, `syslog`) with an example of loading a log into a table, and the tools for analysing logs, are in the **Additional content** of this section: \"'+T_REF+'\".');
+['pg:5:6','pg:5:10'].forEach(tidy);
+
+/* refresh the outline description of the trimmed lecture 6.11 */
+(function(){const ex=window.EXTRA_LECTURES&&window.EXTRA_LECTURES[5]||[];
+ const e=ex.find(x=>x[0]==='Reading and Analysing the Server Log');
+ if(e)e[2]='log_line_prefix, the anatomy of a log entry, patterns to search for (slow queries, lock waits, deadlocks, temp files) and a quick command-line toolkit.';
+ else{try{console.warn('LS_ADDL: outline entry not found: Reading and Analysing the Server Log')}catch(err){}}})();
+})();
+
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - Section 7 (User Management & Security), PART 1 of 2
+   Part 1 covers lectures 7.1 to 7.6 (Introduction, Authentication and Authorization, Public Role, User Creation, Grant and Revoke, INHERIT vs NOINHERIT).
+   7.1, 7.3, 7.5 and 7.6 stay as they are. Two lectures are trimmed into ONE new Additional lecture:
+     from 7.2 Authentication and Authorization: "User name maps (pg_ident.conf)"
+     from 7.4 User Creation: "Limiting connections at four levels", "Per-role defaults with ALTER ROLE ... SET", "CREATEROLE after PostgreSQL 16"
+   Part 2 (to follow): 7.7 Row Level Security (trim), 7.8 Predefined Roles (move whole), 7.9 Ownership (stays), 7.10 Passwords, SCRAM and TLS (trim),
+   7.11 Hardening and Auditing (move whole, merged with 2.14).
+   Load after the Section 6 block (uses window.LS_ADDL). Lecture indexes never change, so saved progress and lesson keys stay valid.
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL;
+if(!H){try{console.warn('LS_ADDL: helpers missing, Section 7 part 1 skipped')}catch(e){}return}
+const dedupe=a=>{const s=new Set();return (a||[]).filter(r=>!s.has(r[1])&&s.add(r[1]))};
+const tidy=k=>{if(L[k]&&L[k].src)L[k].src=dedupe(L[k].src)};
+const S=6;
+const T_ROLEREF='Authentication Maps, Connection Limits, Role Defaults and CREATEROLE Changes';
+
+/* 1) pointer fixes first, so the changed wording travels with any block that moves later */
+H.rep('pg:6:3',', connection limits, per-role defaults, and the changes to `CREATEROLE` in PostgreSQL 16.',', and the `CONNECTION LIMIT` attribute. Connection limits at four levels, per-role defaults and the changes to `CREATEROLE` in PostgreSQL 16 are in the Additional content of this section.');
+(function(){const lec=L['pg:6:3'];if(!lec)return;const f=lec.blocks.find(b=>b.flow&&b.flow.indexOf('Set a connection limit and role defaults')>-1);
+ if(f)f.flow=f.flow.map(x=>x==='Set a connection limit and role defaults'?'Set a connection limit (more defaults: Additional content)':x);
+ else{try{console.warn('LS_ADDL: creation workflow flow not found in pg:6:3')}catch(e){}}})();
+
+/* 2) one new additional lecture from 7.2 and 7.4 */
+const sMap=H.srcFor('pg:6:1',/auth-username-maps/,true);
+const sRole=H.srcFor('pg:6:3',/sql-alterrole|catalog-pg-db-role-setting|sql-createrole|role-attributes/,true);
+H.add(S,{title:T_ROLEREF,order:1,
+ desc:'User name maps in pg_ident.conf (how a map line is matched, regular expressions, checking a map before reload), connection limits at four levels, per-role and per-database defaults with ALTER ROLE ... SET, and the CREATEROLE changes in PostgreSQL 16.',
+ blocks:[{p:'This lesson collects four reference topics from the core lectures \"Authentication and Authorization\" and \"User Creation\": user name maps, connection limits above the single-role level, role-specific parameter defaults, and the stricter `CREATEROLE` behaviour. Use it when `peer` or certificate logins must be mapped to different role names, when you plan connection slots for several applications, when a role needs its own timeouts or `search_path`, or when you delegate user administration without giving away superuser.'}].concat(
+  H.take('pg:6:1',['User name maps (pg_ident.conf)']),
+  [{h:'How a map line is matched'},
+   {p:'Methods such as `peer`, `ident`, `gss` and `cert` do not check a password; they hand the server an **external user name** (the operating-system account for `peer`, the certificate common name for `cert`). Without `map=` the server accepts the connection only if that name equals the role the client asked for. With `map=`, the server reads the lines of `pg_ident.conf` that carry that map name and accepts the connection if **any** of them pairs the external name with the requested role. Several lines may share one map name, so one map can cover many people and many roles.'},
+   {t:[['Field','Meaning'],
+       ['`MAPNAME`','The name that `map=` refers to in `pg_hba.conf`'],
+       ['`SYSTEM-USERNAME`','The external name. If it starts with a slash (`/`) the rest is a regular expression, which may contain one capture group'],
+       ['`DATABASE-USERNAME`','The role the external name may log in as. It may contain `\\1`, which is replaced by the text the regular expression captured']]},
+   {code:['# pg_ident.conf: alice@example.com may log in as the role alice','domainmap   /^(.*)@example\\.com$   \\1','','# pg_hba.conf','hostssl   all   all   10.0.0.0/24   cert map=domainmap'].join('\n')},
+   {note:'A map only decides **which role an external name may use**. It grants no privileges: the role still needs `LOGIN`, a matching `pg_hba.conf` line and the privileges it holds. Changes to `pg_ident.conf` are read on reload, and a line with a syntax error is skipped, so check the file first.'},
+   {code:['-- review the parsed lines; the error column is empty for good lines','SELECT map_number, line_number, map_name, sys_name, pg_username, error','FROM pg_ident_file_mappings;','','SELECT pg_reload_conf();'].join('\n')}],
+  H.take('pg:6:3',['Limiting connections at four levels','Per-role defaults with ALTER ROLE ... SET','CREATEROLE after PostgreSQL 16'])),
+ src:sMap.concat(sRole,[['pg_ident_file_mappings','https://www.postgresql.org/docs/18/view-pg-ident-file-mappings.html'],['Connection Settings','https://www.postgresql.org/docs/18/runtime-config-connection.html']])});
+
+/* 3) pointer notes go in after ALL cuts, so a note placed just before a heading is never swallowed by a cut above it */
+H.noteBefore('pg:6:1',null,'User name maps (`pg_ident.conf`), which translate an operating-system or certificate name into a different role name, are in the **Additional content** of this section: \"'+T_ROLEREF+'\". Without a `map=` option the external name must equal the role name.');
+H.noteBefore('pg:6:3','Changing and removing roles','Connection limits at four levels (cluster, reserved slots, database and role), per-role defaults with `ALTER ROLE ... SET` and the stricter `CREATEROLE` rules of PostgreSQL 16 and later are in the **Additional content** of this section: \"'+T_ROLEREF+'\".');
+['pg:6:1','pg:6:3'].forEach(tidy);
+})();
+
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - Section 7 (User Management & Security), PART 2 of 2
+   Part 2 covers lectures 7.7 to 7.11 (Row Level Security, Predefined Roles, Ownership, Passwords/SCRAM/TLS, Hardening and Auditing).
+     7.7  Row Level Security: trimmed. "A second pattern: policy on the database role", "Connection pooling and the session variable",
+          "Things RLS does not cover" and "Performance" move to one new Additional lecture. Policies, USING / WITH CHECK, the worked example,
+          who bypasses RLS, several policies, inspecting policies and the dump note stay core.
+     7.8  Predefined Roles: moves whole (flagged as Additional content).
+     7.9  Ownership, Default Privileges and Dropping Roles: stays core, unchanged.
+     7.10 Passwords, SCRAM and TLS: trimmed. "Migrating from MD5 to SCRAM", "Encrypting connections with TLS", "Client-side sslmode" and
+          "Client certificates" move to one new Additional lecture. Password storage, how SCRAM works and protecting passwords on the client stay core.
+     7.11 Security Hardening Checklist and Auditing: moves whole. It is NOT merged into 2.14 (Post-Installation Hardening and the Production Baseline,
+          already Additional content of Section 2): the two cover different ground, so each now points to the other.
+   Load after the Section 7 part 1 block (uses window.LS_ADDL). Lecture indexes never change, so saved progress and lesson keys stay valid.
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL;
+if(!H){try{console.warn('LS_ADDL: helpers missing, Section 7 part 2 skipped')}catch(e){}return}
+const dedupe=a=>{const s=new Set();return (a||[]).filter(r=>!s.has(r[1])&&s.add(r[1]))};
+const tidy=k=>{if(L[k]&&L[k].src)L[k].src=dedupe(L[k].src)};
+const S=6;
+const T_RLS='Row Level Security in Practice: Role-Based Policies, Connection Pooling, Limits and Performance';
+const T_TLS='Encrypting Connections: TLS, sslmode, Client Certificates and Migrating from MD5 to SCRAM';
+const T_PRE='Predefined Roles';
+const T_HARD='Security Hardening Checklist and Auditing';
+const T_BASE='Post-Installation Hardening and the Production Baseline';
+
+/* 1) whole lectures that move to Additional content (their indexes stay the same) */
+H.flag(S,T_PRE,3);
+H.flag(S,T_HARD,5);
+
+/* 2) pointer fixes first, so the changed wording travels with any block that moves later */
+H.rep('pg:6:9',', how to migrate, how to protect passwords on clients, and how to encrypt the connection with **TLS**. The documentation (Password Authentication, Secure TCP/IP Connections with SSL) is the reference for each point.',', and how to protect passwords on clients. Migrating from MD5, encrypting the connection with **TLS**, the client `sslmode` and client certificates are in the Additional content of this section. The documentation (Password Authentication) is the reference for each point.');
+H.rep('pg:6:10','Passwords, SCRAM and TLS','Passwords, SCRAM and TLS (TLS: Additional content of this section)');
+H.rep('pg:0:2','Passwords, SCRAM and TLS','Passwords, SCRAM and TLS (TLS: Section 7, Additional content)');
+H.rep('pg:0:2','Predefined Roles','Predefined Roles (Section 7, Additional content)');
+H.rep('pg:0:2','Security Hardening Checklist and Auditing','Security Hardening Checklist and Auditing (Section 7, Additional content)');
+H.rep('pg:4:4','Both are explained in the Predefined Roles lecture.','Both are explained in the Predefined Roles lecture (Section 7, Additional content).');
+H.rep('pg:5:7','is covered in Security Hardening Checklist and Auditing.','is covered in Security Hardening Checklist and Auditing (Section 7, Additional content).');
+
+/* 3) 7.7 Row Level Security -> one new additional lecture */
+const sRls=H.srcFor('pg:6:6',/ddl-rowsecurity|sql-createpolicy|view-pg-policies|runtime-config-client/,true);
+H.add(S,{title:T_RLS,order:2,
+ desc:'A row-level security policy on the database role (current_user), how to set the tenant variable safely with connection pooling, what RLS does not cover (views, foreign keys, leaky functions, dumps) and how to keep policy expressions fast.',
+ blocks:[{p:'This lesson collects four topics from the core lecture \"Row Level Security\": a second policy pattern based on the database role, the session variable with connection pooling, the things row-level security does not protect, and performance. Read it when you move a tenant-isolation design from a lab into an application that uses a connection pool, or when you review an RLS design for gaps.'}].concat(
+  H.take('pg:6:6',['A second pattern: policy on the database role','Connection pooling and the session variable','Things RLS does not cover','Performance'])),
+ src:sRls});
+
+/* 4) 7.10 Passwords, SCRAM and TLS -> one new additional lecture */
+const sTls=H.srcFor('pg:6:9',/ssl-tcp|libpq-ssl|auth-password|monitoring-stats/,true);
+H.add(S,{title:T_TLS,order:4,
+ desc:'The step-by-step migration of roles from md5 to SCRAM-SHA-256, a TLS server certificate and ssl settings, the client sslmode values from disable to verify-full, and client certificates (mutual TLS).',
+ blocks:[{p:'This lesson holds the second half of \"Passwords, SCRAM and TLS\": how to move existing roles from `md5` to `scram-sha-256`, how to encrypt connections with TLS, which `sslmode` a client should use, and how to authenticate with client certificates. Read it when you plan to turn on encryption for remote clients or when a server still holds `md5` password hashes.'}].concat(
+  H.take('pg:6:9',['Migrating from MD5 to SCRAM','Encrypting connections with TLS','Client-side sslmode','Client certificates'])),
+ src:sTls});
+
+/* 5) pointer notes go in after ALL cuts, so a note placed just before a heading is never swallowed by a cut above it */
+H.noteBefore('pg:6:6','Inspecting policies','Four topics are in the **Additional content** of this section: \"'+T_RLS+'\". Remember the key warning from them: a session variable such as `app.current_company` is **trusted input from the application**, because any role that can run arbitrary SQL can change it. For users who connect directly, base policies on `current_user` instead. The lesson also covers connection pooling, what RLS does not cover and performance.');
+H.noteBefore('pg:6:9',null,'**By default PostgreSQL connections are not encrypted.** Migrating roles from `md5` to SCRAM, creating a server certificate, the client `sslmode` values (use `verify-full` for production) and client certificates are in the **Additional content** of this section: \"'+T_TLS+'\".');
+H.noteBefore('pg:6:10','Production hardening checklist','The first-hour server baseline right after installation (passwords, `pg_hba.conf`, TLS, logging, memory and WAL starting points, operating-system permissions, and a sign-off record) is in the **Additional content** of Section 2: \"'+T_BASE+'\". This lecture continues from there with privilege tools, auditing and an ongoing review.');
+H.noteBefore('pg:1:13',null,'Column-level privileges, safe `SECURITY DEFINER` functions, auditing with `pgAudit`, audit queries and a production hardening checklist are in the **Additional content** of Section 7: \"'+T_HARD+'\". Use that lecture for the ongoing review once this first-hour baseline is in place.');
+['pg:6:6','pg:6:9','pg:6:10','pg:1:13','pg:0:2','pg:4:4','pg:5:7'].forEach(tidy);
+
+/* 6) refresh outline descriptions of the trimmed lectures (7.10 is defined in EXTRA_LECTURES; 7.7 is a static entry in index.html) */
+(function(){const ex=window.EXTRA_LECTURES&&window.EXTRA_LECTURES[6]||[];
+ const e=ex.find(x=>x[0]==='Passwords, SCRAM and TLS');
+ if(e)e[2]='How passwords are stored and verified (SCRAM-SHA-256 versus md5), how a SCRAM login works and how to protect passwords on the client. Migrating from md5, TLS, sslmode and client certificates are in Additional content.';
+ else{try{console.warn('LS_ADDL: outline entry not found: Passwords, SCRAM and TLS')}catch(err){}}})();
+})();

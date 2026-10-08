@@ -188,12 +188,12 @@ sections:[
 ['Autovacuum Parameter','3:09','Autovacuum prevents table bloat and transaction wraparound by cleaning dead tuples and reclaiming space, shown on a test table.']]},
 {t:'User Management & Security',q:'Roles, Privileges & Security Quiz',l:[
 ['User Management Introduction','3:35','Role-level architecture to least-privilege design: users vs roles, the public role, grant/revoke strategies, role inheritance.'],
-['Authentication and Authorization','11:41','Authentication vs authorization and how pg_hba.conf controls connections: trust, md5, scram, peer. Layered, role-based permissions.'],
+['Authentication and Authorization','11:41','Authentication vs authorization and how pg_hba.conf controls connections: trust, md5, scram, peer. Layered, role-based permissions. User name maps (pg_ident.conf) are in Additional content.'],
 ['Public Role','6:38','The public role, privilege escalation via search_path hijacking, and protection: revoke CREATE on public, schema-qualified calls.'],
-['User Creation','7:38','Secure user creation: attributes, avoiding superusers, role-based access, row-level security and connection limits.'],
+['User Creation','7:38','Secure user creation: the CREATE ROLE command, attributes and their risks, avoiding superusers, passwords and expiry, changing and removing roles. Connection limits at four levels, per-role defaults and the CREATEROLE changes are in Additional content.'],
 ['Grant and Revoke','8:22','Role-based access control with GRANT/REVOKE: read-only and write roles, assigning permissions to roles, managing memberships.'],
 ['INHERIT vs NOINHERIT','10:04','Enterprise privilege model separating duties into a developer role and a NOINHERIT migration role with explicit activation.'],
-['Row Level Security','10:01','Per-row access via policies for multi-tenant isolation in one table using session variables like app.current_company.']]},
+['Row Level Security','10:01','Per-row access via policies (USING and WITH CHECK, permissive and restrictive, who bypasses RLS) for multi-tenant isolation in one table using session variables like app.current_company. Policies on the database role, connection pooling, what RLS does not cover and performance are in Additional content.']]},
 {t:'Tablespaces & Storage',q:'Tablespace & WAL Concepts Quiz',l:[
 ['WAL Format','10:20','WAL files ensure durability, crash recovery and replication in pg_wal with 16 MB segments and LSN-based naming.'],
 ['Tablespace Creation and Drop','9:30','Tablespaces map logical names to physical paths: create, assign and drop across databases; pg_default and pg_global.'],
@@ -286,7 +286,7 @@ function vCourses(){
 function vTopics(c){
  const n=nextUp(c),tot=c.sections.reduce((a,s)=>a+dur(s.l),0);
  let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›<span>${c.name}</span></div>
- <div class="hero course" style="--c:${c.color}"><div class="tx"><span class="chip">${c.level}</span><h1 style="margin:10px 0 6px">${c.name}</h1> <div class="stats"><div><b>${c.sections.length}</b>sections</div><div><b>${cnt(c)}</b>lectures</div>${cntX(c)?`<div><b>${cntX(c)}</b>additional (optional)</div>`:''}</div>
+ <div class="hero course" style="--c:${c.color}"><div class="tx"><span class="chip">${c.level}</span><h1 style="margin:10px 0 6px">${c.name}</h1> <div class="stats"><div><b>${c.sections.length}</b>sections</div><div><b>${cnt(c)}</b>lectures</div>${cntX(c)?`<div><b>${cntX(c)}</b>additional</div>`:''}</div>
  <div class="row">${n?`<button class="btn" onclick="go('#/c/${c.id}/${n[0]}')">${dn(c)?'Resume':'Start course'} ▸</button>`:`<span class="chip live">✓ Course complete</span>`}</div>${autoBox(c.id,1)}</div>
  <div class="ring" style="--p:${pct(c)}"><span>${pct(c)}%</span></div></div>
  <div class="row" style="margin:-8px 0 6px">${c.outcomes.map(o=>`<span class="chip">✓ ${o}</span>`).join('')}</div><h2>Topics</h2><div class="grid">`;
@@ -300,11 +300,11 @@ function vSub(c,si){
  const row=li=>{const x=s.l[li];return `<div class="lec ${done(c,si,li)?'done':''}" id="l${li}"><div class="lh" onclick="${hasL(c,si,li)?`go('#/c/${c.id}/${si}/${li}')`:`this.parentNode.classList.toggle('open')`}"><span class="chk" onclick="event.stopPropagation();tog('${c.id}',${si},${li})">✓</span><span class="t">${esc(x[0])}</span>${hasL(c,si,li)?'<span class="tag">LESSON</span>':''}</div>
   <div class="ld">${x[2]?esc(x[2]):'Overview not available.'}<br>${hasL(c,si,li)?`<button class="btn mk" onclick="go('#/c/${c.id}/${si}/${li}')">Open lesson ▸</button>`:''}<button class="btn ghost mk" onclick="tog('${c.id}',${si},${li})">${done(c,si,li)?'Mark as not done':'Mark as done'}</button></div></div>`};
  let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›<a onclick="go('#/c/${c.id}')">${c.name}</a>›<span>Section ${si+1}</span></div>
- <h1>${esc(s.t)}</h1><p class="sub">${ci.length} lectures · ${d} completed${xi.length?` · ${xi.length} additional (optional)`:''}</p><div class="bt" style="--c:${c.color};margin:-6px 0 22px"><b style="width:${p}%"></b></div>`;
+ <h1>${esc(s.t)}</h1><p class="sub">${ci.length} lectures · ${d} completed${xi.length?` · ${xi.length} additional`:''}</p><div class="bt" style="--c:${c.color};margin:-6px 0 22px"><b style="width:${p}%"></b></div>`;
  h+=ci.map(row).join('');
  h+=`<div class="lec quiz"><div class="lh"><span class="chk" style="color:var(--mut)">?</span><span class="t">${esc(s.q)}</span><small>QUIZ</small></div></div>`;
  if(xi.length){const op=!!ADDL_OPEN[si];
-  h+=`<div class="addl ${op?'addl-open':''}" id="addl"><button class="addl-h" onclick="toggleAddl(${si})" aria-expanded="${op}"><span class="addl-i">+</span><span class="addl-t"><b>Additional content</b><small>Optional deep dives and reference material · ${xi.length} lectures · ${secDoneX(c,si)} read · not needed for the quiz or your progress</small></span><span class="addl-c">▾</span></button><div class="addl-b">${xi.map(row).join('')}</div></div>`}
+  h+=`<div class="addl ${op?'addl-open':''}" id="addl"><button class="addl-h" onclick="toggleAddl(${si})" aria-expanded="${op}"><span class="addl-i">+</span><span class="addl-t"><b>Additional content</b><small>Optional deep dives and reference material · ${xi.length} lectures · ${secDoneX(c,si)} read</small></span><span class="addl-c">▾</span></button><div class="addl-b">${xi.map(row).join('')}</div></div>`}
  h+=`<div class="pn">${si>0?`<button class="btn ghost" onclick="go('#/c/${c.id}/${si-1}')">◂ ${esc(c.sections[si-1].t)}</button>`:'<span></span>'}${si<c.sections.length-1?`<button class="btn" onclick="go('#/c/${c.id}/${si+1}')">${esc(c.sections[si+1].t)} ▸</button>`:`<button class="btn" onclick="go('#/c/${c.id}')">Back to topics</button>`}</div>`;
  return h}
 const LS=()=>window.LESSONS||{};
