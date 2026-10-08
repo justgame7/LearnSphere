@@ -7639,3 +7639,1014 @@ window.EXTRA_LECTURES[3]=(window.EXTRA_LECTURES[3]||[]).concat([
 ['Parallel Query, Background Workers and JIT','0:00','How parallel plans work (Gather, workers, partial plans), the worker budget and its settings, parallel safety, background worker slots, JIT compilation and tuning by workload.'],
 ['MVCC Internals: Tuples, Snapshots and Visibility','0:00','Row versions on the heap page, xmin/xmax and hint bits, snapshots and isolation levels, HOT updates and pruning, visibility and free-space maps, the xmin horizon, freezing and wraparound.']]);
 })();
+
+
+/* LearnSphere: Section 3 (PostgreSQL Architecture) depth update, PART 2 of 2.
+   Appended to pg-lesson.js AFTER the Section 3 Part 1 block; index.html merges window.EXTRA_LECTURES[3] into Section 3.
+   - Enriches pg:3:5 (Life of a Query), pg:3:6 (PGDATA layout) and pg:3:4 (WAL) by inserting blocks before their "(Section NN)" notes.
+   - Adds 3 new lectures: pg:3:9 (Query Planner, Statistics and EXPLAIN), pg:3:10 (Transactions, Locking and Deadlocks),
+     pg:3:11 (Crash Recovery, Checkpoints and Timelines in Depth).
+   - Back-fills short notes into earlier lectures.  Docs links target PostgreSQL 18.  Sample outputs are illustrative. */
+(function(){
+const D='https://www.postgresql.org/docs/18/';
+const dg=window.LS_DG;
+const X=(k,blocks,src)=>{const L=window.LESSONS[k];if(!L)return;
+ let i=L.blocks.findIndex(b=>b.h&&/\(Section/.test(b.h));if(i<0)i=L.blocks.length;
+ L.blocks.splice(i,0,...blocks);if(src)L.src=(L.src||[]).concat(src)};
+/* append at the very end (used for back-fill notes) */
+const A=(k,blocks,src)=>{const L=window.LESSONS[k];if(!L)return;L.blocks.push(...blocks);if(src)L.src=(L.src||[]).concat(src)};
+const N=(k,blocks,src)=>{window.LESSONS[k]={blocks:blocks,src:src||[]}};
+
+/* ---------- diagrams ---------- */
+const pathSvg=dg(700,210,[
+[10,25,120,55,'Parser|syntax only',2],[150,25,120,55,'Analyzer|names, types',0],[290,25,120,55,'Rewriter|views, rules, RLS',0],[430,25,120,55,'Planner|choose cheapest|plan',2],[570,25,120,55,'Executor|run the plan',2],
+[10,130,120,50,'raw parse|tree',0],[150,130,120,50,'Query tree',0],[290,130,120,50,'Query tree(s)|rewritten',0],[430,130,120,50,'Plan tree|(PlannedStmt)',0],[570,130,120,50,'Result rows|or row count',0]],
+[[130,52,150,52],[270,52,290,52],[410,52,430,52],[550,52,570,52],[70,80,70,130],[210,80,210,130],[350,80,350,130],[490,80,490,130],[630,80,630,130]]);
+const execSvg=dg(700,230,[
+[260,10,180,45,'Limit|asks for 5 rows',2],[260,80,180,45,'Sort|needs all rows first',0],[260,150,180,45,'Hash Join|builds, then probes',0],
+[40,150,150,45,'Seq Scan emp|streams rows',0],[510,150,150,45,'Hash of dept|built once',0]],
+[[350,55,350,80],[350,125,350,150],[260,172,190,172],[440,172,510,172]]);
+
+/* ================================================================ ENRICH pg:3:5  Life of a Query */
+X('pg:3:5',[
+{h:"The five stages of every query"},
+{p:"The short flow above hides the machinery. The PostgreSQL documentation (*Overview of PostgreSQL Internals*, \"The Path of a Query\") divides the work of a backend into stages that always run in the same order: the **parser** checks the syntax, **parse analysis** gives the words meaning, the **rewriter** applies rules, the **planner** chooses how to run the query, and the **executor** runs the chosen plan. Each stage hands a different data structure to the next one. A DBA who knows which stage produced an error or a delay can go straight to the right tool."},
+{svg:pathSvg},
+{t:[["Stage","Input","Output","Uses the system catalogs?","Typical errors"],
+["**Parser** (lexer and grammar)","The SQL text","A **raw parse tree** (syntax only)","No","`syntax error at or near ...`"],
+["**Parse analysis** (analyzer)","The raw parse tree","A **Query tree** with resolved names and types","Yes: `pg_class`, `pg_attribute`, `pg_type`, `pg_proc`, `pg_operator`","`relation \"x\" does not exist`, `column \"y\" does not exist`, `operator does not exist: integer = text`"],
+["**Rewriter**","The Query tree","A list of one or more Query trees","Yes: `pg_rewrite` (views and rules), `pg_policy` (row-level security)","Rare: a bad rule, infinite recursion in a view or policy"],
+["**Planner / optimizer**","The rewritten Query tree","A **plan tree** (`PlannedStmt`)","Yes: statistics in `pg_statistic`, indexes, partition bounds","Rare: `could not devise a query plan` (almost always a bug report)"],
+["**Executor**","The plan tree","Rows sent to the client, or a row count","Yes: data pages, indexes, privileges","`permission denied`, `division by zero`, `duplicate key value violates unique constraint`, `canceling statement due to statement timeout`"]]},
+{note:"Utility commands such as `CREATE TABLE`, `VACUUM`, `COPY` and `SET` do not use the rewriter, planner or executor in the way a `SELECT` does. After parsing and analysis they are passed to a utility handler (`ProcessUtility`). Commands that contain a query inside them, such as `CREATE TABLE AS`, `CREATE VIEW` and `EXPLAIN`, plan that inner query."},
+{h:"Stage 1: the parser"},
+{p:"The parser turns the text of the statement into a tree. It has two parts: a **lexer** that splits the text into tokens (keywords, identifiers, numbers, strings, operators), and a **grammar** that checks that the tokens form a valid SQL statement. The output is the **raw parse tree**. The parser looks only at the *shape* of the text. It does not know whether a table or column exists, so `SELECT * FROM no_such_table` parses without any problem; the error appears one stage later."},
+{ul:[
+"Unquoted identifiers are folded to lower case, so `Emp`, `EMP` and `emp` are the same name; a quoted identifier such as `\"Emp\"` keeps its case and is a different name.",
+"A **simple-protocol** message can contain several statements separated by semicolons. They are parsed together and then executed one after another inside one implicit transaction, so an error in the third statement undoes the first two (unless you used explicit `BEGIN` and `COMMIT`).",
+"A syntax error is reported with a **position** in the text (`LINE 1: ...`), which comes from the lexer. It is cheap: no catalog access and no locks."]},
+{h:"Stage 2: parse analysis"},
+{p:"Parse analysis (the *analyzer* or *transformation process*) takes the raw parse tree and gives every name a meaning by looking in the system catalogs. The result is a **Query tree**. This is the first stage that needs a transaction and a snapshot of the catalogs, which is why a backend that is in an aborted transaction refuses to run any new statement."},
+{t:[["What the analyzer does","Example"],
+["Resolves table and view names using `search_path`","`emp` becomes `public.emp` (OID 16384). A table that is not found in any schema of the path gives `relation does not exist`"],
+["Opens the relation and **takes a lock** on it","A `SELECT` takes `ACCESS SHARE` on every table it names as soon as the table is opened here. The locking lecture in this section explains why this matters for DDL"],
+["Resolves column names and expands `*`","`SELECT *` becomes the full list of columns. A column added later does not change an already-parsed prepared statement's meaning, but it does invalidate the cached plan"],
+["Resolves the data type of every expression","In `WHERE sal > '5000'` the quoted literal starts as type *unknown* and is converted to the type of `sal`"],
+["Picks the exact **function or operator** (overload resolution)","`1 + 2.5` selects `numeric + numeric` after an implicit cast of the integer"],
+["Checks that aggregates, `GROUP BY` and window functions are used legally","`column \"e.name\" must appear in the GROUP BY clause or be used in an aggregate function`"]]},
+{note:"**Privilege checks happen later, when the executor starts**, not in the analyzer. That is why the same statement can first fail with `relation does not exist` (analysis) and, once the table exists but you have no rights, with `permission denied for table` (executor start)."},
+{h:"Stage 3: the rewriter (views, rules and row-level security)"},
+{p:"The **rewrite system** (documentation chapter *The Rule System*) takes a Query tree and applies transformations stored in the catalogs. For the DBA three cases matter. First, a **view** is stored as a rule named `_RETURN`, so a reference to a view is replaced by the view's defining query; after rewriting, the view name is gone and only base tables remain. Second, **row-level security** policies from `pg_policy` are added to the query as extra conditions (*security barrier quals*) that must be applied before the user's own conditions. Third, a user-defined rule created with `CREATE RULE` can change a query, or turn one query into several. Rules are rare in modern designs; most people use triggers instead."},
+{ul:[
+"A simple view is also **updatable** by rewriting: an `UPDATE` on an auto-updatable view is converted into an `UPDATE` on its base table.",
+"A **trigger** is *not* part of the rewriter. Triggers fire inside the executor, around the row operations.",
+"Because the rewriter output is what gets planned, `EXPLAIN` always shows base tables. You will never see a view name as a plan node."]},
+{code:`-- see the stored definition that the rewriter substitutes
+SELECT pg_get_viewdef('v_highpaid'::regclass, true);
+-- list user-defined rules and views' _RETURN rules
+SELECT schemaname, tablename, rulename FROM pg_rules WHERE schemaname NOT IN ('pg_catalog','information_schema');
+-- row-level security policies that will be added to queries on a table
+SELECT polname, polcmd, pg_get_expr(polqual, polrelid) AS using_expr FROM pg_policy WHERE polrelid = 'orders'::regclass;`},
+{h:"Stage 4: the planner / optimizer"},
+{p:"SQL says *what* result is wanted, not *how* to compute it. The planner generates many ways to run the query (different scan methods, join orders and join algorithms), estimates the **cost** of each using table statistics, and keeps the cheapest. Its result is a tree of plan nodes. This stage is the main source of performance surprises, so the lecture *Query Planner, Statistics and EXPLAIN* later in this section gives it a full treatment: cost model, statistics, scan and join methods, reading `EXPLAIN` output and fixing bad estimates."},
+{ul:[
+"The planner works on **estimates**. It does not run the query to find out how many rows a condition returns; it uses the statistics collected by `ANALYZE`.",
+"Before choosing paths it **simplifies** the query: it folds constants, flattens simple sub-queries and views into the main query, expands inheritance and partitions, and removes partitions that cannot match (*partition pruning*).",
+"For queries that join many tables the number of possible join orders explodes. Above `geqo_threshold` (default 12 `FROM` items) PostgreSQL switches to a **genetic** search that finds a good, not guaranteed best, plan."]},
+{h:"Stage 5: the executor"},
+{p:"The executor walks the plan tree and produces the rows. It uses a **demand-driven (pull) model**: the top node asks its child for the next row, the child asks its own children, and so on down to the scan nodes that read pages from the buffer cache. A row travels up one node at a time. Nothing is computed until a parent asks for it, which is why `LIMIT 5` can stop a plan early."},
+{svg:execSvg},
+{t:[["Executor phase","What happens"],
+["**ExecutorStart**","Builds the run-time state for every plan node, **checks the privileges** of the user on the tables and columns, opens indexes, and takes the snapshot used for visibility"],
+["**ExecutorRun**","Pulls rows from the top node until the plan is finished or the requested row count is reached, and sends each result row to the client (or to `INSERT`, `COPY` or a cursor)"],
+["**ExecutorFinish**","Runs work that must happen after the main plan: `AFTER` triggers, and data-modifying `WITH` queries that were not read to the end"],
+["**ExecutorEnd**","Releases memory, closes relations and indexes"]]},
+{t:[["Node type","Streams rows or blocks?","Remark"],
+["`Seq Scan`, `Index Scan`, `Index Only Scan`","Streams","Return the first row quickly; cost grows with the rows read"],
+["`Bitmap Index Scan` + `Bitmap Heap Scan`","Blocks at the bitmap","Reads the index fully, builds a bitmap, then visits the heap pages in block order"],
+["`Nested Loop`","Streams","For each outer row, probes the inner side. Good when the outer side is small and the inner side has an index"],
+["`Hash Join`","Blocks on the build side","Builds a hash table of one input (uses `work_mem`), then streams the other input past it"],
+["`Merge Join`","Streams after the sorts","Needs both inputs sorted on the join key"],
+["`Sort`, `HashAggregate`","**Blocks**","Must read all input before returning the first row. `Sort` spills to disk if it exceeds `work_mem`"],
+["`Limit`","Streams","Stops asking its child after N rows"],
+["`ModifyTable`","Streams","Performs `INSERT`, `UPDATE`, `DELETE` and `MERGE` row by row and fires row triggers"],
+["`Gather` / `Gather Merge`","Streams","Collects rows from parallel workers (see the parallel query lecture)"]]},
+{h:"A worked example through all five stages"},
+{p:"Take a view and a join. The view hides a filter on `emp`, and the query joins it to `dept`:"},
+{code:`CREATE VIEW v_highpaid AS
+  SELECT e.id, e.name, e.sal, e.dept_id FROM emp e WHERE e.sal > 5000;
+
+SELECT v.name, d.dname
+FROM   v_highpaid v JOIN dept d ON d.id = v.dept_id
+WHERE  d.loc = 'CHENNAI'
+ORDER  BY v.name
+LIMIT  5;`},
+{t:[["Stage","What it does to this statement"],
+["**Parser**","Produces a `SelectStmt`: a `FROM` clause with a join of `v_highpaid` and `dept`, a `WHERE` clause, a sort clause and a limit. It has not checked that either name exists"],
+["**Analyzer**","Finds `v_highpaid` (a view) and `dept` in `pg_class`, locks both, resolves `v.name`, `d.dname`, `d.loc`, `d.id` and `v.dept_id` against `pg_attribute`, and converts the literal `'CHENNAI'` to the type of `d.loc`"],
+["**Rewriter**","Replaces the reference to `v_highpaid` by its stored query. The statement now reads `emp` (with `sal > 5000`) joined to `dept`; if `emp` has a row-level security policy, its condition is added here too"],
+["**Planner**","Flattens the view's sub-query into the join, estimates how many `dept` rows match `loc = 'CHENNAI'`, chooses a join method and a scan for each table, and adds a `Sort` and a `Limit` on top (for a small `LIMIT` it may choose a *top-N heapsort*)"],
+["**Executor**","Checks that the user may `SELECT` from `emp` and `dept`, reads the small `dept` side into a hash table, streams `emp` rows past it, sorts the matches, returns the first five rows"]]},
+{code:`-- Illustrative output (costs and row counts omitted; yours will differ)
+ Limit
+   ->  Sort
+         Sort Key: e.name
+         ->  Hash Join
+               Hash Cond: (e.dept_id = d.id)
+               ->  Seq Scan on emp e
+                     Filter: (sal > 5000)
+               ->  Hash
+                     ->  Seq Scan on dept d
+                           Filter: (loc = 'CHENNAI'::text)`},
+{note:"The view name does not appear anywhere in the plan, and the literal has been given an explicit type (`'CHENNAI'::text`). Both are the visible results of the rewriter and the analyzer."},
+{h:"Looking at each stage yourself"},
+{p:"PostgreSQL can print the data structure of each stage into the server log. These settings are for learning and for debugging, not for production, because the output is very large. They can be changed by a superuser or by a role that has been granted the right to set them."},
+{t:[["Parameter","What it prints to the log"],
+["`debug_print_parse`","The Query tree after parse analysis"],
+["`debug_print_rewritten`","The Query tree after rewriting"],
+["`debug_print_plan`","The final plan tree"],
+["`debug_pretty_print`","Makes the three outputs above indented and readable (default on)"],
+["`log_parser_stats`, `log_planner_stats`, `log_executor_stats`","Time and resource use (`getrusage`) of one stage"],
+["`log_statement_stats`","The same for the whole statement. It cannot be combined with the per-stage settings"]]},
+{code:`SET client_min_messages = log;   -- show these LOG messages in psql as well
+SET debug_print_rewritten = on;
+SET log_planner_stats = on;
+SELECT v.name FROM v_highpaid v LIMIT 1;
+RESET ALL;
+
+-- the supported way to see the plan and the planning time
+EXPLAIN (ANALYZE, BUFFERS, SUMMARY) SELECT * FROM emp WHERE id = 5;
+-- the output ends with:  Planning Time: ... ms   /   Execution Time: ... ms`},
+{h:"What is repeated for every execution, and what is cached"},
+{p:"With the **simple query protocol** (psql, and most scripts) all five stages run every time the text is sent. With the **extended protocol** (prepared statements, most drivers) the work is split into messages, which lets PostgreSQL keep the result of the early stages:"},
+{t:[["Message / command","Stages done","What is kept in the session"],
+["`Parse` / `PREPARE`","Parser, analyzer, rewriter","The analyzed and rewritten query (a *cached plan source*)"],
+["`Bind`","Planner (a **custom plan** that uses the parameter values, or the reusable **generic plan**)","A *portal* holding the plan and the parameter values"],
+["`Execute`","Executor, for all rows or for a row count (`fetch size`)","Rows already sent; the portal can be resumed (cursor)"]]},
+{ul:[
+"A cached plan is **invalidated automatically** when an object it depends on changes: a table or index is altered or dropped, statistics are refreshed by `ANALYZE`, or `search_path` changes. The next execution plans again. This is why `ALTER TABLE` on a hot table can cause a burst of re-planning.",
+"`pg_prepared_statements` lists the statements prepared in the *current* session and, from PostgreSQL 14, how many `generic_plans` and `custom_plans` each one has used.",
+"Each backend has its own cache. A pool of 500 connections therefore holds up to 500 copies of the same prepared plan, which adds to per-backend memory (see the Memory lecture).",
+"PL/pgSQL functions use the same machinery: each SQL statement inside a function is planned on first use and the plan is cached for the rest of the session."]},
+{h:"Where the time goes: reading planning versus execution time"},
+{t:[["Question","Where to look"],
+["How long did planning take for one statement?","`EXPLAIN (ANALYZE)` prints `Planning Time`. A planning time that is large compared with execution time points at many partitions, many joins, or a huge number of indexes"],
+["Is planning expensive across the whole workload?","`pg_stat_statements` records `total_plan_time` only when `pg_stat_statements.track_planning = on` (off by default because it adds overhead)"],
+["How long did parsing and analysis take?","Only visible with `log_parser_stats`. For ordinary queries this is a few microseconds; it matters mainly for very large generated statements"],
+["Why is one statement slow only the first time?","Cold buffer cache (see the Memory lecture), or the first execution in the session had to plan and load catalog caches"]]},
+{h:"Inside a data-modifying statement"},
+{p:"The write path described earlier is the `ModifyTable` node of the executor. For one `UPDATE` row the executor, in order: fires `BEFORE ROW` triggers (which may change or skip the row), checks the new values against `NOT NULL` and `CHECK` constraints, creates the new row version in the heap page, inserts new entries into the indexes that need them (a HOT update needs none), writes the WAL records, and queues `AFTER ROW` triggers. **Foreign-key checks are implemented as `AFTER` triggers**, which is why a bulk update on a table with many foreign keys is slower than the heap work alone suggests. `AFTER` triggers run at the end of the statement (or at `COMMIT` if declared `DEFERRABLE INITIALLY DEFERRED`)."},
+{h:"Which stage failed? A quick diagnosis table"},
+{t:[["Message","Stage","First thing to check"],
+["`syntax error at or near \"FORM\"`","Parser","A typo or a missing comma; the position marker points at the token"],
+["`relation \"emp\" does not exist`","Analyzer","`search_path`, the schema name, upper/lower case, and whether you are connected to the right database"],
+["`operator does not exist: integer = text`","Analyzer","Missing cast or a parameter sent as text; add `::int` or fix the driver binding"],
+["`permission denied for table emp`","Executor start","`\\dp emp` and role membership (Section 07)"],
+["`infinite recursion detected in policy for relation`","Rewriter","A row-level security policy that queries the table it protects"],
+["`canceling statement due to statement timeout`","Executor","`statement_timeout`, then the plan with `EXPLAIN (ANALYZE)`"],
+["A query that is fast on a small copy but slow in production","Planner","Statistics, row estimates and the plan (next lectures)"]]},
+{note:"Remember the division of labour: **the planner chooses, the executor obeys.** If a plan is bad, fix the inputs of the planner (statistics, indexes, cost settings, the query text), because the executor will faithfully run whatever plan it is given."}
+],[["The Path of a Query",D+'query-path.html'],["The Parser Stage",D+'parser-stage.html'],["The PostgreSQL Rule System",D+'rules.html'],["Planner/Optimizer",D+'planner-optimizer.html'],["Executor",D+'executor.html'],["Error Reporting and Logging: debug output",D+'runtime-config-logging.html']]);
+
+/* ================================================================ ENRICH pg:3:6  PGDATA layout */
+const pgdSvg=dg(700,250,[
+[225,10,250,45,'PGDATA|the cluster directory',2],
+[10,95,150,50,'Files at the top|PG_VERSION, postgresql.conf,|postmaster.pid ...',0],[180,95,150,50,'global/|pg_control, shared catalogs|pg_database, pg_authid',0],[350,95,150,50,'base/|tables, indexes, forks|one folder per database OID',2],[520,95,170,50,'pg_wal/|WAL segments and|archive_status/',2],
+[10,185,150,50,'pg_xact, pg_multixact,|pg_subtrans, pg_commit_ts|transaction status',0],[180,185,150,50,'pg_tblspc/|links to tablespaces|outside PGDATA',0],[350,185,150,50,'pg_replslot, pg_logical,|pg_stat, pg_twophase,|pg_notify, pg_snapshots',0],[520,185,170,50,'log/ (optional)|server log files|and current_logfiles',0]],
+[[350,55,85,95],[350,55,255,95],[350,55,425,95],[350,55,605,95],[350,55,85,185],[350,55,255,185],[350,55,425,185],[350,55,605,185]]);
+
+X('pg:3:6',[
+{h:"The complete PGDATA map"},
+{p:"The PostgreSQL documentation (*Database File Layout*) lists every item that `initdb` creates. Learning this map is worth the effort: when a server will not start, when a disk fills up, or when a backup must be planned, the first question is always *which part of the data directory is this, and may I touch it?*"},
+{svg:pgdSvg},
+{t:[["Item","Kind","Contents and purpose"],
+["`PG_VERSION`","File","A text file with the **major version** (for example `18`). The server refuses to start if it differs from the binary's major version"],
+["`postgresql.conf`, `postgresql.auto.conf`","Files","Main settings, and the settings written by `ALTER SYSTEM` (read last, so they win). On some distributions `postgresql.conf` lives outside `PGDATA`"],
+["`pg_hba.conf`, `pg_ident.conf`","Files","Client authentication rules and user-name maps"],
+["`postmaster.pid`, `postmaster.opts`","Files","Lock file with the postmaster PID, port and socket; and the command line the server was started with"],
+["`current_logfiles`","File","Present when `logging_collector` is on: the log file currently in use"],
+["`base/`","Directory","One sub-directory per database, named by the database **OID**. Holds the table and index files"],
+["`global/`","Directory","Cluster-wide tables (`pg_database`, `pg_authid`, `pg_tablespace`) and the **`pg_control`** file"],
+["`pg_wal/`","Directory","Write-ahead log segment files, plus `archive_status/` and (PostgreSQL 17+) `summaries/`"],
+["`pg_xact/`","Directory","**Commit status** of every transaction (committed, aborted, in progress, sub-committed), two bits per transaction"],
+["`pg_multixact/`","Directory","Multi-transaction status, used when several transactions hold a lock on the same row"],
+["`pg_subtrans/`","Directory","Sub-transaction status (`SAVEPOINT` and `EXCEPTION` blocks)"],
+["`pg_commit_ts/`","Directory","Commit timestamps, filled only when `track_commit_timestamp = on`"],
+["`pg_twophase/`","Directory","State files of prepared transactions (`PREPARE TRANSACTION`)"],
+["`pg_serial/`","Directory","Information about committed `SERIALIZABLE` transactions"],
+["`pg_notify/`","Directory","`LISTEN` / `NOTIFY` queue data"],
+["`pg_snapshots/`","Directory","Snapshots exported with `pg_export_snapshot()` (used by parallel `pg_dump`)"],
+["`pg_dynshmem/`","Directory","Files of the dynamic shared memory subsystem (used by parallel query)"],
+["`pg_replslot/`","Directory","One sub-directory per replication slot"],
+["`pg_logical/`","Directory","Logical decoding and replication-origin state"],
+["`pg_stat/`, `pg_stat_tmp/`","Directories","Statistics saved at a clean shutdown, and temporary files of the statistics subsystem"],
+["`pg_tblspc/`","Directory","Symbolic links to the tablespace directories"],
+["`log/`","Directory","Default `log_directory` when the log collector is used (not created by `initdb` on every platform)"]]},
+{note:"A configuration file does not have to be inside `PGDATA`. Debian and Ubuntu keep it in `/etc/postgresql/<version>/<cluster>/`, and the settings `config_file`, `hba_file`, `ident_file`, `data_directory` and `external_pid_file` tell the server where everything is. Run `SHOW data_directory;` and `SHOW config_file;` rather than guessing."},
+{h:"What may be deleted, and what happens if it is lost"},
+{t:[["Item","If it is lost or damaged","May I delete it?"],
+["`global/pg_control`","The server cannot start or recover. `pg_resetwal` is a last resort that can leave data inconsistent","**Never**. Restore from backup"],
+["`base/` files, `global/` files","Missing or corrupt tables: `could not open file` or `invalid page in block` errors","**Never**. Restore from backup"],
+["`pg_wal/` segments","Crash recovery impossible, a standby or archive recovery cannot continue","**Never** by hand. Let PostgreSQL recycle them; fix archiving or slots instead"],
+["`pg_xact/`, `pg_multixact/`, `pg_subtrans/`","Rows appear uncommitted or the server reports `could not access status of transaction`","**Never**. Cleaned automatically by `VACUUM` and checkpoints"],
+["`postmaster.pid`","Only a stale lock. Remove it **only** when you have verified that no `postgres` process uses this directory","Only when stale"],
+["`pg_stat_tmp/`, `pg_dynshmem/`, `pg_snapshots/`, `pg_notify/`","Rebuilt or cleared at start-up","Left alone while running; cleared by the server at start-up"],
+["`base/pgsql_tmp/`","Spill files of running queries (sorts, hashes). Leftovers after a crash are removed at start-up","Not while running"],
+["`log/` files","Loss of history only","Yes: rotate and compress old logs (see Section 06)"],
+["`postgresql.auto.conf`","Loses the `ALTER SYSTEM` settings","Edit through `ALTER SYSTEM RESET`, not by hand, when possible"]]},
+{h:"The control file: global/pg_control"},
+{p:"`pg_control` is a small binary file that records the **state of the cluster** and the location of the latest checkpoint. It is the first file the postmaster's startup process reads: it tells the server whether the last shutdown was clean, and from which WAL position (the *REDO location*) recovery must begin. It also stores a copy of the settings that must not differ between a primary and its standby (`max_connections`, `wal_level`, `max_wal_senders`, `max_prepared_transactions` and others), the block size and WAL segment size that were chosen at `initdb`, and whether data checksums are enabled."},
+{code:`# shell: read the control file without starting the server
+pg_controldata -D $PGDATA
+-- Illustrative output (abridged; values differ)
+-- pg_control version number:            1800
+-- Database system identifier:           7345012345678901234
+-- Database cluster state:               in production
+-- Latest checkpoint location:           0/3000110
+-- Latest checkpoint's REDO location:    0/30000D8
+-- Latest checkpoint's TimeLineID:       1
+-- wal_level setting:                    replica
+-- Data page checksum version:           1
+-- Bytes per WAL segment:                16777216
+
+-- the same facts through SQL, while the server runs
+SELECT * FROM pg_control_checkpoint();
+SELECT * FROM pg_control_system();`},
+{t:[["Cluster state","Meaning"],
+["`in production`","The server is running normally (also what you see after a crash, until recovery completes)"],
+["`shut down`","Clean shutdown on a primary: no recovery needed at the next start"],
+["`shut down in recovery`","Clean shutdown of a standby"],
+["`in crash recovery`, `in archive recovery`","Recovery is replaying WAL"],
+["`shutting down`, `starting up`","Transitional states; seeing one after a stop means the shutdown was interrupted"]]},
+{h:"From a table name to a file: relfilenode and forks"},
+{p:"A table is not stored in a file named after the table. The catalog `pg_class` has two numbers for every relation: the **OID**, which identifies the object, and the **relfilenode**, which names the **file** that holds it. They start equal, but they are not the same thing, and the relfilenode changes whenever PostgreSQL rewrites the table. The path is therefore `base/<database OID>/<relfilenode>` for a table in the default tablespace, and `pg_tblspc/<tablespace OID>/PG_<major>_<catalog version>/<database OID>/<relfilenode>` for a table in another tablespace."},
+{t:[["Name pattern","What it is"],
+["`16401`","The **main fork**: the table's pages (8 KB each, see the storage lecture of Section 08)"],
+["`16401.1`, `16401.2`","Further **1 GB segments** of the main fork. A segment holds at most 1 GB (`RELSEG_SIZE` blocks), so a 3.5 GB table is four files"],
+["`16401_fsm`","The **free space map**: how much free room each page has. Used by `INSERT` to find a page"],
+["`16401_vm`","The **visibility map**: which pages are all-visible and all-frozen. Used by `VACUUM` and index-only scans"],
+["`16401_init`","The **initialization fork** of an **unlogged** table: an empty copy used to reset the table after a crash"],
+["`t3_16455`","A **temporary table** owned by backend ID 3 (`t<backend id>_<relfilenode>`). Never WAL-logged, removed at session end or at start-up"],
+["`pgsql_tmpNNNN.M`","A **temporary spill file** (sort or hash too big for `work_mem`) in `pgsql_tmp/`; `NNNN` is the process ID"],
+["`pg_filenode.map`","In `global/` and in each database directory: the mapping for a few **mapped catalogs** (such as `pg_class` itself) whose `relfilenode` in `pg_class` is 0"]]},
+{ul:[
+"**Indexes and TOAST tables are separate relations** with their own files. A table with three indexes and a TOAST table is at least five relations, each with `_fsm` or `_vm` forks where they apply (indexes have an FSM, not a VM).",
+"The `relfilenode` **changes** after `TRUNCATE`, `VACUUM FULL`, `CLUSTER`, `REINDEX` and any `ALTER TABLE` that rewrites the table. The new file is written first and the old one is removed when the transaction commits, so such an operation needs **free disk space equal to the new table** while it runs.",
+"`ALTER TABLE ... SET TABLESPACE` copies the relation to a new directory and has the same temporary double-space need (see Section 08).",
+"Because the main fork is divided by block, the byte offset of block *N* in a file is simply *N* x 8192, modulo the 1 GB segment."]},
+{code:`-- table name to file, and the sizes of each fork
+SELECT c.oid, c.relfilenode, pg_relation_filepath(c.oid) AS path,
+       pg_size_pretty(pg_relation_size(c.oid,'main')) AS main,
+       pg_size_pretty(pg_relation_size(c.oid,'fsm'))  AS fsm,
+       pg_size_pretty(pg_relation_size(c.oid,'vm'))   AS vm
+FROM pg_class c WHERE c.relname = 'emp';
+
+-- the filenode changes when the table is rewritten
+SELECT pg_relation_filenode('emp');   -- e.g. 16401
+TRUNCATE emp;
+SELECT pg_relation_filenode('emp');   -- a new number: a new, empty file
+
+-- which relation owns a file, from the shell (contrib module)
+-- oid2name -d mydb -f 16401`},
+{h:"Looking at PGDATA from SQL"},
+{p:"A DBA often needs to inspect the directory without a shell, for example on a managed server. The following functions read the file system as the server user. By default they are restricted to superusers and, for the `pg_ls_*` family, to members of the `pg_monitor` role; other roles can be given `EXECUTE` explicitly."},
+{t:[["Function","Shows"],
+["`pg_ls_waldir()`","Files in `pg_wal` with size and modification time. Sum the sizes to see WAL volume"],
+["`pg_ls_tmpdir()`","Temporary spill files currently present (queries that are spilling to disk)"],
+["`pg_ls_logdir()`","Server log files"],
+["`pg_ls_archive_statusdir()`","The `.ready` and `.done` markers: how many WAL files are waiting to be archived"],
+["`pg_ls_dir('dir')`, `pg_stat_file('path')`","Generic directory listing and file information (superuser, or granted)"],
+["`pg_read_file('path')`","Reads a text file, for example a log. Restricted: needs superuser or the `pg_read_server_files` role"]]},
+{code:`SELECT count(*) AS files, pg_size_pretty(sum(size)) AS wal_size FROM pg_ls_waldir();
+SELECT count(*) AS ready_files FROM pg_ls_archive_statusdir() WHERE name LIKE '%.ready';
+SELECT name, pg_size_pretty(size) FROM pg_ls_tmpdir() ORDER BY size DESC LIMIT 5;
+SHOW data_directory;
+SHOW data_directory_mode;   -- read-only: 0700 or 0750`},
+{h:"Ownership, permissions and the mount-point trap"},
+{ul:[
+"`PGDATA` must be owned by the operating-system user that runs the server (normally `postgres`). `initdb` creates it with mode **0700**: no one else may enter. The postmaster **refuses to start** if the mode is looser than the expected 0700 or 0750 (`FATAL: data directory ... has invalid permissions`).",
+"`initdb --allow-group-access` (`-g`) uses mode **0750** and 0640 for files, so that a backup account in the same group can read the cluster without being the `postgres` user. The mode actually in use is shown by `SHOW data_directory_mode`.",
+"The documentation recommends **not using a mount point directly** as the data directory. A freshly formatted file system has a `lost+found` directory and the mount point is owned by root. Create a **sub-directory** (for example `/pgdata/18/main`) owned by `postgres` and use that.",
+"On SELinux systems, a data directory in a non-default place needs the right file context (`postgresql_db_t`); otherwise the server is denied access even though ordinary permissions are correct.",
+"Symbolic links are used for `pg_wal` (a dedicated WAL disk) and for tablespaces in `pg_tblspc`. A link whose target is missing stops the server at start."]},
+{h:"Data checksums"},
+{p:"A **data checksum** is stored in the header of every 8 KB page and verified each time the page is read from disk. It cannot repair anything, but it turns silent storage corruption into a loud error (`page verification failed, calculated checksum ... but expected ...`) instead of wrong query results. Checksums are chosen at `initdb` time. PostgreSQL 18 changed the `initdb` default so that checksums are **enabled** (use `--no-data-checksums` to opt out); clusters created by earlier versions keep what they were created with, and the old and new cluster of a `pg_upgrade` must agree, so check the 18 release notes before an upgrade from a cluster without checksums."},
+{code:`SHOW data_checksums;                          -- on / off
+SELECT datname, checksum_failures, checksum_last_failure FROM pg_stat_database;
+
+# offline tool: the cluster must have been shut down cleanly
+pg_checksums --check  -D $PGDATA              # verify every page
+pg_checksums --enable -D $PGDATA              # rewrites all pages: takes time proportional to the size`},
+{h:"What grows in PGDATA: disk planning"},
+{t:[["Location","Grows because of","Symptom and first action"],
+["`base/`","Data, indexes, **bloat** from dead row versions","Gradual growth. Check `pg_stat_user_tables.n_dead_tup`, autovacuum (Section 06)"],
+["`pg_wal/`","Heavy writes between checkpoints, failing archive command, an inactive replication slot, a lagging standby","**Sudden** growth, and a full disk stops the server. Check `pg_replication_slots`, `pg_stat_archiver`, `archive_status/`"],
+["`base/pgsql_tmp/`","Sorts, hashes and temporary files larger than `work_mem`","Temporary peaks. `log_temp_files`, `pg_ls_tmpdir()`"],
+["`pg_replslot/`, `pg_logical/`","Logical decoding snapshots and spill files for large transactions","Check `pg_stat_replication_slots`"],
+["`pg_commit_ts/`","`track_commit_timestamp = on`","Small, but not zero"],
+["`pg_xact/`","About 0.25 MB per million transactions; trimmed after freezing","Large only if wraparound protection is lagging"],
+["`pg_multixact/`","Heavy use of shared row locks (foreign keys on a busy parent row)","Check multixact age (see the MVCC lecture)"],
+["`log/`","Verbose logging, no rotation limits","Set `log_rotation_size` and a retention job"]]},
+{code:`# the biggest directories, from the shell
+du -sh $PGDATA/* 2>/dev/null | sort -h | tail -8
+df -h $PGDATA $PGDATA/pg_wal`},
+{note:"Monitor **two** things separately: free space on the data volume and free space on the WAL volume (even when they are the same disk). A full WAL volume stops the database, and a full data volume stops writes. Alert early at 80 percent."},
+{h:"Moving or relocating PGDATA safely"},
+{flow:["Stop the server cleanly (`pg_ctl stop -m fast` or `systemctl stop postgresql-18`)","Confirm with `pg_controldata` that the state is `shut down`","Copy with ownership, modes and links preserved (`rsync -aH` or `cp -a`), never move individual files","Point the service at the new place (`-D`, `data_directory` or the systemd drop-in) and fix the SELinux context","Start the server, check `SHOW data_directory`, then `pg_stat_activity` and the log","Keep the old directory until a backup of the new one has been verified"]},
+{h:"Reading file-level errors"},
+{t:[["Message","Meaning and action"],
+["`FATAL: data directory \"/x\" has invalid permissions` / `wrong ownership`","The mode is not 0700 or 0750, or the owner is not the server user. Fix with `chown -R postgres:postgres` and `chmod 0700`"],
+["`FATAL: database files are incompatible with server` (`PG_VERSION`)","The data directory belongs to another major version. Use the matching binaries, or `pg_upgrade`"],
+["`FATAL: could not open file \"global/pg_control\": No such file or directory`","Wrong `-D` path, an unmounted disk, or a deleted file. Check the mount first"],
+["`ERROR: could not open file \"base/16384/16401\": No such file or directory`","A relation file was removed outside PostgreSQL. Restore from backup; do not recreate empty files"],
+["`ERROR: invalid page in block 12 of relation base/16384/16401`","Page damage. With checksums this is reported as a checksum failure. Investigate hardware, restore, and see `zero_damaged_pages` only as a last-resort salvage tool"],
+["`FATAL: lock file \"postmaster.pid\" already exists`","Another server is running, or a stale file remains after a crash. Verify with `ps`, then remove only if no process owns it"],
+["`PANIC: could not write to file \"pg_wal/xlogtemp.NNN\": No space left on device`","The WAL volume is full. Free space safely (fix archiving or slots); never delete WAL files by hand"]]}
+],[["Database File Layout",D+'storage-file-layout.html'],["Database Page Layout",D+'storage-page-layout.html'],["Free Space Map",D+'storage-fsm.html'],["Visibility Map",D+'storage-vm.html'],["pg_controldata",D+'app-pgcontroldata.html'],["Creating a Database Cluster",D+'creating-cluster.html'],["pg_checksums",D+'app-pgchecksums.html'],["System Administration Functions: file access",D+'functions-admin.html']]);
+
+/* ================================================================ ENRICH pg:3:4  WAL in depth */
+const walRecSvg=dg(700,250,[
+[10,20,150,55,'1. Backend locks the|buffer and starts a|critical section',0],[190,20,150,55,'2. Changes the page|in shared_buffers|marks it dirty',0],[370,20,150,55,'3. XLogInsert|copies the record into|WAL buffers, gets LSN',2],[550,20,140,55,'4. PageSetLSN|stamps the page with|that LSN',0],
+[10,130,150,55,'COMMIT writes a|commit record',0],[190,130,150,55,'XLogFlush up to|the commit LSN|write + fsync',2],[370,130,150,55,'pg_xact bit set to|committed, locks|released',0],[550,130,140,55,'Client gets|COMMIT OK',2],
+[190,205,330,35,'Before any dirty page is written, the buffer manager flushes WAL up to that page LSN',1]],
+[[160,47,190,47],[340,47,370,47],[520,47,550,47],[620,75,620,100],[620,100,85,100],[85,100,85,130],[160,157,190,157],[340,157,370,157],[520,157,550,157]]);
+
+X('pg:3:4',[
+{h:"How a change becomes a WAL record"},
+{p:"The earlier summary says that WAL is written before the data page. This section shows exactly how that rule is enforced, because every durability, performance and recovery topic in the course follows from it. When a backend changes a page it does the work in a tight sequence: it locks the buffer, enters a *critical section* (an error inside it escalates to `PANIC`, because memory and log would otherwise disagree), changes the page, builds the WAL record and copies it into the **WAL buffers**, and then stamps the page header with the **LSN** that the insertion returned. The LSN in the page header is the key: it records *the last WAL position that affected this page*."},
+{svg:walRecSvg},
+{p:"The write-ahead rule is enforced by the **buffer manager**. Before it writes a dirty page to the data file, whether for the checkpointer, the background writer or a backend that needs a free buffer, it first makes sure WAL has been flushed at least up to the page's LSN. If not, it flushes WAL first. A page can therefore never reach disk ahead of the log that describes it."},
+{h:"What a WAL record contains"},
+{t:[["Part","Content"],
+["**Header**","Total length, the transaction ID (`xl_xid`), a pointer to the previous record, the **resource manager** ID, record type flags, and a **CRC** over the record"],
+["**Block references**","For every page touched: the relation (tablespace, database, relfilenode), the fork, the block number, and optionally a **full-page image** and/or data specific to that page"],
+["**Main data**","Information about the change that is not tied to one page (for example, which offset in the page, or the new commit time)"]]},
+{p:"Each record belongs to a **resource manager** (rmgr), the module that knows how to write it and how to **redo** it. Recovery simply reads records in order and hands each to its resource manager."},
+{t:[["Resource manager","Examples of what it logs"],
+["`Heap`, `Heap2`","Row inserts, updates, deletes, page pruning, freezing, visibility-map changes"],
+["`Btree`, `Hash`, `Gin`, `Gist`, `SPGist`, `BRIN`","Index insertions, page splits, deletions"],
+["`Transaction`","Commit and abort records, including dropped files and cache invalidations"],
+["`XLOG`","Checkpoints, parameter changes, full-page images, switching to a new segment"],
+["`Storage`, `Database`, `Tablespace`","Creating and removing relation files, databases and tablespaces"],
+["`CLOG`, `MultiXact`, `CommitTs`","Transaction status pages and multixact members"],
+["`Standby`","Running-transaction snapshots and `ACCESS EXCLUSIVE` lock records, so that a standby can work out visibility"],
+["`Sequence`, `RelMap`, `ReplicationOrigin`, `LogicalMessage`, `Generic`","Sequence values, catalog mapping, replication origins, logical messages and extension-defined changes"]]},
+{note:"These records can be listed with `pg_waldump` or the `pg_walinspect` functions (the *Inspecting WAL* lecture of Section 08), which show the resource manager, record type, LSN, transaction ID and the blocks touched."},
+{h:"The commit path, step by step"},
+{p:"A `COMMIT` is a WAL operation first and a data operation never. The backend writes a **commit record**, forces WAL to disk up to that record, and only then reports success. The data pages are not part of the commit at all."},
+{t:[["Step","What happens","Why it is in this order"],
+["1","The commit record is inserted into the WAL buffers and receives an LSN","It describes the transaction's outcome, including files to delete and caches to invalidate"],
+["2","**`XLogFlush`** writes the WAL buffers to the segment file and calls `fsync` (or `fdatasync`) up to the commit LSN","After this point a crash cannot lose the transaction"],
+["3","The transaction's status is set to *committed* in `pg_xact`, and the backend leaves the list of running transactions","From now on other snapshots see the changes (see the MVCC lecture)"],
+["4","Locks are released and the client receives the reply","Waiters can proceed"],
+["4b","If synchronous replication is configured, the backend also waits for the standby acknowledgement","Durability on a second machine, see Section 10"]]},
+{p:"**Group commit.** The flush in step 2 is by far the most expensive part of a commit. When many backends commit at the same moment, one `fsync` can cover all their commit records, because the flush covers everything up to the highest LSN requested. `commit_delay` (microseconds, default 0) can deliberately wait a little before flushing, and `commit_siblings` (default 5) is how many other open transactions must exist for the delay to apply. On fast storage the defaults are usually best."},
+{h:"synchronous_commit: how much does COMMIT wait for?"},
+{t:[["Value","COMMIT returns after","Crash of PostgreSQL","Crash of the operating system or power loss"],
+["`off`","Nothing is flushed; the WAL writer flushes within about three times `wal_writer_delay` (default 200 ms)","Committed work **is** kept (it is in the OS cache)","The last fraction of a second of commits can be **lost**. No corruption"],
+["`local`","WAL flushed on the primary only; does not wait for a standby","Safe","Safe"],
+["`remote_write`","A standby has received and written the WAL (not flushed)","Safe","Safe on the primary; a standby crash at the same moment can lose it"],
+["`on` (default)","Local flush, and with synchronous standbys listed, their flush","Safe","Safe"],
+["`remote_apply`","The standby has **replayed** the change, so a read there sees it","Safe","Safe"]]},
+{ul:[
+"`synchronous_commit = off` is a **per-transaction** setting, so a busy application can use it for low-value events (for example logging) and keep `on` for payments, with `SET LOCAL synchronous_commit = off` inside the transaction.",
+"Unlike `fsync = off`, turning off synchronous commit **never** risks corrupting the database; it only risks losing the most recent commits."]},
+{h:"Full-page writes: the torn-page problem"},
+{p:"PostgreSQL pages are 8 KB, but disks and file systems often write in 4 KB (or 512-byte) units. If the power fails in the middle of an 8 KB write, the page on disk is half old and half new, a **torn page**. WAL records describe *changes to a page*, so they cannot repair a page whose old content is unknown. To solve this, with `full_page_writes = on` (the default) the **first change to a page after each checkpoint** writes the **entire page** into the WAL record as a **full-page image** (FPI). During recovery, the image is restored first and later records are applied on top, so a torn page is always repaired."},
+{ul:[
+"This is why WAL volume **spikes right after every checkpoint**: most pages touched in that period are touched for the first time, and each brings an 8 KB image. Rarer checkpoints (a longer `checkpoint_timeout`, a larger `max_wal_size`) therefore reduce total WAL volume as well as I/O.",
+"`wal_compression` (`off` by default; `pglz`, `lz4` or `zstd` where built in) compresses the images. It trades some CPU for less WAL, which reduces archive, network and storage load, and is often worthwhile on write-heavy servers.",
+"Setting `full_page_writes = off` is safe only when the storage is known to write 8 KB atomically. Turning it off by mistake risks unrecoverable corruption after a crash. Leave it on."]},
+{h:"wal_level in detail"},
+{t:[["`wal_level`","Extra information written","What it allows","Cost"],
+["`minimal`","Only what crash recovery needs. Bulk operations on a table created in the same transaction (`CREATE TABLE AS`, `COPY`, `CLUSTER`) can skip WAL and `fsync` the file at commit instead","Crash recovery only. **No archiving, no replication, no base backups**; requires `max_wal_senders = 0`","Smallest WAL"],
+["`replica` (default)","Enough to rebuild a standby or replay in archive recovery, including the running-transaction records","Archiving, PITR, physical replication, base backups, read-only standbys","Moderate"],
+["`logical`","Adds the old and new row identity and catalog information so that changes can be decoded into row-level events","Everything in `replica`, plus logical decoding and logical replication","Larger WAL for updates and deletes"]]},
+{note:"Changing `wal_level` needs a **restart**, and a standby must use a `wal_level` at least as high as its primary's. The value in use is also recorded in `pg_control`."},
+{h:"What is not WAL-logged"},
+{t:[["Object","WAL-logged?","After a crash","On a standby"],
+["Ordinary (permanent) table","Yes","Recovered fully","Replicated"],
+["`UNLOGGED` table","No (only its empty `_init` fork exists)","**Emptied**","Not replicated; not usable on a standby"],
+["`TEMPORARY` table","No","Removed","Not replicated"],
+["Hint bits on tuples","Normally no (see the section on hint bits and checksums)","Recomputed from `pg_xact`","Set independently"],
+["Statistics counters","No","Reset after a crash, kept after a clean shutdown","Kept separately"]]},
+{p:"`ALTER TABLE ... SET LOGGED` and `SET UNLOGGED` rewrite the table and write it to WAL (or stop doing so). An unlogged table is fast for staging data that can be rebuilt, but it is a poor choice for anything that must survive a crash or be visible on a replica."},
+{h:"The positions in the WAL stream"},
+{p:"At any instant the primary has several different positions in the WAL. Knowing which is which makes lag and recovery numbers meaningful."},
+{t:[["Position","Function","Meaning"],
+["**Insert**","`pg_current_wal_insert_lsn()`","Where the next record will be placed in the WAL buffers"],
+["**Write**","`pg_current_wal_lsn()`","Up to here the WAL has been handed to the operating system"],
+["**Flush**","`pg_current_wal_flush_lsn()`","Up to here the WAL is durably on disk. This is the position that `COMMIT` waits for"],
+["**Redo** (standby or recovery)","`pg_last_wal_replay_lsn()`","Up to here the WAL has been applied to the data files"]]},
+{code:`-- how much WAL did a piece of work generate?
+SELECT pg_current_wal_lsn() AS start_lsn \\gset
+-- ... run the workload ...
+SELECT pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), :'start_lsn')) AS wal_generated;
+
+-- WAL cost of one statement: records, full-page images and bytes
+EXPLAIN (ANALYZE, WAL, COSTS OFF) UPDATE emp SET sal = sal + 1 WHERE dept_id = 3;
+-- ... WAL: records=1200 fpi=40 bytes=450000   (illustrative)
+
+-- cluster-wide counters
+SELECT wal_records, wal_fpi, pg_size_pretty(wal_bytes) AS wal_bytes, wal_buffers_full, stats_reset FROM pg_stat_wal;
+
+-- the statements that generate the most WAL (needs pg_stat_statements)
+SELECT left(query,50) AS q, calls, wal_records, wal_fpi, pg_size_pretty(wal_bytes) AS wal
+FROM pg_stat_statements ORDER BY wal_bytes DESC LIMIT 5;`},
+{note:"In PostgreSQL 18 the I/O timing and write/sync counters that used to be in `pg_stat_wal` are reported through `pg_stat_io` (with the object `wal`). If a column in your monitoring queries is missing after an upgrade, check the 18 documentation for `pg_stat_wal` and `pg_stat_io`."},
+{p:"A high `wal_fpi` relative to `wal_records` means that most of the WAL is full-page images, a sign of checkpoints that are too frequent or of a workload that touches many pages once. `wal_buffers_full` counts times that backends had to write WAL themselves because the WAL buffers were full; a steadily rising value suggests increasing `wal_buffers`."},
+{h:"The WAL settings that shape performance"},
+{t:[["Parameter","Default","Role and advice"],
+["`wal_buffers`","`-1` (about 1/32 of `shared_buffers`, at most one 16 MB segment)","Memory for WAL not yet written. The automatic value is right for most systems"],
+["`wal_writer_delay`, `wal_writer_flush_after`","200 ms, 1 MB","How often the WAL writer flushes in the background. Also the loss window for `synchronous_commit = off`"],
+["`wal_sync_method`","`fdatasync` on Linux","How WAL is forced to disk. Measure with `pg_test_fsync` before changing"],
+["`fsync`","`on`","**Never turn off** in production. Without it a crash can corrupt the cluster"],
+["`data_sync_retry`","`off`","If `fsync` of a data file fails, PostgreSQL raises a `PANIC` and recovers from WAL instead of retrying, because a failed `fsync` may have silently dropped the data"],
+["`wal_compression`","`off`","Compresses full-page images (`pglz`, `lz4`, `zstd`)"],
+["`full_page_writes`, `wal_log_hints`","`on`, `off`","Torn-page protection; logging of hint-bit-only changes (implied by data checksums)"],
+["`wal_init_zero`, `wal_recycle`","`on`, `on`","Whether new WAL files are pre-filled with zeros, and whether old ones are renamed and reused. Copy-on-write file systems may prefer `off`"],
+["`wal_skip_threshold`","2 MB","With `wal_level = minimal`, tables smaller than this are WAL-logged and larger ones are `fsync`ed instead"],
+["`commit_delay`, `commit_siblings`","0, 5","Group-commit tuning described above"],
+["`min_wal_size`, `max_wal_size`","80 MB, 1 GB","Floor for recycled WAL files, and the soft limit that triggers a checkpoint"]]},
+{h:"What survives what: a durability summary"},
+{t:[["Event","Are committed transactions safe?","Why"],
+["`kill -9` of a backend or of the postmaster","Yes","WAL was flushed at commit; crash recovery replays it"],
+["Operating-system crash or power loss, `fsync = on`, disks that honour flush","Yes","The flushed WAL survives and is replayed"],
+["The same, with `synchronous_commit = off`","The last few hundred milliseconds may be lost","The commit did not wait for the flush. The database stays consistent"],
+["`fsync = off`, then a crash","**Not guaranteed; corruption possible**","Neither WAL nor data pages were forced to disk in order"],
+["Disk or controller with a volatile write cache that ignores flush","**Not guaranteed**","`fsync` returns before the data is really on the medium. Use a battery- or capacitor-backed cache"],
+["Loss of the whole disk or machine","Only if a backup, archive or synchronous standby holds the WAL","WAL on a failed disk is gone. This is what Sections 09 and 10 solve"]]}
+],[["Reliability and the Write-Ahead Log",D+'wal.html'],["Reliability",D+'wal-reliability.html'],["Asynchronous Commit",D+'wal-async-commit.html'],["WAL Configuration",D+'wal-configuration.html'],["WAL Internals",D+'wal-internals.html'],["Write Ahead Log settings",D+'runtime-config-wal.html'],["Cumulative statistics: pg_stat_wal",D+'monitoring-stats.html'],["pg_test_fsync",D+'pgtestfsync.html']]);
+
+/* ================================================================ NEW pg:3:9  Query Planner, Statistics and EXPLAIN */
+const costSvg=dg(700,190,[
+[5,45,100,60,'ANALYZE|samples the|table',0],[123,45,100,60,'pg_statistic|(view pg_stats)|per column',2],[241,45,100,60,'Selectivity|fraction of rows|that match',0],[359,45,100,60,'Row estimate|selectivity x|reltuples',0],[477,45,100,60,'Cost|pages read and|CPU work',0],[595,45,100,60,'Cheapest path|becomes the|plan',2],
+[123,130,336,40,'Cost constants: seq_page_cost, random_page_cost, cpu_*_cost, effective_cache_size',1]],
+[[105,75,123,75],[223,75,241,75],[341,75,359,75],[459,75,477,75],[577,75,595,75],[291,130,527,105]]);
+
+N('pg:3:9',[
+{p:"When a query is slow, the cause is almost always a **plan** that is wrong for the data. The **planner** (also called the *optimizer*) chooses that plan, and it chooses by arithmetic on **estimates**: how many rows each step will produce, and how many disk pages and CPU operations that costs. A DBA who understands where the estimates come from, and who can read `EXPLAIN` output, can usually find the cause of a slow query in minutes. This lecture covers the cost model, the statistics, the scan and join methods, how to read a plan, and a repeatable method for fixing bad ones."},
+{h:"What the planner decides"},
+{ul:[
+"**How to read each table**: sequential scan, index scan, index-only scan, or bitmap scan, and which index.",
+"**In what order to join tables**, and with which algorithm: nested loop, hash join or merge join.",
+"**How to aggregate and sort**: hash or sorted aggregation, in-memory or external sort.",
+"**Whether to use parallel workers**, and which partitions can be skipped entirely.",
+"It does **not** run the query to find out. It never looks at the actual data of your table while planning, only at statistics and at the current size of the table file."]},
+{h:"The cost model"},
+{p:"The planner assigns each possible plan a **cost** in arbitrary units and keeps the lowest. The unit is anchored to one operation: reading one page sequentially costs `seq_page_cost`, which is 1.0. Everything else is expressed relative to that. Every plan node shows two costs, written `cost=startup..total`. **Startup cost** is the work before the node can return its first row (a `Sort` must read all its input first, so its startup cost is high). **Total cost** is the work to return all rows. A `LIMIT` query cares about startup cost; a report cares about total cost."},
+{svg:costSvg},
+{t:[["Parameter","Default","Meaning","Advice"],
+["`seq_page_cost`","1.0","Cost of reading a page as part of a sequential read","Leave at 1.0; it is the reference"],
+["`random_page_cost`","4.0","Cost of reading a page at a random position (index lookups)","**Lower to about 1.1 to 1.5 on SSD or NVMe.** The default assumes spinning disks and makes the planner avoid indexes"],
+["`cpu_tuple_cost`","0.01","Cost of processing one row","Rarely changed"],
+["`cpu_index_tuple_cost`","0.005","Cost of processing one index entry","Rarely changed"],
+["`cpu_operator_cost`","0.0025","Cost of evaluating one operator or function","Rarely changed; raise for very expensive functions by declaring `COST` on them"],
+["`effective_cache_size`","4 GB","The planner's *assumption* of how much data the OS and PostgreSQL caches together hold. Allocates nothing","Set to about 50 to 75 percent of RAM on a dedicated server"],
+["`parallel_setup_cost`, `parallel_tuple_cost`","1000, 0.1","The cost of starting workers and passing rows to the leader","See the parallel query lecture"],
+["`jit_above_cost`","100000","Total cost above which JIT compilation is considered","See the parallel query and JIT lecture"]]},
+{h:"A worked cost calculation"},
+{p:"The PostgreSQL documentation (*Using EXPLAIN*) uses a regression-test table `tenk1` that has 10,000 rows stored in 345 pages. `pg_class` records both numbers (`reltuples` and `relpages`). A plain sequential scan costs one `seq_page_cost` per page plus one `cpu_tuple_cost` per row:"},
+{code:`cost of  SELECT * FROM tenk1
+  = relpages * seq_page_cost + reltuples * cpu_tuple_cost
+  = 345 * 1.0 + 10000 * 0.01
+  = 445.00          -- Seq Scan on tenk1  (cost=0.00..445.00 rows=10000 ...)
+
+cost with  WHERE unique1 < 7000   (one operator evaluated per row)
+  = 445.00 + 10000 * cpu_operator_cost (0.0025)
+  = 470.00          -- Seq Scan ... (cost=0.00..470.00 rows=7000 ...) Filter: (unique1 < 7000)`},
+{p:"Notice that the filter does not make the scan cheaper: every page is still read. It only reduces the **estimated number of rows** that flow to the parent, here 7,000, which is what later nodes use for *their* cost. This is how an error in a row estimate spreads upwards through the plan."},
+{h:"Statistics: where the estimates come from"},
+{p:"Estimates come from statistics gathered by `ANALYZE` (run by hand or by **autovacuum**). `ANALYZE` reads a random **sample** of the table, 300 rows times the *statistics target* (default 100, so 30,000 rows), and stores a summary for each column. The summary is kept in the catalog `pg_statistic`, which is easiest to read through the view `pg_stats`."},
+{t:[["Column in `pg_stats`","What it holds","Used to estimate"],
+["`null_frac`","Fraction of rows where the column is `NULL`","`IS NULL` and `IS NOT NULL` conditions"],
+["`avg_width`","Average size in bytes","Memory for sorts and hashes, and the `width=` in `EXPLAIN`"],
+["`n_distinct`","Number of distinct values. A positive number is a count; a negative number is a **fraction of the row count** (`-1` means all values are unique)","Equality on values that are not in the common-value list, `GROUP BY`, `DISTINCT`"],
+["`most_common_vals`, `most_common_freqs`","The most frequent values and how often each occurs","Equality on common values, such as `status = 'ACTIVE'`"],
+["`histogram_bounds`","Boundaries of equal-population buckets over the **remaining** values","Range conditions (`<`, `>`, `BETWEEN`)"],
+["`correlation`","How closely the physical row order follows the column order (+1 to -1)","The cost of index scans: high correlation means fewer random page reads"],
+["`most_common_elems`","Frequent elements of arrays and text-search vectors","`@>`, `&&` and similar operators"]]},
+{code:`SELECT relpages, reltuples::bigint, relallvisible FROM pg_class WHERE relname = 'emp';
+
+SELECT attname, null_frac, n_distinct, most_common_vals, most_common_freqs, correlation
+FROM   pg_stats WHERE schemaname = 'public' AND tablename = 'emp' AND attname = 'dept_id';
+
+-- how fresh are the statistics?
+SELECT relname, last_analyze, last_autoanalyze, n_mod_since_analyze
+FROM   pg_stat_user_tables WHERE relname = 'emp';`},
+{h:"From statistics to a row estimate"},
+{p:"For a condition the planner computes its **selectivity**, the fraction of rows expected to pass. The estimated rows are then selectivity multiplied by `reltuples`. How the selectivity is obtained depends on the condition:"},
+{t:[["Condition","How the selectivity is found"],
+["`col = 'X'` where `X` is in `most_common_vals`","Directly the stored frequency of `X`"],
+["`col = 'X'` where `X` is not a common value","The share of rows not covered by the common values, divided by the number of other distinct values"],
+["`col < 100`, `col BETWEEN a AND b`","The common values that qualify, plus a fraction of the histogram buckets, with interpolation inside the bucket that contains the bound"],
+["`a = 1 AND b = 2`","Selectivity of `a` multiplied by selectivity of `b`: an assumption that the columns are **independent**"],
+["`a = 1 OR b = 2`","`sel(a) + sel(b) - sel(a) * sel(b)`"],
+["`col IN (...)`, `col = ANY(array)`","The sum over the listed values"],
+["Condition on an expression such as `lower(name) = 'x'`","No column statistics exist, so a built-in default guess is used, unless an **expression index** or expression statistics exist"]]},
+{h:"Why estimates go wrong, and the fixes"},
+{t:[["Cause","Typical symptom","Fix"],
+["Statistics are **stale** after a bulk load or delete","Estimated rows far from actual after big changes","Run `ANALYZE table`; lower `autovacuum_analyze_scale_factor` for that table"],
+["Statistics target too small for a skewed or very large column","A common value is missing from the list; range estimates off","`ALTER TABLE t ALTER COLUMN c SET STATISTICS 500; ANALYZE t;` (maximum 10000). Costs more planning time and catalog space"],
+["Columns are **correlated** (for example city and postal code), so the independence assumption underestimates","Estimate of 1 row, actual thousands; planner picks a nested loop","**Extended statistics** with `CREATE STATISTICS`"],
+["Condition on an expression or function","Fixed default guess","Create an index on the expression (it gathers statistics), or `CREATE STATISTICS ... ON (expression)`"],
+["A partitioned table's **parent** has never been analyzed","Poor estimates for queries over the parent","Run `ANALYZE parent` manually; autovacuum analyzes partitions but **not** the partitioned parent"],
+["Parameters in a generic plan","A prepared statement is good for most values and bad for one","`plan_cache_mode = force_custom_plan` for that role or statement"]]},
+{code:`-- tell PostgreSQL that city and postal_code are not independent
+CREATE STATISTICS addr_stats (dependencies, ndistinct, mcv) ON city, postal_code FROM customers;
+ANALYZE customers;
+
+SELECT statistics_name, attnames, kinds FROM pg_stats_ext WHERE tablename = 'customers';`},
+{note:"PostgreSQL 18's `pg_upgrade` can carry planner statistics over to the new cluster, so a freshly upgraded server no longer starts with empty statistics. The *pg_upgrade Reference* lecture in Section 10 covers what is and is not transferred. Always compare `pg_stats` and the plans of your key queries after an upgrade."},
+{h:"Scan methods"},
+{t:[["Node","What it does","Chosen when","Watch for"],
+["`Seq Scan`","Reads every page of the table in order","Most rows are needed, the table is small, or no usable index exists","Large `Rows Removed by Filter`: an index may help"],
+["`Index Scan`","Walks the index, then fetches each matching row from the heap","Few rows match (a small selectivity) and the index order or the condition is useful","Many random heap reads when correlation is low"],
+["`Index Only Scan`","Answers from the index alone, using the visibility map to skip the heap","All needed columns are in the index and pages are mostly all-visible","`Heap Fetches` large: `VACUUM` has not set the visibility map"],
+["`Bitmap Index Scan` + `Bitmap Heap Scan`","Collects matching row locations in a bitmap, then reads the heap pages in physical order. Can combine several indexes with `BitmapAnd` and `BitmapOr`","A middle number of rows, or conditions on several indexed columns","`Heap Blocks: lossy` means `work_mem` was too small for an exact bitmap"],
+["`Tid Scan`, `Tid Range Scan`","Reads by physical row address `ctid`","Internal use, `WHERE ctid = ...`","Rarely seen"],
+["`Parallel Seq Scan` and parallel index scans","Workers share one scan","Large tables, see the parallel lecture","`Workers Launched` lower than `Planned`"]]},
+{p:"A useful rule of thumb: an index wins when very few rows are needed, a sequential scan wins when a large share of the table is needed, and the bitmap scan covers the middle. PostgreSQL 18 also adds **skip scan** for multi-column B-tree indexes, which allows an index on `(a, b)` to help a condition on `b` alone when `a` has few distinct values. In earlier versions the leading column had to be restricted."},
+{h:"Join methods and join order"},
+{t:[["Method","How it works","Good when","Memory and risks"],
+["`Nested Loop`","For each row of the outer input, look up matching rows in the inner input","The outer side is small and the inner side has an index on the join column","No memory need. **Disastrous** if the outer side is much larger than estimated, because the inner side runs once per outer row (`loops=N`)"],
+["`Hash Join`","Builds an in-memory hash table from the smaller input, then probes it with the other","Large inputs, equality join conditions, no useful index","Uses `work_mem` (times `hash_mem_multiplier`). Too big a build side splits into **batches** that spill to disk"],
+["`Merge Join`","Sorts both inputs on the join key and walks them together","Inputs already sorted (from an index), or very large inputs; supports inequality ordering","Sorts can spill to disk. Cheap when both sides come from indexes"]]},
+{ul:[
+"Joins can be **inner, left, right, full, semi** (`EXISTS`, `IN`) or **anti** (`NOT EXISTS`, `NOT IN` forms). They appear as `Hash Semi Join`, `Nested Loop Anti Join` and so on.",
+"For *n* tables there are many join orders. The planner searches them with dynamic programming for up to `join_collapse_limit` and `from_collapse_limit` items (both 8 by default), and switches to the **genetic optimizer (GEQO)** when a query has `geqo_threshold` (12) or more items. A generated query with dozens of joins can therefore have a very different plan from one written by hand.",
+"Join order matters because **the intermediate result size** decides the cost. Joining the most selective tables first keeps every later step small."]},
+{h:"Other nodes you will meet"},
+{t:[["Node","Meaning"],
+["`Sort` (`Sort Method: quicksort / top-N heapsort / external merge`)","Sorts rows. *quicksort* is in memory; *top-N heapsort* keeps only the first N rows (with `LIMIT`); **external merge** spilled to disk because `work_mem` was too small"],
+["`Incremental Sort`","Sorts in groups when the input is already sorted by a leading part of the key"],
+["`Aggregate`, `HashAggregate`, `GroupAggregate`","Computes aggregates. Hash aggregation needs no sorted input but uses memory; group aggregation needs sorted input"],
+["`Memoize`","Caches the results of the inner side of a nested loop for repeated parameter values"],
+["`Materialize`","Stores a sub-result in memory or a temporary file so it can be re-read"],
+["`Append`, `Merge Append`","Combines partitions or `UNION ALL` branches; partition pruning removes branches"],
+["`CTE Scan`, `Subquery Scan`, `Result`, `Limit`, `Unique`, `WindowAgg`","Common helper nodes"],
+["`Gather`, `Gather Merge`","Collect rows from parallel workers"]]},
+{h:"Reading EXPLAIN"},
+{p:"`EXPLAIN` shows the plan the planner chose. `EXPLAIN ANALYZE` also **runs** the statement and adds the real numbers beside the estimates. Because it really executes, wrap data-changing statements in a transaction that you roll back."},
+{code:`EXPLAIN SELECT * FROM emp WHERE dept_id = 3;               -- plan only, nothing runs
+EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM emp WHERE dept_id = 3;
+
+BEGIN;
+EXPLAIN (ANALYZE, BUFFERS, WAL) UPDATE emp SET sal = sal * 1.1 WHERE dept_id = 3;
+ROLLBACK;                                                   -- undo the real update`},
+{t:[["Option","Effect"],
+["`ANALYZE`","Executes the statement and reports actual time, rows and loops for every node"],
+["`BUFFERS`","Counts of pages found in cache (`shared hit`), read from disk (`read`), dirtied and written, and temporary-file blocks. In PostgreSQL 18 it is included automatically with `ANALYZE`"],
+["`VERBOSE`","Adds the column list of each node, schema-qualified names and the worker details"],
+["`SETTINGS`","Lists non-default planner settings in effect for this plan"],
+["`WAL`","WAL records, full-page images and bytes generated (with `ANALYZE`)"],
+["`TIMING off`","Turns off per-node timing to reduce overhead on very fast nodes while keeping row counts"],
+["`SUMMARY`","Planning and execution time lines. On by default with `ANALYZE`"],
+["`GENERIC_PLAN`, `MEMORY`, `SERIALIZE`","Newer options: plan a statement with `$1` parameters without running it (16), report planner memory (17), and include the cost of converting results for the client (17)"],
+["`FORMAT json`","Machine-readable output for plan-visualisation tools"]]},
+{p:"Each line of the plan has the same shape, and the nodes form a tree. **Indentation shows the tree**: the innermost, most indented nodes run first and feed the parent above them."},
+{code:`Node  (cost=startup..total rows=ESTIMATED width=BYTES)  (actual time=first..last rows=ACTUAL loops=N)
+        ^ the planner's guess                              ^ what really happened
+
+ - 'rows' (both estimated and actual) are PER LOOP: multiply by loops for the node total
+ - 'actual time' is also PER LOOP, in milliseconds: multiply by loops for the total time of that node
+ - 'Index Cond' is applied inside the index; 'Filter' is applied afterwards, and
+   'Rows Removed by Filter' shows how many rows were read and thrown away`},
+{h:"A plan with a bad estimate"},
+{p:"The following plan is **illustrative** but typical. The planner expected one `PENDING` order, found 48,210, and chose a nested loop that ran its inner index scan 48,210 times:"},
+{code:`Nested Loop  (cost=0.85..16.91 rows=1 width=72) (actual time=0.06..2840.31 rows=48210 loops=1)
+  ->  Index Scan using orders_status_idx on orders o  (cost=0.43..8.45 rows=1 width=40)
+                                                      (actual time=0.03..45.10 rows=48210 loops=1)
+        Index Cond: (status = 'PENDING'::text)
+  ->  Index Scan using customers_pkey on customers c  (cost=0.42..8.44 rows=1 width=40)
+                                                      (actual time=0.05..0.05 rows=1 loops=48210)
+        Index Cond: (id = o.customer_id)
+Planning Time: 0.4 ms
+Execution Time: 2860.2 ms`},
+{ul:[
+"**Estimate versus actual**: `rows=1` against `rows=48210` on the first scan. The error starts at the lowest node and is passed up. This is the place to look first.",
+"**Loops**: the inner scan took 0.05 ms, which looks tiny, but it ran 48,210 times: about 2.4 seconds of the 2.8 seconds total.",
+"**Likely causes**: stale statistics on `orders.status` (the value `PENDING` became common after a bulk load), or a skewed column that needs a larger statistics target. Run `ANALYZE orders`, check `pg_stats`, and the planner will probably pick a hash join."]},
+{h:"Warning signs in EXPLAIN ANALYZE"},
+{t:[["You see","It means","Look at"],
+["Estimated rows differ from actual rows by 10x or more","The planner is guessing wrongly, so later choices are suspect","`ANALYZE`, statistics target, extended statistics"],
+["`Seq Scan` with a huge `Rows Removed by Filter`","Reading much to keep little","An index on the filter column; check that the condition can use it"],
+["`Sort Method: external merge  Disk: 52000kB`","The sort spilled to disk","`work_mem` for this query, or an index that provides the order"],
+["`Hash` with `Batches: 8` (more than 1)","The hash table did not fit in memory and spilled","`work_mem`, `hash_mem_multiplier`, or a better estimate of the build side"],
+["`Index Only Scan` with large `Heap Fetches`","The visibility map is out of date","`VACUUM` the table"],
+["`Nested Loop` with a large `loops` count","An underestimated outer side","Estimates; consider a different join order or an index"],
+["High `shared read`, low `shared hit` in `Buffers`","Data came from disk, not the cache","Cold cache or a cache that is too small (see the Memory lecture)"],
+["`Workers Planned: 4`, `Workers Launched: 1`","The worker pool was exhausted","See the parallel query lecture"],
+["`(never executed)`","A branch the executor did not need (for example a pruned partition or an empty join side)","Usually harmless"]]},
+{h:"Why is my index not used?"},
+{t:[["Reason","Example and remedy"],
+["Too many rows match","`WHERE active = true` on a table where 95 percent of rows are active. A sequential scan really is cheaper. Not a bug"],
+["Function or cast on the column","`WHERE lower(name) = 'x'` or `WHERE id::text = '5'`. Create an expression index, or rewrite so the column stands alone"],
+["Data type mismatch","A parameter sent as `numeric` or `text` compared with an `integer` column. Make the types agree in the application"],
+["`LIKE 'abc%'` and a non-C collation","Needs an index created with `text_pattern_ops` (or a C-collation index)"],
+["Leading column of a multi-column index not restricted","An index on `(a, b)` and a condition only on `b`. Before PostgreSQL 18 this index is rarely useful for `b`; create an index led by `b`, or rely on skip scan in 18 when `a` has few values"],
+["Statistics are stale or the table is tiny","Run `ANALYZE`. For very small tables a sequential scan is correctly preferred"],
+["`random_page_cost` still at 4.0 on SSD","The planner overestimates the cost of index access. Lower it"],
+["Partial-index predicate not implied by the query","An index `WHERE status = 'A'` is used only when the query's condition provably implies it"],
+["The index is **invalid**","A failed `CREATE INDEX CONCURRENTLY`: `SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;` then drop and recreate"]]},
+{h:"Plan-shaping settings and the myth of hints"},
+{p:"PostgreSQL deliberately has no optimizer hints in the core. The designers prefer that you fix the information the planner works from rather than overrule it. Several settings let you *test* what would happen, and a few legitimately shape plans:"},
+{t:[["Setting","Use"],
+["`enable_seqscan`, `enable_indexscan`, `enable_bitmapscan`, `enable_nestloop`, `enable_hashjoin`, `enable_mergejoin`, `enable_sort`, `enable_memoize`","**Diagnosis only.** They do not forbid a method; they add a very large cost penalty (recent versions mark such nodes `Disabled: true` in `EXPLAIN`). Use `SET LOCAL` inside a transaction to see the alternative plan. Never leave them off globally"],
+["`from_collapse_limit`, `join_collapse_limit`","Raising them lets the planner reorder more joins at the cost of longer planning. Setting `join_collapse_limit = 1` forces the written join order"],
+["`WITH ... AS MATERIALIZED` / `NOT MATERIALIZED`","Controls whether a common table expression is computed once as a barrier, or merged into the main query (the default for a CTE used once)"],
+["`default_statistics_target`","Global statistics detail (100). Prefer a per-column `SET STATISTICS` for the few columns that need it"],
+["`constraint_exclusion`, `enable_partition_pruning`","Partition elimination. Pruning is on by default"],
+["`cursor_tuple_fraction`","For cursors, the share of rows assumed to be fetched (0.1), which favours plans with a low startup cost"],
+["`plan_cache_mode`","Forces custom or generic plans for prepared statements"]]},
+{note:"If you truly need hints for a legacy workload, the third-party extension `pg_hint_plan` provides them, but treat it as a last resort: a hinted plan does not adapt when the data changes."},
+{h:"A repeatable method for a slow query"},
+{flow:["Find the statement: `log_min_duration_statement`, `pg_stat_statements` (sort by `total_exec_time`) or `auto_explain`","Run `EXPLAIN (ANALYZE, BUFFERS)` on a copy of the real data, rolling back any change","Compare estimated and actual rows node by node, starting at the lowest nodes","At the first node where the estimate is badly wrong, fix the **inputs**: `ANALYZE`, statistics target, extended statistics","If the estimates are right but the plan is slow, add or change an index, or rewrite the query so the condition can use it","Check cost settings (`random_page_cost`, `work_mem`) only after statistics and indexes are right","Re-run, compare, and record the before and after times"]},
+{code:`-- capture slow plans automatically (add to shared_preload_libraries, or load per session)
+LOAD 'auto_explain';
+SET auto_explain.log_min_duration = '500ms';
+SET auto_explain.log_analyze = on;
+SET auto_explain.log_buffers = on;
+SET auto_explain.log_nested_statements = on;   -- also statements inside functions
+
+-- the heaviest statements by total time (needs pg_stat_statements)
+SELECT left(query,60) AS q, calls, round(total_exec_time::numeric,0) AS total_ms,
+       round(mean_exec_time::numeric,2) AS mean_ms, rows, shared_blks_read
+FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 10;`},
+{h:"Keeping statistics healthy"},
+{ul:[
+"**Auto-analyze** runs when the number of changed rows exceeds `autovacuum_analyze_threshold` (50) plus `autovacuum_analyze_scale_factor` (0.1) times the row count. On a 100-million-row table that is 10 million changes, far too many for a hot table; lower the scale factor for large tables with `ALTER TABLE ... SET (autovacuum_analyze_scale_factor = 0.01)`.",
+"`ANALYZE` takes only a light lock (`SHARE UPDATE EXCLUSIVE`), so it does not block reads or writes. It is safe to run on a busy system.",
+"Run `ANALYZE` by hand after a bulk load, a large delete, or the creation of an expression index, and for partitioned parents.",
+"`ANALYZE VERBOSE table` reports the sample size and the number of live and dead rows it saw.",
+"After a major upgrade, verify that statistics exist (`last_analyze` or `last_autoanalyze` populated) before returning the server to production."]},
+{note:"Vacuum and autovacuum behaviour, including the analyze thresholds, are explained in the *Autovacuum Parameter* lecture of Section 06 and in *Table Storage: Pages, TOAST, VACUUM and Bloat* in Section 05."}
+],[["Using EXPLAIN",D+'using-explain.html'],["Planner Statistics",D+'planner-stats.html'],["Statistics Used by the Planner",D+'planner-stats.html#PLANNER-STATS-EXTENDED'],["Planner Cost Constants",D+'runtime-config-query.html#RUNTIME-CONFIG-QUERY-CONSTANTS'],["Planner Method Configuration",D+'runtime-config-query.html#RUNTIME-CONFIG-QUERY-ENABLE'],["EXPLAIN",D+'sql-explain.html'],["pg_stats",D+'view-pg-stats.html'],["CREATE STATISTICS",D+'sql-createstatistics.html'],["auto_explain",D+'auto-explain.html'],["Performance Tips",D+'performance-tips.html']]);
+
+/* ================================================================ NEW pg:3:10  Transactions, Locking and Deadlocks */
+const queueSvg=dg(700,200,[
+[10,30,150,70,'T1: long SELECT|holds ACCESS SHARE|granted, still running',0],
+[190,30,160,70,'T2: ALTER TABLE|wants ACCESS EXCLUSIVE|WAITS for T1',2],
+[380,10,150,50,'T3: plain SELECT|WAITS behind T2',1],[380,75,150,50,'T4: INSERT|WAITS behind T2',1],[380,140,150,50,'T5: SELECT|WAITS behind T2',1],
+[560,60,130,70,'Table looks|frozen to the|application',0]],
+[[160,65,190,65],[350,55,380,35],[350,65,380,100],[350,80,380,165],[530,100,560,95]]);
+const dlSvg=dg(700,210,[
+[60,15,200,60,'Session A|holds the lock on row 1|now wants row 2',0],[440,15,200,60,'Session B|holds the lock on row 2|now wants row 1',0],
+[60,150,200,45,'Row 1 (locked by A)',2],[440,150,200,45,'Row 2 (locked by B)',2]],
+[[160,75,160,150],[540,75,540,150],[260,60,440,160],[440,50,260,165]]);
+
+N('pg:3:10',[
+{p:"Many users share one database, so PostgreSQL must keep their work apart without making everyone wait. It does this with two cooperating mechanisms. **MVCC** (the previous lecture) lets readers and writers work on different row versions, so a plain `SELECT` never waits for an `UPDATE`. **Locks** handle what MVCC cannot: two writers changing the same row, and DDL that changes a table's structure while others use it. This lecture explains the transaction, the lock types, how queues of waiting sessions form, how deadlocks are found, and the query patterns a DBA uses to find and resolve blocking."},
+{h:"Transactions in PostgreSQL"},
+{p:"A **transaction** is a group of statements that succeeds or fails as a whole: **A**tomicity, **C**onsistency, **I**solation and **D**urability (the ACID properties). Every statement runs inside a transaction. Without an explicit `BEGIN`, each statement is its own transaction that commits automatically (*autocommit*). With `BEGIN` the transaction continues until `COMMIT` or `ROLLBACK`."},
+{t:[["Fact","Detail"],
+["**Virtual transaction ID**","Every transaction gets a cheap *virtual* ID (backend slot and a local counter, shown as `3/1234`) when it starts. Read-only transactions never need more"],
+["**Real transaction ID (xid)**","A 32-bit number assigned **lazily, at the first write**. Read-only work does not consume xids, which is good for wraparound (see the MVCC lecture). See it with `pg_current_xact_id()`"],
+["**Rollback is instant**","There is no undo log. The rows written by an aborted transaction stay in the pages, are ignored by visibility rules, and are removed later by `VACUUM`"],
+["**DDL is transactional**","`CREATE`, `ALTER` and `DROP` of tables, indexes and functions can be rolled back. Exceptions: `CREATE DATABASE`, `CREATE TABLESPACE`, `VACUUM`, `CREATE INDEX CONCURRENTLY`. Sequence values given out by `nextval` are not rolled back"],
+["**An error aborts the transaction**","After an error inside `BEGIN ... COMMIT`, every further statement fails with `current transaction is aborted, commands ignored until end of transaction block` (SQLSTATE `25P02`) until you `ROLLBACK` or roll back to a savepoint"]]},
+{code:`BEGIN;
+SELECT pg_current_xact_id_if_assigned();   -- NULL: no real xid yet (nothing written)
+UPDATE emp SET sal = sal + 100 WHERE id = 5;
+SELECT pg_current_xact_id();               -- now a real xid exists
+SELECT txid_current_snapshot();            -- xmin:xmax:in-progress list: the snapshot
+COMMIT;`},
+{h:"Savepoints and subtransactions"},
+{p:"`SAVEPOINT` lets part of a transaction be undone (`ROLLBACK TO SAVEPOINT`) without abandoning the rest. Each savepoint, and each PL/pgSQL `BEGIN ... EXCEPTION` block, starts a **subtransaction** with its own transaction ID once it writes. This is useful, but it has a cost that surprises people:"},
+{ul:[
+"Each backend caches up to **64** subtransaction IDs per top-level transaction in shared memory. Beyond that the cache **overflows**, and every other session must consult the `pg_subtrans` storage to build snapshots, which can slow the whole server (wait events on the subtransaction SLRU cache, see the Memory lecture).",
+"A loop that wraps each row in `BEGIN ... EXCEPTION ... END` therefore creates one subtransaction per row. For bulk loads, validate in set-based SQL or use `INSERT ... ON CONFLICT` instead.",
+"ORMs and drivers that issue a `SAVEPOINT` before every statement (some do, to continue after errors) multiply the effect. Check the driver's setting."]},
+{h:"Long transactions: why they hurt"},
+{t:[["What a long-open transaction holds","Consequence"],
+["Its **snapshot** (`backend_xmin`)","`VACUUM` cannot remove any row version that became dead after it began, so tables **bloat** across the whole database"],
+["Its **locks**, which are released only at commit or abort","Everything that conflicts waits; DDL queues form (see below)"],
+["A **replication slot** or standby feedback tied to it","WAL accumulates and standby cleanup is delayed"],
+["Row locks (`FOR UPDATE`, updates)","Other writers to those rows wait"]]},
+{code:`-- the oldest open transactions
+SELECT pid, usename, state, now() - xact_start AS xact_age, now() - state_change AS in_state_for,
+       backend_xmin, left(query,50) AS last_query
+FROM   pg_stat_activity
+WHERE  xact_start IS NOT NULL
+ORDER  BY xact_start LIMIT 10;
+
+-- sessions sitting 'idle in transaction' (usually an application that forgot to commit)
+SELECT pid, usename, application_name, now() - state_change AS idle_for
+FROM pg_stat_activity WHERE state LIKE 'idle in transaction%' ORDER BY idle_for DESC;`},
+{p:"Defences: set `idle_in_transaction_session_timeout` (for example 5 minutes) for application roles, `statement_timeout` for web workloads, and, from PostgreSQL 17, `transaction_timeout` to cap the total length of a transaction. The *Connection, Timeout and Safety Parameters* lecture in Section 06 covers these settings."},
+{h:"The kinds of lock"},
+{t:[["Level","Protects","Held by","Seen in `pg_locks` as"],
+["**Table (relation) locks**, 8 modes","Whole tables, indexes, views and sequences. The main defence against structural changes while in use","Every statement, taken automatically; `LOCK TABLE` takes them explicitly","`locktype = relation`"],
+["**Row locks**, 4 modes","Individual rows, against concurrent writers","`UPDATE`, `DELETE`, `SELECT ... FOR ...`, foreign-key checks","Not stored in the lock table: recorded in the row's `xmax`. Waiters appear as `transactionid` or `tuple`"],
+["**Transaction ID locks**","The identity of a running transaction. Every transaction holds an exclusive lock on its own ID","Every transaction. A session that waits for a row lock really waits for the **holder's transaction ID lock**","`transactionid`, `virtualxid`"],
+["**Advisory locks**","Meanings your application defines (a job name, a customer ID)","`pg_advisory_lock()` and friends","`advisory`"],
+["**Predicate locks (SIREAD)**","Data that a `SERIALIZABLE` transaction has read, to detect conflicts","Serializable transactions","mode `SIReadLock`"],
+["**Lightweight locks and spinlocks**","PostgreSQL's own shared-memory structures (buffer contents, WAL insertion, the lock table itself)","The server code, for microseconds","Not in `pg_locks`; visible as wait events `LWLock:...`"]]},
+{h:"Table-level lock modes"},
+{p:"There are eight table lock modes, from the weakest (`ACCESS SHARE`) to the strongest (`ACCESS EXCLUSIVE`). Two sessions conflict only if one of them holds a mode that conflicts with the mode the other requests. A session never conflicts with itself. The names are historical and misleading, so rely on the tables rather than the names."},
+{t:[["Command","Table lock taken"],
+["`SELECT`","`ACCESS SHARE`"],
+["`SELECT ... FOR UPDATE / NO KEY UPDATE / SHARE / KEY SHARE`","`ROW SHARE` (and row locks on the rows returned)"],
+["`INSERT`, `UPDATE`, `DELETE`, `MERGE`","`ROW EXCLUSIVE`"],
+["`VACUUM` (plain), `ANALYZE`, `CREATE INDEX CONCURRENTLY`, `REINDEX CONCURRENTLY`, `CREATE STATISTICS`, some `ALTER TABLE` forms (for example `VALIDATE CONSTRAINT`)","`SHARE UPDATE EXCLUSIVE`"],
+["`CREATE INDEX` (not concurrent)","`SHARE`: blocks all writes for the duration"],
+["`CREATE TRIGGER`, `ALTER TABLE ... ADD FOREIGN KEY` (on both tables)","`SHARE ROW EXCLUSIVE`"],
+["`REFRESH MATERIALIZED VIEW CONCURRENTLY`","`EXCLUSIVE`: blocks writes, allows reads"],
+["`DROP TABLE`, `TRUNCATE`, `VACUUM FULL`, `CLUSTER`, `REINDEX`, `REFRESH MATERIALIZED VIEW`, **most forms of `ALTER TABLE`**, `LOCK TABLE` with no mode","`ACCESS EXCLUSIVE`: blocks everything, including plain `SELECT`"]]},
+{p:"The conflict matrix below is taken from the documentation (*Explicit Locking*). A mark means that a **requested** mode (row) must wait for a **held** mode (column)."},
+{t:[["Requested \\ Held","ACCESS SHARE","ROW SHARE","ROW EXCL.","SHARE UPDATE EXCL.","SHARE","SHARE ROW EXCL.","EXCLUSIVE","ACCESS EXCL."],
+["**ACCESS SHARE**","–","–","–","–","–","–","–","✗"],
+["**ROW SHARE**","–","–","–","–","–","–","✗","✗"],
+["**ROW EXCLUSIVE**","–","–","–","–","✗","✗","✗","✗"],
+["**SHARE UPDATE EXCL.**","–","–","–","✗","✗","✗","✗","✗"],
+["**SHARE**","–","–","✗","✗","–","✗","✗","✗"],
+["**SHARE ROW EXCL.**","–","–","✗","✗","✗","✗","✗","✗"],
+["**EXCLUSIVE**","–","✗","✗","✗","✗","✗","✗","✗"],
+["**ACCESS EXCL.**","✗","✗","✗","✗","✗","✗","✗","✗"]]},
+{ul:[
+"Read the first row: `SELECT` conflicts only with `ACCESS EXCLUSIVE`. That is why ordinary queries and ordinary writes (`ROW EXCLUSIVE` does not conflict with itself) run side by side all day.",
+"Read the last row: `ACCESS EXCLUSIVE` conflicts with everything. A `DROP`, `TRUNCATE` or most `ALTER TABLE` statements must wait until **every** other use of the table ends.",
+"`SHARE UPDATE EXCLUSIVE` conflicts with itself, so only one `VACUUM`, `ANALYZE` or `CREATE INDEX CONCURRENTLY` runs on a table at a time, but none of them block normal reads and writes."]},
+{h:"Row-level lock modes"},
+{t:[["Requested \\ Held","FOR KEY SHARE","FOR SHARE","FOR NO KEY UPDATE","FOR UPDATE"],
+["**FOR KEY SHARE**","–","–","–","✗"],
+["**FOR SHARE**","–","–","✗","✗"],
+["**FOR NO KEY UPDATE**","–","✗","✗","✗"],
+["**FOR UPDATE**","✗","✗","✗","✗"]]},
+{t:[["Statement","Row lock taken"],
+["`UPDATE` that does **not** change a key column (one used by a unique index that a foreign key can reference)","`FOR NO KEY UPDATE`"],
+["`DELETE`, or an `UPDATE` that changes a key column","`FOR UPDATE`"],
+["`SELECT ... FOR UPDATE`, `... FOR NO KEY UPDATE`, `... FOR SHARE`, `... FOR KEY SHARE`","The mode named"],
+["Inserting a child row with a foreign key","`FOR KEY SHARE` on the referenced parent row"]]},
+{p:"The four modes exist so that a foreign-key check (`FOR KEY SHARE`) does **not** block updates of non-key columns on the parent row (`FOR NO KEY UPDATE`). Row locks are written into the row header (`xmax`), not into a table in memory, so a transaction can lock millions of rows without running out of lock memory, but the cost is that locking a row **writes to the page** (making it dirty and generating WAL). When several sessions share a lock on one row, PostgreSQL records them in a *multixact* (see the MVCC lecture)."},
+{ul:[
+"`SELECT ... FOR UPDATE NOWAIT` fails at once with `could not obtain lock on row` (SQLSTATE `55P03`) instead of waiting.",
+"`SELECT ... FOR UPDATE SKIP LOCKED` skips rows that someone else has locked. It is the standard way to build a **job queue** in PostgreSQL.",
+"`FOR UPDATE OF table_name` locks only the rows of the named table in a join."]},
+{code:`-- a safe work-queue pattern: each worker takes a different job without waiting
+BEGIN;
+SELECT id, payload FROM jobs
+WHERE  status = 'new'
+ORDER  BY id
+LIMIT  1
+FOR UPDATE SKIP LOCKED;
+-- ... process the job, then:
+UPDATE jobs SET status = 'done' WHERE id = 42;
+COMMIT;`},
+{h:"What happens at READ COMMITTED when a row is locked"},
+{p:"In the default isolation level, an `UPDATE` that finds its target row locked by another transaction **waits** for that transaction to finish. If it rolled back, the update proceeds. If it committed, the waiting statement **re-reads the new version of the row and re-checks its `WHERE` condition**; it updates only if the row still qualifies. This avoids lost updates without errors. At `REPEATABLE READ` and `SERIALIZABLE` the same situation raises `could not serialize access due to concurrent update` (SQLSTATE `40001`), and the application must **retry** the whole transaction."},
+{h:"How a lock queue forms (and why DDL can freeze a table)"},
+{p:"Lock requests are served **in order**. A new request must queue behind an earlier request that is waiting, if the two conflict. This protects the waiting request from starvation, but it has a dramatic effect on `ACCESS EXCLUSIVE` requests, which conflict with *everything*:"},
+{svg:queueSvg},
+{flow:["T1 runs a long `SELECT` and holds `ACCESS SHARE`","T2 runs `ALTER TABLE` and requests `ACCESS EXCLUSIVE`: it must wait for T1","T3, T4, T5 request `ACCESS SHARE` or `ROW EXCLUSIVE`: they do not conflict with T1, but they conflict with the **waiting** T2, so they queue behind it","The table appears frozen although the actual problem is one old query","When T1 ends, T2 runs (usually in milliseconds) and the queue drains"]},
+{note:"This is the single most common cause of an application outage during a schema change. The `ALTER TABLE` itself is quick; it is the **waiting** that hurts. Protect every DDL statement on a busy table with a short `lock_timeout` and retry."},
+{code:`-- safe DDL pattern: give up quickly instead of building a queue
+SET lock_timeout = '3s';
+ALTER TABLE orders ADD COLUMN note text;
+-- ERROR: canceling statement due to lock timeout   -> wait a moment and retry the statement`},
+{t:[["Goal","Safe pattern"],
+["Add a column","`ALTER TABLE t ADD COLUMN c type [DEFAULT constant]` is fast: a constant default does not rewrite the table (PostgreSQL 11 onward). A **volatile** default (`random()`, `clock_timestamp()`) still rewrites it"],
+["Create an index without blocking writes","`CREATE INDEX CONCURRENTLY` (cannot run inside a transaction block; if it fails it leaves an invalid index to drop)"],
+["Add a foreign key","`ADD CONSTRAINT ... FOREIGN KEY ... NOT VALID`, then `VALIDATE CONSTRAINT` (which takes only `SHARE UPDATE EXCLUSIVE` and scans in the background of normal traffic)"],
+["Add `NOT NULL` on a big table","Add `CHECK (c IS NOT NULL) NOT VALID`, `VALIDATE CONSTRAINT`, then `SET NOT NULL` (which can reuse the validated check)"],
+["Drop an index","`DROP INDEX CONCURRENTLY`"],
+["Any DDL on a hot table","`SET lock_timeout`, run in a retry loop, and avoid running while long reports are active"]]},
+{h:"Deadlocks"},
+{p:"A **deadlock** is a cycle: session A waits for a lock that B holds, while B waits for a lock that A holds. Neither can ever proceed, so PostgreSQL must break the cycle."},
+{svg:dlSvg},
+{t:[["Time","Session A","Session B"],
+["1","`BEGIN; UPDATE acct SET bal = bal - 10 WHERE id = 1;`","`BEGIN; UPDATE acct SET bal = bal - 10 WHERE id = 2;`"],
+["2","`UPDATE acct SET bal = bal + 10 WHERE id = 2;` **waits** for B","`UPDATE acct SET bal = bal + 10 WHERE id = 1;` **waits** for A, so the cycle is complete"],
+["3","(waiting)","After `deadlock_timeout` PostgreSQL finds the cycle and aborts one of them with `ERROR: deadlock detected` (SQLSTATE `40P01`). The other proceeds"]]},
+{ul:[
+"PostgreSQL does **not** check for deadlocks on every wait, which would be wasteful. A session that has waited for `deadlock_timeout` (default **1 second**) runs the check. Normal short waits never pay for it.",
+"The victim is usually the session that ran the check. Its transaction is rolled back, and the application should **retry** it.",
+"The server log records both sessions, the locks and the statements involved, which is the evidence you need (see the *Reading and Analysing the Server Log* lecture in Section 06). Sample (illustrative):"]},
+{code:`ERROR:  deadlock detected
+DETAIL:  Process 2841 waits for ShareLock on transaction 9012; blocked by process 2850.
+         Process 2850 waits for ShareLock on transaction 9011; blocked by process 2841.
+HINT:  See server log for query details.
+CONTEXT:  while updating tuple (0,7) in relation "acct"`},
+{t:[["Prevention","How"],
+["Lock objects in a **consistent order**","Always update accounts in ascending ID order, or `SELECT ... ORDER BY id FOR UPDATE` first"],
+["Keep transactions **short**","Do the thinking in the application, not between `BEGIN` and `COMMIT`"],
+["Take the **strongest lock first**","Use `FOR UPDATE` at the start instead of reading and later upgrading"],
+["Handle `40P01` and `40001`","Catch the error and retry the whole transaction, with a limit and a short random delay"],
+["Foreign keys and bulk updates","Update parent and child rows in the same order in every code path"]]},
+{h:"Finding who is blocking whom"},
+{p:"The system view `pg_locks` shows every lock that is held or awaited (`granted = false`). Its useful columns are `locktype`, `relation`, `transactionid`, `pid`, `mode` and `granted`. It is much easier to start from `pg_stat_activity` and the function `pg_blocking_pids()`, which does the matching for you."},
+{code:`-- 1. who is waiting, for what, and on whom
+SELECT a.pid, a.usename, a.wait_event_type, a.wait_event,
+       now() - a.query_start AS waiting_for, pg_blocking_pids(a.pid) AS blocked_by,
+       left(a.query, 60) AS query
+FROM   pg_stat_activity a
+WHERE  cardinality(pg_blocking_pids(a.pid)) > 0;
+
+-- 2. the ROOT blockers: sessions that block others but are not blocked themselves
+WITH waiting AS (
+  SELECT pid, unnest(pg_blocking_pids(pid)) AS blocker
+  FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid)) > 0)
+SELECT a.pid AS root_blocker, a.usename, a.state, now() - a.xact_start AS xact_age,
+       count(*) AS waiters, left(a.query, 60) AS last_query
+FROM   waiting w JOIN pg_stat_activity a ON a.pid = w.blocker
+WHERE  cardinality(pg_blocking_pids(a.pid)) = 0
+GROUP  BY a.pid, a.usename, a.state, a.xact_start, a.query
+ORDER  BY waiters DESC;
+
+-- 3. which table is the contention on?
+SELECT l.pid, l.mode, l.granted, c.relname
+FROM   pg_locks l JOIN pg_class c ON c.oid = l.relation
+WHERE  l.locktype = 'relation' AND c.relname = 'orders';`},
+{t:[["Wait event type","Meaning","What to do"],
+["`Lock`","Waiting for a heavyweight lock: `relation`, `tuple`, `transactionid`, `advisory`","Application-level blocking: find the root blocker (query 2)"],
+["`LWLock`","Waiting for an internal lightweight lock (`BufferContent`, `WALWrite`, `LockManager`, ...)","Internal contention: too many busy sessions, a hot page, or an I/O bottleneck. Reduce concurrency, check storage"],
+["`BufferPin`","Waiting for exclusive access to a buffer (often vacuum)","Usually brief; persistent waits point at a long cursor or query"],
+["`IO`","Waiting for a file read or write","Storage speed, `pg_stat_io`"],
+["`Client`","Waiting for the client (idle in transaction, or slow `COPY`)","The application, not the server"]]},
+{p:"Once the root blocker is known, `pg_cancel_backend(pid)` stops its current query and `pg_terminate_backend(pid)` ends the session and rolls back its transaction. The *Kill Sessions* lecture in Section 05 shows the safe procedure, who may do it, and how to prevent the situation. Turn on `log_lock_waits` so that any wait longer than `deadlock_timeout` is written to the log with its duration."},
+{h:"Advisory locks"},
+{p:"**Advisory locks** are locks whose meaning the application defines. PostgreSQL stores and queues them like any other lock but never takes them on its own. They are useful for \"only one instance of this job at a time\" or for serialising work on a customer ID without touching table rows."},
+{t:[["Function","Behaviour"],
+["`pg_advisory_lock(key)` / `pg_advisory_unlock(key)`","**Session-level**: held until released or the session ends. **Not** released by `COMMIT` or `ROLLBACK`"],
+["`pg_advisory_xact_lock(key)`","**Transaction-level**: released automatically at the end of the transaction. Safer"],
+["`pg_try_advisory_lock(key)`, `pg_try_advisory_xact_lock(key)`","Return `true` or `false` immediately instead of waiting"],
+["`..._shared` variants","Shared mode: many holders, but they conflict with an exclusive holder"]]},
+{note:"Session-level advisory locks and **transaction-mode connection pools** do not mix: the pool may hand your next statement to a different server connection, so the lock is held by one session while your code runs on another. Use transaction-level advisory locks with such poolers."},
+{h:"Serializable transactions and retries"},
+{p:"At `SERIALIZABLE`, PostgreSQL uses **Serializable Snapshot Isolation (SSI)**: transactions run on snapshots without blocking, and the server watches for dangerous patterns of read/write dependencies using predicate (`SIReadLock`) locks. If it detects a pattern that could give a result no serial order could produce, it aborts one transaction with `could not serialize access due to read/write dependencies among transactions` (SQLSTATE `40001`). The guarantee is strong, but **the application must be written to retry**."},
+{t:[["SQLSTATE","Name","Cause","Action"],
+["`40001`","serialization_failure","Concurrent update at REPEATABLE READ, or a dependency conflict at SERIALIZABLE","Retry the whole transaction"],
+["`40P01`","deadlock_detected","A lock cycle","Retry; fix lock ordering"],
+["`55P03`","lock_not_available","`NOWAIT`, `SKIP LOCKED` race, or `lock_timeout` expired","Retry later or report busy"],
+["`57014`","query_canceled","`statement_timeout`, `pg_cancel_backend`","Investigate the query"],
+["`25P02`","in_failed_sql_transaction","Statement issued after an error without `ROLLBACK`","Roll back; check driver error handling"],
+["`25P03`","idle_in_transaction_session_timeout","The session sat idle inside a transaction longer than `idle_in_transaction_session_timeout` and was ended","Fix the application that holds transactions open; reconnect and retry"]]},
+{h:"Prepared transactions (two-phase commit)"},
+{p:"`PREPARE TRANSACTION 'name'` ends the work of a transaction and stores its state on disk, in `pg_twophase/`, so that a transaction manager can later `COMMIT PREPARED` or `ROLLBACK PREPARED`, even after a server restart. The feature is controlled by `max_prepared_transactions` (default **0**, so it is off). The danger for a DBA is that an **orphaned prepared transaction** keeps its locks and its snapshot forever: it blocks other sessions, holds back `VACUUM` and can lead to wraparound. Check for them regularly."},
+{code:`SELECT gid, prepared, owner, database, now() - prepared AS age FROM pg_prepared_xacts;
+-- resolve an orphan after confirming with the application owner:
+-- ROLLBACK PREPARED 'gid-here';`},
+{h:"A troubleshooting checklist"},
+{flow:["Symptom: queries hang or the application times out","`pg_stat_activity`: look at `wait_event_type`. `Lock` means blocking; `LWLock` or `IO` means contention or storage","Run the root-blocker query and read `state`, `xact_age` and `last_query` of the blocker","`idle in transaction`: fix the application; `active` and long: tune the query; a DDL waiting: find and end the long query ahead of it","Cancel (`pg_cancel_backend`) first; terminate only if needed","Prevent: `lock_timeout` for DDL, `idle_in_transaction_session_timeout`, short transactions, consistent lock order, retry logic"]}
+],[["Concurrency Control",D+'mvcc.html'],["Explicit Locking",D+'explicit-locking.html'],["Transaction Isolation",D+'transaction-iso.html'],["The pg_locks view",D+'view-pg-locks.html'],["Lock Management settings",D+'runtime-config-locks.html'],["Server Signaling and Session Functions",D+'functions-admin.html#FUNCTIONS-ADMIN-SIGNAL'],["Advisory Locks",D+'explicit-locking.html#ADVISORY-LOCKS'],["PREPARE TRANSACTION",D+'sql-prepare-transaction.html'],["Monitoring: wait events",D+'monitoring-stats.html#WAIT-EVENT-TABLE'],["PostgreSQL error codes",D+'errcodes-appendix.html']]);
+
+/* ================================================================ NEW pg:3:11  Crash Recovery, Checkpoints and Timelines in Depth */
+const recSvg=dg(700,230,[
+[10,20,140,60,'1. Read pg_control|state is not|shut down',0],[175,20,140,60,'2. Find the last|checkpoint record|and its REDO point',2],[340,20,140,60,'3. Redo: replay WAL|from the REDO point|record by record',2],[505,20,185,60,'4. Stop at the end of|valid WAL (bad CRC or|no more records)',0],
+[10,140,140,60,'5. Roll back by|visibility: no commit|record means aborted',0],[175,140,140,60,'6. End-of-recovery|checkpoint',2],[340,140,140,60,'7. Clean up temp and|unlogged files, remove|stale state',0],[505,140,185,60,'8. Accept connections|(ready to accept|connections)',2]],
+[[150,50,175,50],[315,50,340,50],[480,50,505,50],[597,80,597,110],[597,110,80,110],[80,110,80,140],[150,170,175,170],[315,170,340,170],[480,170,505,170]]);
+const tlSvg=dg(700,200,[
+[10,20,120,45,'Timeline 1|normal operation',2],[160,20,120,45,'0/5000000|a mistake happens',1],[310,20,160,45,'0/6000000|crash or restore point',0],
+[310,110,160,50,'Timeline 2 starts|after PITR or promotion|00000002.history',2],[510,110,180,50,'WAL files named|00000002000000000000006|and on',0],[510,20,180,45,'Timeline 1 WAL is|kept, not overwritten',0]],
+[[130,42,160,42],[280,42,310,42],[235,65,380,110],[470,135,510,135],[470,42,510,42]]);
+
+N('pg:3:11',[
+{p:"The lecture on WAL explains *why* the log exists; this lecture explains *what the server does with it* when something goes wrong, and how PostgreSQL keeps separate histories of the database, called **timelines**, after a recovery. These are the mechanisms behind \"the server restarted by itself after a crash and nothing was lost\", behind point-in-time recovery and behind standby promotion, so a DBA should be able to describe each step and read the matching log messages."},
+{h:"The three kinds of recovery"},
+{t:[["Kind","Triggered by","Source of WAL","Ends when","New timeline?"],
+["**Crash recovery**","Starting a server whose `pg_control` state is not `shut down` (after a crash, `kill -9`, power loss or `pg_ctl stop -m immediate`)","The local `pg_wal` directory","All local WAL is replayed. The server then opens for connections","**No**"],
+["**Archive recovery** (PITR)","A `recovery.signal` file in `PGDATA`, with `restore_command` and optionally a `recovery_target_*` setting","The WAL archive, then `pg_wal`","The target is reached or the archive ends. The server then pauses, promotes or shuts down as `recovery_target_action` says","**Yes**, when it is promoted"],
+["**Standby (continuous) recovery**","A `standby.signal` file","Streaming from the primary and/or the archive","`pg_ctl promote` or `pg_promote()`; never ends by itself","**Yes**, at promotion"]]},
+{p:"The three share one engine: the **startup process** reads WAL records one after another and gives each to its resource manager to *redo*. They differ only in where the records come from and in when the process stops."},
+{h:"Crash recovery, step by step"},
+{svg:recSvg},
+{t:[["Step","What the startup process does","Why"],
+["1","Reads `global/pg_control`. If the state shows the server was running (`in production`) or in recovery, it knows the last shutdown was not clean","`pg_control` is the single source of truth about the cluster state"],
+["2","Reads the **latest checkpoint record** from the location stored in `pg_control` and takes its **REDO point**: the WAL position from which every later change might not yet be in the data files","Everything before the REDO point is guaranteed to be on disk. Nothing before it needs replaying"],
+["3","**Redo loop**: reads each record from the REDO point, and for every block it names, compares the **page's LSN** with the record's LSN. If the page is older, the change is applied; if the page already contains it, the record is skipped","This makes redo **idempotent**: replaying a record twice is harmless. That is what allows a crash during recovery itself, and a restart of recovery from the beginning"],
+["3b","If the record carries a **full-page image**, the page is restored from the image first","Repairs torn pages (see the WAL lecture)"],
+["4","Stops at the **end of valid WAL**: the first record that is incomplete or whose CRC does not match, or the end of the last file","A crash can leave a half-written record at the tail. It was never acknowledged to a client, so ignoring it loses nothing"],
+["5","Transactions with changes but **no commit record** are simply treated as aborted: their xid is not marked committed in `pg_xact`, and no running session owns it","There is no undo phase in PostgreSQL. Aborted work is invisible by the MVCC rules and is cleaned up later by `VACUUM`"],
+["6","Performs an **end-of-recovery checkpoint** so that the next crash need not replay the same WAL again","Marks the recovered state as the new baseline and updates `pg_control`"],
+["7","Resets **unlogged tables** from their init fork, removes temporary files and stale state","They were never WAL-logged, so their content cannot be trusted"],
+["8","The postmaster starts accepting connections","Until now clients receive `FATAL: the database system is starting up`"]]},
+{note:"PostgreSQL replays **all** changes in the WAL, including those of transactions that never committed, and then relies on visibility rules to hide them. This design is sometimes called *repeating history*. It keeps recovery simple and fast, and is why `VACUUM` has more to do after a crash."},
+{h:"A worked example"},
+{t:[["WAL position","Event","After recovery"],
+["`0/3000028`","Checkpoint begins. This is its **REDO point**; its checkpoint record is written later, and `pg_control` is updated when the checkpoint completes","Replay starts here"],
+["`0/3001000`","Transaction T1 updates a row and **commits** (commit record flushed)","T1's change is **visible**"],
+["`0/3002000`","Transaction T2 updates another row but has **not** committed","T2's record is replayed, but with no commit record T2 is treated as **aborted**: invisible"],
+["`0/3003F10`","The power fails while a record is being written","The record is incomplete: its CRC fails, and the end of WAL is `0/3003F10`"],
+["Restart","Recovery runs from `0/3000028` to `0/3003F10`","T1 survives, T2 vanishes, and the database is consistent"]]},
+{h:"What the log shows (illustrative)"},
+{code:`LOG:  database system was interrupted; last known up at 2026-10-08 09:40:11 IST
+LOG:  database system was not properly shut down; automatic recovery in progress
+LOG:  redo starts at 0/3000028
+LOG:  invalid record length at 0/3003F10: expected at least 24, got 0
+LOG:  redo done at 0/3003EB8 system usage: CPU: user: 0.02 s, system: 0.01 s, elapsed: 0.04 s
+LOG:  checkpoint starting: end-of-recovery immediate wait
+LOG:  checkpoint complete: wrote 31 buffers (0.2%); 0 WAL file(s) added, 0 removed, 1 recycled; ...
+LOG:  database system is ready to accept connections`},
+{p:"The line *invalid record length ... got 0* looks alarming but is normal: it marks the end of the valid WAL. Worry about lines such as `could not locate a valid checkpoint record`, `could not open file \"pg_wal/...\"` or `PANIC: ... incorrect resource manager data checksum`, which mean that required WAL or `pg_control` is missing or damaged. While recovery runs, `ps` shows the startup process with a title like `postgres: startup recovering 000000010000000000000003`."},
+{h:"How long does recovery take?"},
+{p:"Recovery time is the time to replay **all WAL between the REDO point and the crash**. Two things control it. First, the **amount of WAL since the last checkpoint**, which is set by `checkpoint_timeout` and `max_wal_size`. Second, the **replay speed**: redo is done by a **single process**, so it can be slower than the original workload, which ran on many backends at once. PostgreSQL 15 added **recovery prefetching** (`recovery_prefetch`, default `try`), which reads the data blocks that upcoming records will need ahead of time and can speed up recovery considerably when the data is not in cache."},
+{t:[["Setting choice","Effect on normal operation","Effect on crash recovery"],
+["Short `checkpoint_timeout` (for example 5 min), small `max_wal_size`","More frequent checkpoints: more I/O and more full-page images in WAL","Little WAL to replay: **fast** recovery"],
+["Long `checkpoint_timeout` (for example 30 min), large `max_wal_size`","Smoother I/O and less WAL volume","More WAL to replay: **slower** recovery"]]},
+{p:"Choose the interval from your **recovery-time objective**. A server that must be back within a minute should not run with a two-hour checkpoint interval. A highly available setup with a standby usually accepts longer intervals, because a crash is handled by failover instead of waiting for local recovery. The *WAL and Checkpoint Parameters* lecture in Section 06 gives the numbers."},
+{h:"Checkpoint internals and the REDO point"},
+{p:"The earlier lecture on background processes explains when checkpoints start. Here is what the checkpointer does once it begins, in the order that makes recovery correct:"},
+{flow:["Record the current WAL insert position as the **REDO point**","Flush all buffers that were dirty at that moment, spread out over `checkpoint_completion_target` (default 0.9) of the interval to avoid an I/O burst","`fsync` the files that received writes","Write the **checkpoint record** into WAL, holding the REDO point and other state (next xid, oldest xid, timeline)","Update `global/pg_control` to point at this record, **only now**","Remove or recycle WAL segments that are no longer needed, and flush the transaction-status caches"]},
+{ul:[
+"`pg_control` changes **last**. If the server crashes in the middle of a checkpoint, `pg_control` still points at the *previous* completed checkpoint, so recovery starts from there and nothing is lost.",
+"The REDO point is *earlier* than the checkpoint record: changes made while the checkpoint was running may or may not be in the data files, so replay must start from where the checkpoint began.",
+"A clean shutdown performs a final **shutdown checkpoint**, which is why a clean restart needs no recovery. `pg_ctl stop -m immediate` skips it and is therefore followed by crash recovery.",
+"On a standby the equivalent is a **restartpoint**: a checkpoint of the standby's own data files at a position it has replayed, which limits how much WAL it must reread after its own restart."]},
+{code:`SELECT checkpoint_lsn, redo_lsn, timeline_id, checkpoint_time FROM pg_control_checkpoint();
+SELECT * FROM pg_stat_checkpointer;      -- timed versus requested checkpoints, write and sync time (17+)
+SHOW log_checkpoints;                    -- 'on' writes one line per checkpoint to the log`},
+{h:"Timelines"},
+{p:"A **timeline** is one linear history of the database. Every server starts on timeline 1. When a recovery ends and the server begins writing new WAL from a point that is *not* the end of the history it came from, it starts a **new timeline**. This happens after archive recovery with a target in the past, and when a standby is promoted. Without timelines, the new server would write WAL with the same names and positions as the old history and overwrite it, and a standby could not tell which history it belonged to."},
+{svg:tlSvg},
+{t:[["Element","Meaning"],
+["**Timeline ID**","A number that starts at 1 and increases with each branch. It is the first 8 hex digits of every WAL file name: `00000002` `0000000000000006`... in `000000020000000000000006`"],
+["**`.history` file**","`00000002.history` is created in `pg_wal` and the archive. It lists the parent timelines and the WAL position at which each branch happened. Recovery reads it to follow the right path"],
+["**`recovery_target_timeline`**","Which timeline to follow during recovery. Default `latest` (since PostgreSQL 12); can be a number or `current`"],
+["**`pg_control` TimeLineID**","The timeline of the latest checkpoint. Shown by `pg_controldata` and `pg_control_checkpoint()`"]]},
+{p:"**Example.** A developer drops a table by mistake at 10:15. The DBA restores the last base backup and recovers to 10:14. At the end of that recovery the server switches to **timeline 2** and writes `00000002.history`. The WAL of timeline 1 after 10:14, which contains the mistake, is **kept**, untouched. If the DBA later realises the target was wrong, a new recovery can start again from the same backup and choose a different target, still following timeline 1's WAL. Both histories coexist."},
+{ul:[
+"After a **failover**, the old primary is on a diverged history. It cannot rejoin as a standby until it is brought back to the point where the timelines forked, with `pg_rewind` or a fresh base backup (see Section 10).",
+"A backup, a base backup's `backup_label`, and a WAL archive can contain several timelines. Restoring needs the **history files** as well as the segments.",
+"Crash recovery never changes the timeline."]},
+{h:"Recovery settings at a glance"},
+{t:[["Setting","Purpose"],
+["`restore_command`","How to fetch an archived WAL file during archive recovery or standby operation"],
+["`recovery_target_time`, `recovery_target_lsn`, `recovery_target_xid`, `recovery_target_name`, `recovery_target = 'immediate'`","Where to stop. Only one may be set. `immediate` stops at the first consistent point after a base backup"],
+["`recovery_target_inclusive`","Stop just after (default) or just before the target"],
+["`recovery_target_action`","`pause` (default), `promote` or `shutdown` once the target is reached"],
+["`recovery_target_timeline`","Which timeline to follow (default `latest`)"],
+["`hot_standby`","Whether read-only queries are allowed during recovery on a standby"],
+["`recovery_prefetch`","Read ahead the blocks needed by upcoming WAL records"]]},
+{code:`SELECT pg_is_in_recovery();                      -- true on a standby or while recovering
+SELECT pg_last_wal_replay_lsn(), pg_last_xact_replay_timestamp();
+SELECT * FROM pg_stat_recovery_prefetch;         -- how well prefetching is working
+SELECT pg_wal_replay_pause();  SELECT pg_wal_replay_resume();   -- on a standby
+SELECT pg_promote();                             -- end standby recovery and start a new timeline`},
+{note:"The full procedures belong to later sections: archiving and PITR in Section 09 (*Continuous Archiving* and *Point-in-Time Recovery and Timelines*), standby promotion in Section 10 (*Failover, Switchover, Promotion and pg_rewind*), and reading WAL records in Section 08 (*Inspecting WAL*). This lecture gives the model that makes those procedures understandable."},
+{h:"When recovery does not work"},
+{t:[["Symptom","Likely cause","Action"],
+["`FATAL: could not locate a valid checkpoint record`","`pg_control` points at a WAL segment that is missing or damaged, or a restored `backup_label` was deleted","Restore the missing WAL from the archive or backup. Never delete `backup_label`. `pg_resetwal` is a last resort that discards WAL and can leave the data inconsistent; use it only on a copy, after taking a file-level backup"],
+["`FATAL: requested timeline 2 is not a child of this server's history`","The `.history` file or the recovery target does not match the data directory","Check `recovery_target_timeline` and that the right history files are in the archive"],
+["Recovery appears stuck at the same segment","`restore_command` cannot find the next file, so recovery is waiting for it","Check the archive location, permissions and the exact file name in the log"],
+["`PANIC: incorrect resource manager data checksum in record`","WAL corruption (storage or copy error)","Restore a good copy of the segment from the archive or a standby"],
+["The server keeps restarting after a crash (`terminating any other active server processes`, restart, crash again)","A bad extension, a corrupted page that causes the same crash on replay, or memory exhaustion","Read the log before the first crash, disable the suspected extension, check `dmesg` for the OOM killer"],
+["Standby cannot continue after the primary failed over","The standby is on a different timeline","`recovery_target_timeline = latest`, `pg_rewind` or rebuild from a base backup"]]}
+],[["Reliability and the Write-Ahead Log",D+'wal.html'],["WAL Configuration: checkpoints",D+'wal-configuration.html'],["Continuous Archiving and Point-in-Time Recovery",D+'continuous-archiving.html'],["Recovery Configuration",D+'runtime-config-wal.html#RUNTIME-CONFIG-WAL-RECOVERY'],["Archive Recovery Settings",D+'runtime-config-wal.html#RUNTIME-CONFIG-WAL-ARCHIVE-RECOVERY'],["pg_resetwal",D+'app-pgresetwal.html'],["pg_rewind",D+'app-pgrewind.html'],["pg_controldata",D+'app-pgcontroldata.html'],["Recovery information functions",D+'functions-admin.html#FUNCTIONS-RECOVERY-INFO']]);
+
+/* ================================================================ BACK-FILL into earlier lectures */
+X('pg:3:1',[
+{h:"The stages inside the query loop (Section 03)"},
+{p:"The *five query stages* described above are expanded in the *Life of a Query* lecture: parser, parse analysis, rewriter, planner and executor, with the data structure each one produces and a diagnosis table that maps an error message to the stage that raised it. The planner stage has its own lecture, *Query Planner, Statistics and EXPLAIN*."}
+]);
+X('pg:3:3',[
+{h:"How memory settings change query plans (Section 03)"},
+{p:"`work_mem` and `effective_cache_size` do more than size memory: the planner reads both when it **chooses** a plan. A larger `work_mem` makes hash joins, hash aggregation and in-memory sorts look cheaper, and `effective_cache_size` makes index scans look cheaper. The *Query Planner, Statistics and EXPLAIN* lecture shows how to see the effect (`Sort Method`, `Batches`, `Buffers`) in `EXPLAIN (ANALYZE, BUFFERS)`."}
+]);
+X('pg:3:7',[
+{h:"Costs and plans for parallel queries (Section 03)"},
+{p:"The costs that decide whether a parallel plan is chosen (`parallel_setup_cost`, `parallel_tuple_cost`) belong to the same cost model as the other planner settings, explained in *Query Planner, Statistics and EXPLAIN*. That lecture also lists the warning signs in `EXPLAIN ANALYZE` output, including `Workers Planned` against `Workers Launched`."}
+]);
+X('pg:3:8',[
+{h:"Locks and MVCC together (Section 03)"},
+{p:"MVCC stops readers and writers blocking each other, but two writers on the same row, and DDL against a busy table, still need locks. The lecture *Transactions, Locking and Deadlocks* gives the lock modes and conflict tables, explains lock queues and deadlocks, and shows how to find the session that blocks the others."}
+]);
+X('pg:3:4',[
+{h:"WAL after a crash: recovery and timelines (Section 03)"},
+{p:"What the server does with the log after a crash, the meaning of the REDO point, the end-of-recovery checkpoint and the difference between crash recovery, archive recovery and standby recovery are covered in *Crash Recovery, Checkpoints and Timelines in Depth*, the last lecture of this section."}
+]);
+X('pg:3:6',[
+{h:"Related lectures (Section 03)"},
+{p:"The files that make up a **commit** (`pg_wal`, `pg_xact`) are explained in the WAL lecture, and the effect of `pg_control` on start-up is covered in *Crash Recovery, Checkpoints and Timelines in Depth*. The page layout inside a relation file is shown with `pageinspect` in *MVCC Internals*."}
+]);
+X('pg:2:2',[
+{h:"What the next start does after each mode (Section 03)"},
+{p:"After a `smart` or `fast` shutdown the server writes a shutdown checkpoint and marks `pg_control` as `shut down`, so the next start needs no recovery. After `immediate` (or any crash) the next start performs **crash recovery**, replaying WAL from the last checkpoint. The steps and the log messages are explained in the lecture *Crash Recovery, Checkpoints and Timelines in Depth* in Section 03."}
+]);
+X('pg:4:4',[
+{h:"Understanding the locks behind a blocked session (Section 03)"},
+{p:"The *Transactions, Locking and Deadlocks* lecture in the Architecture section explains the table-lock and row-lock modes, why one waiting `ALTER TABLE` can stop all traffic on a table, and gives a **root-blocker** query that finds the one session that all the others are waiting for. Use it before deciding whom to cancel."}
+]);
+X('pg:5:5',[
+{h:"Planner settings that depend on these values (Section 03)"},
+{p:"`effective_cache_size` allocates no memory; it only tells the planner how much data it may expect to find cached. `work_mem` affects both memory use and plan choice. The *Query Planner, Statistics and EXPLAIN* lecture explains how to check the effect of each on a real plan."}
+]);
+X('pg:5:6',[
+{h:"Checkpoint settings and recovery time (Section 03)"},
+{p:"The checkpoint interval you choose here sets the **maximum amount of WAL a crash recovery must replay**. The trade-off between a short interval (fast recovery, more I/O and full-page images) and a long interval (smooth I/O, slower recovery) is explained in *Crash Recovery, Checkpoints and Timelines in Depth* and in the WAL lecture of the Architecture section."}
+]);
+X('pg:5:8',[
+{h:"Auto-analyze and the planner (Section 03)"},
+{p:"Autovacuum also runs **auto-analyze**, which refreshes the statistics that the planner uses to estimate row counts. A large table needs a much smaller `autovacuum_analyze_scale_factor` than the default 0.1. The planner lecture, *Query Planner, Statistics and EXPLAIN*, shows how stale statistics lead to bad plans and how to read `pg_stats` and `pg_stat_user_tables.last_autoanalyze`."}
+]);
+X('pg:7:0',[
+{h:"WAL records and the commit path (Section 03)"},
+{p:"This lecture describes the WAL **file format**. How a record gets there (the write-ahead rule enforced through the page LSN, the commit path with `XLogFlush`, group commit, full-page images and the `synchronous_commit` levels) is in the WAL lecture of the Architecture section, which this one builds on."}
+]);
+
+/* ---------- register the 3 new lectures with the course outline ---------- */
+window.EXTRA_LECTURES=window.EXTRA_LECTURES||{};
+window.EXTRA_LECTURES[3]=(window.EXTRA_LECTURES[3]||[]).concat([
+['Query Planner, Statistics and EXPLAIN','0:00','How the cost-based planner chooses a plan: cost model and constants, pg_stats and extended statistics, scan and join methods, reading EXPLAIN ANALYZE, bad-estimate diagnosis, plan-shaping settings and a repeatable tuning method.'],
+['Transactions, Locking and Deadlocks','0:00','Transaction IDs and savepoints, table and row lock modes with conflict matrices, lock queues and safe DDL, deadlock detection, advisory and predicate locks, retry rules and a root-blocker troubleshooting method.'],
+['Crash Recovery, Checkpoints and Timelines in Depth','0:00','Crash, archive and standby recovery compared, the startup-process redo steps, the REDO point and checkpoint internals, recovery time versus checkpoint settings, timelines and history files, recovery log messages and failures.']]);
+})();

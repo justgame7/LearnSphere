@@ -211,6 +211,8 @@ if(window.EXTRA_LECTURES)Object.entries(window.EXTRA_LECTURES).forEach(([i,a])=>
 /* Reorder: PostgreSQL Architecture now comes before Basic Configuration (done after EXTRA_LECTURES so those still attach by original index) */
 (function(){const S=COURSES[0].sections,a=S.findIndex(x=>x.t==='Basic Configuration and Connectivity'),b=S.findIndex(x=>x.t==='PostgreSQL Architecture');
  if(a>-1&&b===a+1){S.splice(a,2,S[b],S[a]);
+  /* lesson bodies are keyed courseId:sectionIndex:lectureIndex by ORIGINAL index (pg-lesson.js), so swap those keys too or the two sections show each other's lesson text */
+  if(window.LESSONS){const M=window.LESSONS,T={};Object.keys(M).forEach(k=>{const m=k.match(/^pg:(\d+):(\d+)$/);if(m){const i=+m[1];if(i===a||i===b){T['pg:'+(i===a?b:a)+':'+m[2]]=M[k];delete M[k]}}});Object.assign(M,T)}
   /* one-time migration of saved progress so ticks stay with the right lectures */
   try{if(!localStorage.getItem('ls_mig_arch')){const p=JSON.parse(localStorage.getItem('ls_prog')||'{}'),g=p.pg;
    if(g){const n={};Object.keys(g).forEach(k=>{const[i,j]=k.split('-');n[(+i===a?a+1:+i===b?a:+i)+'-'+j]=g[k]});p.pg=n;localStorage.setItem('ls_prog',JSON.stringify(p))}
