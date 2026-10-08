@@ -74,6 +74,17 @@ h1{font-size:clamp(26px,5vw,38px);letter-spacing:-1px;line-height:1.1;margin:14p
 .pn{display:flex;justify-content:space-between;gap:10px;margin-top:22px;flex-wrap:wrap}
 h2{font-size:14px;font:600 12px var(--mono);letter-spacing:.8px;text-transform:uppercase;color:var(--mut);margin:26px 0 12px}
 @media(max-width:520px){.ld{padding-left:14px}.hero{padding:18px}}
+@media(max-width:480px){
+.hero.course{display:grid;grid-template-columns:1fr auto;column-gap:14px;align-items:center}
+.hero.course .tx{display:contents}
+.hero.course .chip{grid-column:1/-1;grid-row:1;justify-self:start}
+.hero.course h1{grid-column:1/-1;grid-row:2}
+.hero.course .stats{grid-column:1;grid-row:3}
+.hero.course .row{grid-column:1;grid-row:4}
+.hero.course .ring{grid-column:2;grid-row:3/5;width:84px;height:84px}
+.hero.course .ring span{width:68px;height:68px;font-size:16px}
+.hero.course .auto{grid-column:1/-1;grid-row:5}
+}
 
 .ls{max-width:760px}
 .ls p{color:var(--tx);margin:0 0 14px;line-height:1.65}
@@ -242,12 +253,12 @@ function vCourses(){
  h+=`<h2>Courses</h2><div class="grid">`+COURSES.map((c,i)=>{const on=c.sections.length;
   return `<div class="card ${on?'':'off'}" style="--c:${c.color};animation-delay:${i*70}ms" ${on?`onclick="go('#/c/${c.id}')"`:''}><div class="ico">${c.tag}</div><h3>${c.name}</h3><p>${c.blurb}</p>
   <div class="meta">${on?`<span class="chip">${c.sections.length} sections</span><span class="chip">${cnt(c)} lectures</span>`:`<span class="chip">Curriculum coming soon</span>`}</div>
-  ${on?`<div class="bt"><b style="width:${pct(c)}%"></b></div><div class="pct"><span>${dn(c)}/${cnt(c)} done</span><span>${pct(c)}%</span></div>`:''}${autoBox(c.id)}</div>`}).join('')+`</div>`;
+  ${on?`<div class="bt"><b style="width:${pct(c)}%"></b></div><div class="pct"><span>${dn(c)}/${cnt(c)} done</span><span>${pct(c)}%</span></div>`:''}</div>`}).join('')+`</div>`;
  return h}
 function vTopics(c){
  const n=nextUp(c),tot=c.sections.reduce((a,s)=>a+dur(s.l),0);
  let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›<span>${c.name}</span></div>
- <div class="hero" style="--c:${c.color}"><div class="tx"><span class="chip">${c.level}</span><h1 style="margin:10px 0 6px">${c.name}</h1> <div class="stats"><div><b>${c.sections.length}</b>sections</div><div><b>${cnt(c)}</b>lectures</div></div>
+ <div class="hero course" style="--c:${c.color}"><div class="tx"><span class="chip">${c.level}</span><h1 style="margin:10px 0 6px">${c.name}</h1> <div class="stats"><div><b>${c.sections.length}</b>sections</div><div><b>${cnt(c)}</b>lectures</div></div>
  <div class="row">${n?`<button class="btn" onclick="go('#/c/${c.id}/${n[0]}')">${dn(c)?'Resume':'Start course'} ▸</button>`:`<span class="chip live">✓ Course complete</span>`}</div>${autoBox(c.id,1)}</div>
  <div class="ring" style="--p:${pct(c)}"><span>${pct(c)}%</span></div></div>
  <div class="row" style="margin:-8px 0 6px">${c.outcomes.map(o=>`<span class="chip">✓ ${o}</span>`).join('')}</div><h2>Topics</h2><div class="grid">`;
