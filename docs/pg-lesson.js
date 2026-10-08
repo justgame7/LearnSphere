@@ -7111,3 +7111,531 @@ window.EXTRA_LECTURES[1]=(window.EXTRA_LECTURES[1]||[]).concat([
 ['Post-Installation Hardening and the Production Baseline','0:00','The first hour: roles and passwords, pg_hba.conf, TLS, logging and memory starting points, OS and file hardening, privilege hygiene, first backup and a sign-off record.'],
 ['Troubleshooting Installation and First Start','0:00','A method for diagnosing problems, where logs live, server start failures, client connection errors, installation-time problems and a support-bundle script.']]);
 })();
+
+
+/* LearnSphere: Section 3 (PostgreSQL Architecture) depth update, PART 1 of 2.
+   Appended to pg-lesson.js AFTER the Section 2 update; index.html merges window.EXTRA_LECTURES[3] into Section 3.
+   - Enriches pg:3:0 (Postmaster), pg:3:1 (Backend), pg:3:2 (Background Process), pg:3:3 (Memory) by inserting blocks before their "(Section NN)" notes.
+   - Adds 2 new lectures: pg:3:7 (Parallel Query, Background Workers and JIT) and pg:3:8 (MVCC Internals).
+   - Back-fills short notes into pg:0:1, pg:2:2, pg:3:4 and pg:3:5.  Docs links target PostgreSQL 18.
+   PART 2 (not in this file) will cover Life of a Query, PGDATA layout, WAL depth, planner/EXPLAIN and locking. */
+(function(){
+const D='https://www.postgresql.org/docs/18/';
+const dg=window.LS_DG;
+const X=(k,blocks,src)=>{const L=window.LESSONS[k];if(!L)return;
+ let i=L.blocks.findIndex(b=>b.h&&/\(Section/.test(b.h));if(i<0)i=L.blocks.length;
+ L.blocks.splice(i,0,...blocks);if(src)L.src=(L.src||[]).concat(src)};
+const N=(k,blocks,src)=>{window.LESSONS[k]={blocks:blocks,src:src||[]}};
+
+/* ---------- diagrams ---------- */
+const famSvg=dg(700,270,[
+[250,10,200,40,'postmaster (postgres)|parent of everything',2],
+[10,95,100,45,'startup|recovery / replay',0],[120,95,100,45,'checkpointer',0],[230,95,100,45,'background|writer',0],[340,95,100,45,'walwriter',0],[450,95,110,45,'autovacuum|launcher',0],[570,95,120,45,'logical replication|launcher',0],
+[10,190,190,50,'client backends|one per connection',2],[215,190,150,50,'autovacuum workers|started by the launcher',0],[380,190,150,50,'parallel and|background workers',0],[545,190,145,50,'walsender / walreceiver|archiver, io workers',0]],
+[[350,50,60,95],[350,50,170,95],[350,50,280,95],[350,50,390,95],[350,50,505,95],[350,50,630,95],[330,50,105,190],[505,140,290,190]]);
+const bufSvg=dg(700,230,[
+[10,85,115,55,'Backend|needs block 7 of|table orders',0],
+[160,85,150,55,'Buffer mapping|hash table|tag to buffer id',2],
+[350,15,170,55,'HIT: pin the buffer|read the 8 KB page',0],
+[350,150,170,60,'MISS: choose a victim|clock sweep, write it|first if dirty',0],
+[550,150,140,60,'smgr read|OS cache or disk|into the buffer',0]],
+[[125,112,160,112],[310,100,350,50],[310,125,350,170],[520,180,550,180]]);
+const bgSvg=dg(700,250,[
+[10,20,130,50,'Backends|change pages',0],[180,20,140,50,'WAL buffers',2],[360,20,140,50,'WAL segments|pg_wal/',2],[540,20,150,50,'Archive|(archive_mode)',0],
+[180,110,140,45,'walwriter|background flush',0],[360,110,140,45,'archiver|copies full segments',0],
+[10,185,150,45,'shared_buffers|dirty pages',2],[200,185,130,45,'background writer|early, gentle',0],[370,185,130,45,'checkpointer|everything, on time',2],[540,185,150,45,'Data files|base/, global/',0]],
+[[140,45,180,45],[320,45,360,45],[500,45,540,45],[250,110,250,70],[430,110,430,70],[75,70,75,185],[160,207,200,207],[500,207,540,207]]);
+
+/* ================================================================ ENRICH pg:3:0  Backend, Postmaster */
+X('pg:3:0',[
+{h:"The process family at a glance"},
+{p:"Every PostgreSQL server is a **tree of operating-system processes** with one root. The root is the **postmaster**: the program `postgres` started by `pg_ctl` or by systemd. Everything else is a child of the postmaster, so a process listing is the quickest way to see what a server is doing. The diagram groups the children by purpose; the *Background Process* lecture explains each of them."},
+{svg:famSvg},
+{t:[["Group","Members","Lifetime"],["Client sessions","client backends (one per connection)","Created by `fork()` when a client connects, removed when it disconnects"],["Durability and recovery","startup, checkpointer, background writer, walwriter","Start with the server (the startup process ends when recovery is complete, unless the server is a standby)"],["Housekeeping","autovacuum launcher and workers, archiver, logger","Started by configuration (`autovacuum`, `archive_mode`, `logging_collector`)"],["Replication","walsender, walreceiver, logical replication launcher and workers","Started on demand by connections, subscriptions and standby settings"],["Worker pool","parallel workers, extension background workers, I/O workers (18)","Started and stopped on demand inside the `max_worker_processes` limit"]]},
+{h:"Signals: how the postmaster is controlled"},
+{p:"Processes on Linux and Unix talk to each other with **signals**. `pg_ctl`, `systemctl` and SQL functions are convenient wrappers that send the signals below. Knowing the real signals explains why a command behaves the way it does, and why `kill -9` on the wrong process is a serious mistake."},
+{t:[["Signal","Sent to the postmaster by","Effect"],["`SIGHUP`","`pg_ctl reload`, `systemctl reload`, `SELECT pg_reload_conf()`","Re-reads `postgresql.conf`, `postgresql.auto.conf`, `pg_hba.conf` and `pg_ident.conf`, and forwards the signal to the child processes so they re-read their settings"],["`SIGTERM`","`pg_ctl stop -m smart`","**Smart shutdown**: no new connections; wait for all sessions to end by themselves, then shut down"],["`SIGINT`","`pg_ctl stop -m fast` (the default of `pg_ctl`), the PGDG systemd unit","**Fast shutdown**: abort running transactions, disconnect clients, write a shutdown checkpoint, exit cleanly"],["`SIGQUIT`","`pg_ctl stop -m immediate`","**Immediate shutdown**: stop at once without a shutdown checkpoint; the next start performs crash recovery"],["`SIGUSR1`","Internal; also `pg_ctl promote` on a standby","General-purpose signal used by child processes to ask the postmaster for work, and by `pg_ctl` to trigger promotion"],["`SIGKILL`","`kill -9`, or the Linux out-of-memory killer","Cannot be caught. The process vanishes without cleaning up. **Never use it on the postmaster**: shared memory and semaphores are left behind and a manual cleanup may be needed"]]},
+{p:"A process may also be signalled from SQL. These two functions are the safe way to stop a single session:"},
+{t:[["Function","Signal to the backend","Result"],["`pg_cancel_backend(pid)`","`SIGINT`","Cancels the **current query**. The session and its transaction stay connected (an open transaction is marked as failed)"],["`pg_terminate_backend(pid)`","`SIGTERM`","Ends the **session**. Its transaction is rolled back and locks are released"]]},
+{code:`-- find the session first, then act on exactly that pid
+SELECT pid, usename, state, now() - query_start AS running, left(query, 60) AS query
+FROM pg_stat_activity
+WHERE backend_type = 'client backend' AND state <> 'idle'
+ORDER BY running DESC;
+
+SELECT pg_cancel_backend(12345);      -- try the gentle option first
+SELECT pg_terminate_backend(12345);   -- then end the session`},
+{h:"What happens when a child process dies"},
+{p:"The postmaster watches all of its children. An ordinary end of a session, or a `FATAL` error that ends one session (exit status 1), is routine. An **abnormal** end is different: a process killed by a signal, a crash, or a `PANIC` error. A dead process may have been holding a lock on shared memory or half-way through changing a shared structure, so the postmaster **cannot trust shared memory any more**. It protects your data by restarting everything."},
+{flow:["A child ends abnormally (signal, crash, PANIC)","Postmaster sends SIGQUIT to every other child","All sessions are disconnected","Postmaster waits for all children to exit","Shared memory is discarded and created again","Startup process replays WAL (crash recovery)","New connections are accepted"]},
+{code:`-- PostgreSQL log (wording varies slightly by version)
+LOG:  server process (PID 4123) was terminated by signal 9: Killed
+DETAIL:  Failed process was running: SELECT * FROM big_table ORDER BY x;
+LOG:  terminating any other active server processes
+LOG:  all server processes terminated; reinitializing
+LOG:  database system was interrupted; last known up at 2026-10-08 10:15:02 IST
+LOG:  database system was not properly shut down; automatic recovery in progress
+LOG:  redo starts at 0/5A3F1C8
+LOG:  redo done at 0/5A9B220
+LOG:  database system is ready to accept connections
+
+-- what connected clients see
+WARNING:  terminating connection because of crash of another server process
+FATAL:    the database system is in recovery mode`},
+{t:[["Evidence in the log","Meaning","What to do"],["`terminated by signal 9: Killed`","Something sent `SIGKILL`: most often the Linux **OOM killer**, sometimes an administrator","Check `journalctl -k` or `dmesg` for *Out of memory: Killed process*. Reduce `work_mem` or `max_connections`, set `vm.overcommit_memory = 2`, add memory (Section 02: OS Preparation)"],["`terminated by signal 11: Segmentation fault`","A bug in PostgreSQL or, more often, in a loaded **extension**","Note the query in `DETAIL`, enable core dumps, update the extension, report with a backtrace"],["`PANIC:  could not write to file ...`","A fatal I/O problem, for example the disk holding `pg_wal` is full","Free space, fix the storage, then let recovery finish. Never delete WAL files by hand"],["`FATAL: terminating connection due to administrator command`","`pg_terminate_backend()` or a shutdown","Not a crash: one session ended"],["Repeated *all server processes terminated* messages","A crash loop: the same query or extension fails after every restart","Find the first message in the loop; stop the offending application or extension"]]},
+{ul:["`restart_after_crash` (default `on`) controls the automatic restart. Cluster managers such as Patroni may set it to `off` so that the manager, not the postmaster, decides what happens after a crash.","Recovery after a crash only **replays WAL**; committed work is never lost, and uncommitted work simply disappears. Only the connections and the cached data in shared buffers are lost, so the first queries after a restart are slower.","An out-of-memory kill of a backend therefore restarts the **whole** server. This is why memory settings are a reliability topic, not just a performance topic."]},
+{h:"Reading the process list"},
+{p:"By default PostgreSQL changes the **process title** of every process so that `ps` and `top` show what it is doing (`update_process_title`, on by default). Setting `cluster_name` adds a label, which is very useful when several clusters run on one host."},
+{code:`ps -o pid,ppid,etime,cmd --ppid $(head -1 $PGDATA/postmaster.pid)
+
+  PID  PPID     ELAPSED CMD
+ 1201  1198       02:14 postgres: checkpointer
+ 1202  1198       02:14 postgres: background writer
+ 1204  1198       02:14 postgres: walwriter
+ 1205  1198       02:14 postgres: autovacuum launcher
+ 1206  1198       02:14 postgres: logical replication launcher
+ 2877  1198       00:31 postgres: postgres appdb [local] idle
+ 2931  1198       00:02 postgres: appuser appdb 10.0.0.8(51622) SELECT`},
+{t:[["Process title","Meaning"],["`postgres: checkpointer`, `background writer`, `walwriter`","Fixed housekeeping processes"],["`postgres: user database host idle`","A client backend waiting for the next command"],["`postgres: user database host idle in transaction`","A session holding a transaction open: watch for these"],["`postgres: user database host SELECT` (or `UPDATE`, `COPY`, ...)","A backend running that kind of command (the command tag)"],["`postgres: walsender repl 10.0.0.9(51234) streaming 0/3000148`","A standby is streaming WAL from this server"],["`postgres: startup recovering 000000010000000000000003`","Recovery or a standby is replaying that WAL segment"],["`postgres: 18/main: ...` (with `cluster_name`)","The same titles with the cluster label in front"]]},
+{h:"The lock file: postmaster.pid"},
+{p:"The postmaster creates `postmaster.pid` in `PGDATA` when it starts and removes it when it stops cleanly. It is both a **lock** (two postmasters can never run on the same data directory) and a small **status record**. The file has these lines:"},
+{t:[["Line","Content","Example"],["1","Postmaster process ID","`1198`"],["2","Data directory","`/var/lib/pgsql/18/data`"],["3","Start time (Unix epoch seconds)","`1791454502`"],["4","Port","`5432`"],["5","Unix-domain socket directory","`/var/run/postgresql`"],["6","First listen address","`*`, `localhost`, or empty"],["7","Shared memory key and ID","`5432001   98304`"],["8","Status","`ready`, `starting`, `stopping` or `standby`"]]},
+{code:`cat $PGDATA/postmaster.pid
+pg_ctl -D $PGDATA status        # reads this file and checks that the PID is alive`},
+{ul:["**Stale file after a crash.** If the machine lost power, the file remains. A new postmaster reads the PID in it and starts only if no such postmaster or child is still running. If you see *lock file postmaster.pid already exists, is another postmaster running?*, first prove that no `postgres` process uses that directory (`ps -ef | grep postgres`); only then remove the file.","**Never remove it on a running server.** The postmaster checks the file regularly. If it disappears, the server performs an **immediate shutdown** with the message *data directory lock file is invalid*, because another postmaster could now start on the same files and destroy them.","Backup tools and `pg_basebackup` must not copy `postmaster.pid` into the restored data directory; the tools exclude it for that reason."]},
+{h:"How many processes can the postmaster create?"},
+{p:"Different kinds of process draw from **different pools**. Mixing them up is a common source of confusing errors such as *too many clients already* when the real limit was another one."},
+{t:[["Pool","Parameter","Default","Restart?","Counts"],["Client sessions","`max_connections`","100","Yes","Client backends, including superusers"],["Reserved for administrators","`superuser_reserved_connections`, `reserved_connections` (16+)","3, 0","Yes","Slots kept free; usable by superusers and by members of `pg_use_reserved_connections`"],["Background workers","`max_worker_processes`","8","Yes","Parallel workers, logical replication workers, extension workers (a standby needs at least the primary value)"],["Autovacuum workers","`autovacuum_max_workers` (18: `autovacuum_worker_slots`)","3","Yes (18: only the slot count)","Workers started by the autovacuum launcher; **not** part of `max_connections`"],["WAL senders","`max_wal_senders`","10","Yes","Standbys, `pg_basebackup`, logical replication walsenders; **not** part of `max_connections` since version 12"],["Logical replication workers","`max_logical_replication_workers`","4","Yes","Apply, parallel apply and table synchronisation workers; taken from `max_worker_processes`"]]},
+{code:`SELECT backend_type, count(*) FROM pg_stat_activity GROUP BY 1 ORDER BY 2 DESC;
+
+SELECT name, setting FROM pg_settings
+WHERE name IN ('max_connections','superuser_reserved_connections','reserved_connections',
+               'max_worker_processes','max_parallel_workers','autovacuum_max_workers',
+               'max_wal_senders','max_logical_replication_workers');`}
+],[["Server Shutdown (signals)",D+"server-shutdown.html"],["The Server Process Titles (ps)",D+"monitoring-ps.html"],["Database File Layout (postmaster.pid)",D+"storage-file-layout.html"],["Error Handling: restart_after_crash",D+"runtime-config-error-handling.html"],["Connection Settings",D+"runtime-config-connection.html"],["Server Signaling Functions",D+"functions-admin.html#FUNCTIONS-ADMIN-SIGNAL"]]);
+
+/* ================================================================ ENRICH pg:3:1  Backend */
+X('pg:3:1',[
+{h:"What a backend owns"},
+{p:"A backend is more than a process ID. For the lifetime of the connection it holds a set of resources, some in shared memory where other processes can see them, and some in its own private memory. Understanding which is which explains both the cost of a connection and what is lost when it ends."},
+{t:[["Resource","Where it lives","Purpose","Released when"],["`PGPROC` entry (process slot)","Shared memory","Holds the session's transaction ID, snapshot horizon (`xmin`), wait information and lock queues; other backends read it to build snapshots","The session ends"],["Locks (table, row, advisory)","Shared lock table","Protect objects the session is using","Transaction end (advisory locks: unlock or session end)"],["Transaction and snapshot state","Private and `PGPROC`","Which row versions the session may see","Transaction end"],["Memory contexts: query, transaction, session","Private","Parse trees, plans, sort and hash areas (`work_mem`), result rows","Statement end, transaction end, session end"],["Catalog and relation caches (relcache, catcache)","Private","Copies of system-catalog rows and table descriptions, so repeated queries avoid catalog reads","The session ends (invalidated by DDL through shared invalidation messages)"],["Prepared statements, cursors, plan cache","Private","Saved plans and open result sets","`DEALLOCATE`, cursor close, session end"],["Session settings (`SET`), temporary tables, `temp_buffers`","Private (temporary tables also in files)","Per-session behaviour and scratch tables","Session end"],["Temporary files","Disk, `pgsql_tmp`","Sort and hash data that does not fit in `work_mem`","Statement end"]]},
+{p:"Because the caches are private and filled on demand, a **new connection starts cold**: the first queries must read catalog pages and build cache entries. Together with the `fork()`, authentication and the TLS handshake, this is why short-lived connections are expensive and why applications should reuse connections through a pool."},
+{h:"The frontend/backend protocol in brief"},
+{p:"Clients talk to the backend with a documented message protocol (version 3). Two query styles exist, and the difference matters for pooling and performance."},
+{t:[["Style","Messages","Plan handling","Typical user"],["**Simple query**","One `Query` message containing SQL text","Parsed, planned and executed every time","`psql`, scripts"],["**Extended query**","`Parse`, `Bind`, `Execute`, `Sync` as separate steps","A named **prepared statement** is parsed once; each `Bind` supplies parameters. The plan cache may reuse a plan","JDBC, libpq `PQexecParams`, most drivers and ORMs"]]},
+{ul:["For a prepared statement the server builds a **custom plan** for each of the first executions (five, by default) and compares its cost with a **generic plan**. If the generic plan is not much worse, it is reused. `plan_cache_mode` (`auto`, `force_custom_plan`, `force_generic_plan`) overrides this.","Parameters sent separately from the SQL text also protect against SQL injection, one more reason to use the extended protocol.","A **transaction-mode connection pooler** hands a different server connection to each transaction, so session-level state (`SET`, temporary tables, advisory locks, and in older poolers prepared statements) is not reliable. Check your pooler's documentation for the features it supports."]},
+{code:`PREPARE find_user(int) AS SELECT * FROM users WHERE id = $1;
+EXECUTE find_user(42);
+SELECT name, statement, generic_plans, custom_plans FROM pg_prepared_statements;   -- counters exist in 14+
+DEALLOCATE find_user;`},
+{h:"Session states and wait events"},
+{p:"`pg_stat_activity` has one row per backend and is the first place to look when someone says the database is slow. Two columns tell most of the story: **`state`** (what the session is doing) and **`wait_event_type` / `wait_event`** (what it is waiting for, if anything)."},
+{t:[["`state`","Meaning","Concern"],["`active`","Running a query","Normal. Long-running ones need a look"],["`idle`","Connected, waiting for the next command","Normal. Thousands of them point to a missing pooler"],["`idle in transaction`","A transaction is open but no query is running","**Serious.** The session keeps locks and holds back cleanup of dead rows (see the MVCC lecture)"],["`idle in transaction (aborted)`","An error happened inside a transaction and the client has not issued `ROLLBACK`","Application bug; same problems as above"],["`fastpath function call`","Executing a function through the fast-path protocol message","Rare"],["`disabled`","`track_activities` is off for this backend","Monitoring is blind"]]},
+{t:[["`wait_event_type`","Meaning","Examples and typical cause"],["`Lock`","Waiting for a heavyweight lock (a table, row or transaction)","`relation`, `transactionid`, `tuple`: another session holds a conflicting lock"],["`LWLock`","Waiting for an internal lightweight lock","`WALWrite`, `BufferMapping`, `LockManager`: contention inside the server"],["`IO`","Waiting for the storage system","`DataFileRead`, `WALSync`: slow disk or cache misses"],["`Client`","Waiting for the client","`ClientRead`: the application is slow or the session is idle"],["`IPC`","Waiting for another process","`BgWorkerShutdown`, `ExecuteGather`, `SyncRep`: parallel workers or a synchronous standby"],["`Timeout`","Sleeping on purpose","`PgSleep`, `VacuumDelay`"],["`Activity`","A background process idling in its main loop","`CheckpointerMain`, `WalWriterMain`: normal for background processes"],["`BufferPin`","Waiting for a buffer that another process has pinned","Often `VACUUM` waiting for a long cursor"]]},
+{code:`-- sessions by state
+SELECT state, count(*) FROM pg_stat_activity WHERE backend_type = 'client backend' GROUP BY 1;
+
+-- what is everybody waiting for right now?
+SELECT wait_event_type, wait_event, count(*)
+FROM pg_stat_activity WHERE state = 'active' GROUP BY 1, 2 ORDER BY 3 DESC;
+
+-- who is blocked, and who blocks them?
+SELECT pid, pg_blocking_pids(pid) AS blocked_by, wait_event, left(query, 50) AS query
+FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid)) > 0;
+
+-- transactions left open
+SELECT pid, usename, now() - xact_start AS open_for, state, left(query, 50) AS last_query
+FROM pg_stat_activity
+WHERE xact_start IS NOT NULL AND state LIKE 'idle in transaction%' ORDER BY open_for DESC;`},
+{h:"Timeouts that protect the server"},
+{p:"A backend normally lives as long as its client wants. These parameters let the server defend itself against clients that hang, forget transactions or run away. All of them can be set per role or per database, which is usually the right level."},
+{t:[["Parameter","Default","What it does"],["`authentication_timeout`","1min","Maximum time to complete authentication; a slow client holds a backend and a slot until then"],["`statement_timeout`","0 (off)","Cancels any statement running longer"],["`lock_timeout`","0 (off)","Cancels a statement that waits for a lock longer than this"],["`idle_in_transaction_session_timeout`","0 (off)","Ends sessions idle inside a transaction. A common production setting"],["`idle_session_timeout` (14+)","0 (off)","Ends sessions idle outside a transaction; careful with pools"],["`transaction_timeout` (17+)","0 (off)","Ends sessions whose transaction runs longer than this"],["`tcp_keepalives_idle`, `tcp_keepalives_interval`, `tcp_keepalives_count`","OS values","Detect dead network peers"],["`client_connection_check_interval` (14+)","0 (off)","Checks that the client is still there during a long query"]]},
+{code:`ALTER ROLE appuser SET idle_in_transaction_session_timeout = '5min';
+ALTER ROLE appuser SET statement_timeout = '30s';
+ALTER ROLE reporting SET statement_timeout = '15min';   -- reports may run longer
+SELECT rolname, rolconfig FROM pg_roles WHERE rolconfig IS NOT NULL;`},
+{h:"The cost of many connections"},
+{ul:["Each connection is a process with private caches, so memory grows with the connection count, and the worst case is `work_mem` multiplied by the number of sort and hash steps of every active query (Memory lecture).","The server must look at every process slot to build a snapshot, and many sessions fight over the same internal locks. Throughput usually **peaks at a modest number of active sessions** (a small multiple of the CPU cores) and then falls.","A practical rule: size `max_connections` for what the server can run well, not for how many application threads exist. Put a pooler such as PgBouncer between the application and the database and let thousands of clients share a few dozen server connections. Treat any formula (cores × 2 plus disks is often quoted) as a **starting point to test** with your workload."]},
+{h:"Connection errors and what they mean"},
+{t:[["Message","Cause","Fix"],["`FATAL: sorry, too many clients already`","`max_connections` slots are all used","Find idle or leaked connections; add a pooler; raise the limit only if memory allows (restart)"],["`FATAL: remaining connection slots are reserved for roles with the SUPERUSER attribute` (16 and later also mention the `pg_use_reserved_connections` role)","Only the reserved slots are left","Connect as an administrator and end idle sessions"],["`FATAL: the database system is starting up`","Recovery is still running, or the server is a standby that is not yet consistent","Wait and watch the log"],["`FATAL: the database system is shutting down`","A shutdown is in progress","Retry after the restart"],["`FATAL: the database system is in recovery mode`","Crash recovery after an abnormal end of a process","Wait; investigate the first crash message in the log"],["`server closed the connection unexpectedly`","The backend died, was terminated, or a firewall or pooler closed an idle connection","Check the server log at that timestamp, then network idle timeouts and keepalives"],["`canceling statement due to statement timeout`","`statement_timeout` expired","Tune the query, or raise the timeout for that role"],["`terminating connection due to idle-in-transaction timeout`","The application kept a transaction open","Fix the application; this timeout is doing its job"]]}
+],[["Frontend/Backend Protocol",D+"protocol.html"],["The Cumulative Statistics System: pg_stat_activity",D+"monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW"],["Wait Event Tables",D+"monitoring-stats.html#WAIT-EVENT-TABLE"],["Client Connection Defaults: statement behaviour",D+"runtime-config-client.html#RUNTIME-CONFIG-CLIENT-STATEMENT"],["PREPARE",D+"sql-prepare.html"],["Connections and Authentication",D+"runtime-config-connection.html"]]);
+
+/* ================================================================ ENRICH pg:3:2  Background Process */
+X('pg:3:2',[
+{h:"How the background processes cooperate"},
+{p:"The diagram shows the two streams of work. **WAL** (top) is written in order by the backends, flushed by the WAL writer and copied by the archiver. **Data pages** (bottom) are changed in shared buffers and written to the data files later by the background writer and the checkpointer. Because WAL is safe on disk first, the data-file writes can be delayed, batched and spread out."},
+{svg:bgSvg},
+{h:"Complete catalogue of server processes"},
+{p:"`pg_stat_activity.backend_type` names every process type. The table lists each one, when it exists and the settings that control it. Some types exist only in recent versions; the version note says where."},
+{t:[["backend_type","Exists when","Purpose","Main settings"],["`startup`","At every start; on a standby for as long as it runs","Crash recovery, archive recovery and continuous replay of WAL on a standby","`hot_standby`, `restore_command`, `recovery_target_*`, `max_standby_streaming_delay`"],["`checkpointer`","Always","Performs checkpoints and handles file-sync requests","`checkpoint_timeout`, `max_wal_size`, `min_wal_size`, `checkpoint_completion_target`"],["`background writer`","Always","Writes dirty buffers ahead of need so backends find clean ones","`bgwriter_delay`, `bgwriter_lru_maxpages`, `bgwriter_lru_multiplier`, `bgwriter_flush_after`"],["`walwriter`","On a primary","Flushes WAL buffers to disk in the background","`wal_writer_delay`, `wal_writer_flush_after`"],["`autovacuum launcher`","`autovacuum = on`","Wakes up regularly and starts workers for databases that need work","`autovacuum_naptime`, `autovacuum_max_workers`"],["`autovacuum worker`","On demand","Runs `VACUUM` and `ANALYZE` on tables over their thresholds","`autovacuum_vacuum_*`, `autovacuum_analyze_*`, `autovacuum_vacuum_cost_*`"],["`archiver`","`archive_mode = on` or `always`","Copies each completed WAL segment to the archive","`archive_command` or `archive_library`, `archive_timeout`"],["`walsender`","One per standby, backup or logical subscriber","Streams WAL (or decoded changes) to a client","`max_wal_senders`, `wal_sender_timeout`"],["`walreceiver`","On a standby","Receives WAL from the primary and writes it to disk","`primary_conninfo`, `primary_slot_name`, `wal_receiver_timeout`"],["`logical replication launcher`","`max_logical_replication_workers > 0`","Starts apply workers for each enabled subscription","`max_logical_replication_workers`"],["logical replication workers (apply, parallel apply, table sync)","On a subscriber","Apply changes and copy initial table contents. The exact `backend_type` names depend on the version","`max_sync_workers_per_subscription`, `max_parallel_apply_workers_per_subscription`"],["`walsummarizer` (17+)","`summarize_wal = on`","Records which blocks changed, for **incremental backups**","`summarize_wal`, `wal_summary_keep_time`"],["`slotsync worker` (17+)","`sync_replication_slots = on` on a standby","Copies logical slots from the primary so they survive a failover","`sync_replication_slots`, `hot_standby_feedback`"],["`io worker` (18)","`io_method = worker` (the default)","Perform reads asynchronously for backends","`io_method`, `io_workers`"],["`parallel worker`","During a parallel query or maintenance command","Executes part of a plan for a leader backend","`max_parallel_workers*`"],["Extension background workers","If an extension registers them","Custom jobs, for example `pg_cron`, autoprewarm","`max_worker_processes`, extension settings"],["`standalone backend`","`postgres --single`","Single-user mode for repair","None"]]},
+{note:"The **logger** process (`logging_collector = on`) appears in `ps` as `postgres: logger` but not in `pg_stat_activity`, because it does not attach to shared memory. The **statistics collector** process no longer exists (removed in 15); statistics are kept in shared memory and written to disk at shutdown."},
+{h:"Checkpoints in depth"},
+{p:"A **checkpoint** is a point in the WAL at which every data page changed before that point has been written to the data files. After a crash, recovery has to replay WAL only from the **redo point** of the last completed checkpoint, so checkpoints put an upper limit on recovery time. They also allow old WAL files to be recycled."},
+{t:[["Trigger","Setting or command","Note"],["Time","`checkpoint_timeout` (default 5min)","The normal trigger on a healthy system"],["WAL volume","`max_wal_size` (default 1GB)","A *requested* checkpoint. Frequent ones mean `max_wal_size` is too small for the write rate"],["Manual","`CHECKPOINT`","Needs the `pg_checkpoint` role or superuser; runs at full speed"],["Shutdown","Smart and fast shutdown","Writes all dirty pages; the next start needs no recovery"],["Backup start","`pg_basebackup`, `pg_backup_start()`","Starts with a checkpoint (fast or spread, as requested)"],["Database operations","`CREATE DATABASE`, `ALTER DATABASE ... SET TABLESPACE` and similar","Needed because they copy files directly"]]},
+{flow:["Trigger fires (time, WAL volume, command)","Redo point recorded in WAL","Dirty pages written, spread over the interval","Files are fsynced","Checkpoint record written, pg_control updated","Old WAL segments recycled or removed"]},
+{ul:["`checkpoint_completion_target` (default 0.9) spreads the writes over 90% of the interval so the disks see a steady load instead of a burst.","After a checkpoint, the **first change to each page** writes a complete copy of the page into WAL (**full-page write**, `full_page_writes = on`). This protects against torn pages after a crash. It is why WAL volume jumps right after a checkpoint, and why very frequent checkpoints bloat WAL.","Checkpoints must be spread, but they must also finish: if WAL grows faster than `max_wal_size` allows, the server starts the next checkpoint early and writes faster."]},
+{code:`-- log_checkpoints is on by default since 15; a typical line:
+LOG:  checkpoint complete: wrote 1832 buffers (11.2%); 0 WAL file(s) added, 0 removed, 3 recycled;
+      write=269.8 s, sync=0.021 s, total=269.9 s; sync files=45, longest=0.005 s, average=0.001 s;
+      distance=48210 kB, estimate=48210 kB; lsn=0/5A3F1C8, redo lsn=0/58B0408
+
+-- PostgreSQL 17 and later
+SELECT num_timed, num_requested, write_time, sync_time, buffers_written, stats_reset
+FROM pg_stat_checkpointer;
+
+-- PostgreSQL 16 and earlier
+SELECT checkpoints_timed, checkpoints_req, buffers_checkpoint FROM pg_stat_bgwriter;`},
+{t:[["Observation","Interpretation","Action"],["Most checkpoints are *timed*","Healthy","None"],["Many *requested* checkpoints, and the log warns *checkpoints are occurring too frequently*","`max_wal_size` is smaller than the WAL produced in one `checkpoint_timeout`","Raise `max_wal_size` (a reload is enough); this lengthens crash recovery but not by much"],["`write=` time is much shorter than 90% of the interval","Checkpoints are being forced","Same as above"],["Long `sync=` times","Storage is slow at fsync","Check the storage layer and write cache (Section 02)"]]},
+{h:"The background writer and who writes dirty pages"},
+{p:"Dirty pages can be written by three different processes. The best case is that **the checkpointer or the background writer** does it, so that backends never wait for the disk. When no clean buffer is available, a **backend must write a dirty page itself**, which slows that query."},
+{code:`-- PostgreSQL 16 and later: who is writing buffers?
+SELECT backend_type, context, writes, hits, evictions
+FROM pg_stat_io
+WHERE object = 'relation' AND (writes > 0 OR evictions > 0)
+ORDER BY writes DESC;
+
+-- background writer activity (17+: buffers_clean, maxwritten_clean, buffers_alloc)
+SELECT buffers_clean, maxwritten_clean, buffers_alloc FROM pg_stat_bgwriter;`},
+{ul:["`maxwritten_clean` counts the times the background writer stopped because it reached `bgwriter_lru_maxpages` (default 100). If it grows quickly, raise that value.","Many writes by `client backend` in `pg_stat_io` suggest that `shared_buffers` is small for the workload or that the writer settings are too gentle."]},
+{h:"The WAL writer and commit behaviour"},
+{p:"With the default `synchronous_commit = on`, the **committing backend itself** flushes WAL up to its commit record and waits for the disk. The WAL writer handles everything else: it flushes WAL every `wal_writer_delay` (200 ms), and it flushes **asynchronous commits** (`synchronous_commit = off`). With asynchronous commit the client is told that the commit succeeded before the WAL is safe, so a crash can lose the last moments of work (the documented window is up to three times `wal_writer_delay`), but it **never corrupts** the database."},
+{h:"Autovacuum at a glance"},
+{p:"The launcher starts at most one worker per database at intervals of `autovacuum_naptime` (1 min) divided by the number of databases, up to `autovacuum_max_workers`. A worker vacuums every table whose number of dead rows exceeds a threshold, and analyses every table with enough changed rows."},
+{t:[["Action","Condition (default settings)"],["`VACUUM`","dead tuples > `autovacuum_vacuum_threshold` (50) + `autovacuum_vacuum_scale_factor` (0.2) × rows"],["`VACUUM` for inserts (13+)","inserted tuples > `autovacuum_vacuum_insert_threshold` (1000) + `autovacuum_vacuum_insert_scale_factor` (0.2) × rows"],["`ANALYZE`","changed tuples > `autovacuum_analyze_threshold` (50) + `autovacuum_analyze_scale_factor` (0.1) × rows"],["Anti-wraparound `VACUUM`","table age exceeds `autovacuum_freeze_max_age` (200 million). Runs even if autovacuum is off and cannot be cancelled by other statements"]]},
+{p:"The full treatment, including tuning and monitoring, is in Section 05 (Table Storage, VACUUM and Bloat) and Section 06. The MVCC lecture in this section explains *why* dead rows exist."},
+{h:"Archiver, replication and worker processes"},
+{ul:["**Archiver.** Copies a finished WAL segment when the segment is full or `archive_timeout` has passed. A failing `archive_command` makes WAL pile up in `pg_wal` until the disk fills; monitor `pg_stat_archiver` (Section 09).","**Walsender and walreceiver.** One walsender serves each standby, base backup or logical subscriber. A standby has one walreceiver and one startup process; the startup process replays the WAL that the walreceiver stores (Section 10).","**Worker pool.** Parallel workers, logical replication workers and extension workers all draw from `max_worker_processes`; see the *Parallel Query, Background Workers and JIT* lecture.","**I/O workers (18).** With `io_method = worker`, backends hand read requests to a pool of `io_workers` (default 3) so reads can overlap with query work. `io_method = io_uring` (Linux, built with `--with-liburing`) and `sync` are the alternatives."]},
+{h:"Restart or reload? Background-process settings"},
+{t:[["Setting","Context","Action"],["`checkpoint_timeout`, `max_wal_size`, `min_wal_size`, `checkpoint_completion_target`","`sighup`","Reload"],["`bgwriter_*`, `wal_writer_*`","`sighup`","Reload"],["`autovacuum_naptime`, `autovacuum_*_scale_factor`","`sighup`","Reload (table-level overrides use `ALTER TABLE ... SET`)"],["`autovacuum` (on or off)","`sighup`","Reload"],["`autovacuum_max_workers`","`postmaster`","Restart (18: change the number without restart up to `autovacuum_worker_slots`)"],["`archive_mode`, `max_wal_senders`, `max_worker_processes`, `io_method`","`postmaster`","Restart"],["`archive_command`, `archive_timeout`","`sighup`","Reload"]]},
+{code:`SELECT name, setting, unit, context FROM pg_settings
+WHERE name IN ('checkpoint_timeout','max_wal_size','bgwriter_delay','wal_writer_delay',
+               'autovacuum','autovacuum_max_workers','archive_mode') ORDER BY name;`}
+],[["WAL Configuration (checkpoints)",D+"wal-configuration.html"],["Resource Consumption: Background Writer",D+"runtime-config-resource.html#RUNTIME-CONFIG-RESOURCE-BACKGROUND-WRITER"],["Write Ahead Log Settings",D+"runtime-config-wal.html"],["pg_stat_checkpointer",D+"monitoring-stats.html#MONITORING-PG-STAT-CHECKPOINTER-VIEW"],["pg_stat_io",D+"monitoring-stats.html#MONITORING-PG-STAT-IO-VIEW"],["Automatic Vacuuming",D+"runtime-config-vacuum.html#RUNTIME-CONFIG-AUTOVACUUM"],["Asynchronous Behavior",D+"runtime-config-resource.html#RUNTIME-CONFIG-RESOURCE-ASYNC-BEHAVIOR"]]);
+
+/* ================================================================ ENRICH pg:3:3  Memory */
+X('pg:3:3',[
+{h:"Kinds of memory a PostgreSQL server uses"},
+{t:[["Kind","How it is allocated","Who sees it","Examples"],["**Main shared memory segment**","One request at startup, sized from the settings (`shared_memory_type`: `mmap` by default)","All processes","`shared_buffers`, WAL buffers, lock tables, process slots, SLRU caches"],["**Dynamic shared memory (DSM)**","Created on demand and freed afterwards (`dynamic_shared_memory_type`, `posix` on Linux)","The processes of one parallel query or an extension","Parallel hash tables, tuple queues between workers"],["**Local (private) memory**","`malloc` by each process, organised into *memory contexts* that are freed together","One process only","`work_mem` areas, catalog caches, plan cache, `temp_buffers`"],["**Operating-system page cache**","Managed by the kernel, outside PostgreSQL","The whole machine","Recently read data-file pages"]]},
+{code:`SHOW shared_memory_type;
+SHOW dynamic_shared_memory_type;
+SHOW shared_memory_size;                  -- total of the main segment, computed (15+)
+SHOW shared_memory_size_in_huge_pages;    -- pages needed if huge pages are used (15+)`},
+{h:"What lives in the main shared segment"},
+{t:[["Structure","Sized by","What it holds"],["Buffer pool and buffer descriptors","`shared_buffers`","8 KB data pages plus a small descriptor for each: tag, flags, pin count, usage count"],["Buffer mapping table","`shared_buffers`","Hash table that finds a page from its identity (relation, fork, block number)"],["WAL buffers","`wal_buffers`","WAL records not yet written"],["Process array and `PGPROC` slots","`max_connections`, workers, `max_wal_senders`, autovacuum workers","One slot per possible process, used for snapshots and waiting"],["Regular lock table","`max_locks_per_transaction`, `max_connections`, `max_prepared_transactions`","Locks on tables, rows and transaction IDs"],["Predicate lock table","`max_pred_locks_per_transaction`, ...","Locks used by `SERIALIZABLE` isolation"],["SLRU caches","`transaction_buffers` and related (17+), earlier fixed sizes","Commit status, subtransaction parents, multixact data, `NOTIFY` queue"],["Shared invalidation queue","Fixed","Messages that tell every backend that a catalog entry changed"],["Cumulative statistics","`track_*` settings, `stats_fetch_consistency`","Counters behind `pg_stat_*` (shared memory since 15)"],["Replication state","`max_replication_slots`, `max_wal_senders`","Slots, walsender and walreceiver state"],["Extension areas","Extension's own settings","For example the hash table of `pg_stat_statements`"]]},
+{h:"The buffer manager step by step"},
+{p:"Every table and index is a file made of 8 KB **blocks**. A backend never reads a file directly for ordinary queries: it asks the **buffer manager** for a block, identified by *tablespace, database, relation file, fork and block number*."},
+{svg:bufSvg},
+{t:[["Step","What happens"],["1 Lookup","The buffer mapping hash table, protected by partitioned lightweight locks, maps the block identity to a buffer number or reports that it is absent"],["2 Hit","The backend **pins** the buffer (increments its pin count so it cannot be replaced) and takes a content lock to read or change the page. Its **usage count** goes up (maximum 5)"],["3 Miss: choose a victim","The **clock sweep** moves a hand around the buffer array. A buffer with a pin count of zero and a usage count of zero is replaced; otherwise its usage count is decremented and the hand moves on"],["4 Victim is dirty","The victim page must be written first, and WAL must be flushed up to the page's LSN before that (the write-ahead rule). This is the slow path"],["5 Read","The block is read from the operating system (page cache or disk) into the free buffer, with the I/O marked in progress so other backends wait instead of reading it twice"],["6 Release","When the backend is done it unpins the buffer. A modified page is marked **dirty**; it stays in memory until the writers or the checkpointer write it"]]},
+{p:"The effect of the clock sweep is that frequently used pages build up a high usage count and survive several passes of the hand, while pages used once fall out quickly. It approximates *least recently used* at a very low cost."},
+{h:"Ring buffers: protecting the cache from big scans"},
+{p:"Reading a huge table once should not evict the hot pages of everything else. For such operations PostgreSQL uses a **ring buffer**: a small private set of buffers that the operation reuses over and over."},
+{t:[["Operation","Ring size","Why"],["Sequential scan of a table larger than a quarter of `shared_buffers`","256 KB","A one-time read should not flood the cache. Concurrent scans of the same table share their position (`synchronize_seqscans`)"],["`VACUUM` and `ANALYZE`","`vacuum_buffer_usage_limit` (default 2 MB, 16+)","Same reason; `BUFFER_USAGE_LIMIT` on the command overrides it, and `0` disables the ring"],["Bulk writes: `COPY` into a table, `CREATE TABLE AS`, `CREATE MATERIALIZED VIEW`, table rewrites","16 MB","Prevents a bulk load from replacing the whole cache"]]},
+{p:"A ring is never larger than one eighth of `shared_buffers`. A side effect worth knowing: a large sequential scan does **not** warm the cache, so a table can be slow on the first and second reads alike."},
+{h:"Looking inside the cache"},
+{p:"The `pg_buffercache` extension (part of contrib, Section 02: Installing Extensions) exposes the buffer descriptors. It is the right tool to answer *what is actually in shared buffers?*"},
+{code:`CREATE EXTENSION pg_buffercache;
+
+-- overall picture (16+)
+SELECT * FROM pg_buffercache_summary();
+SELECT * FROM pg_buffercache_usage_counts();
+
+-- which relations occupy the cache in the current database?
+SELECT c.relname, count(*) AS buffers,
+       pg_size_pretty(count(*) * 8192) AS size,
+       round(avg(b.usagecount), 1) AS avg_usage,
+       count(*) FILTER (WHERE b.isdirty) AS dirty
+FROM pg_buffercache b
+JOIN pg_class c ON b.relfilenode = pg_relation_filenode(c.oid)
+ AND b.reldatabase IN (0, (SELECT oid FROM pg_database WHERE datname = current_database()))
+GROUP BY c.relname ORDER BY buffers DESC LIMIT 10;`},
+{p:"Hit ratios give a quick health signal, but interpret them carefully. A *read* in PostgreSQL statistics means a request to the operating system, which may be answered from the OS page cache without touching a disk."},
+{code:`-- per database
+SELECT datname, blks_hit, blks_read,
+       round(100.0 * blks_hit / nullif(blks_hit + blks_read, 0), 2) AS hit_pct
+FROM pg_stat_database WHERE datname IS NOT NULL;
+
+-- per table
+SELECT relname, heap_blks_hit, heap_blks_read,
+       round(100.0 * heap_blks_hit / nullif(heap_blks_hit + heap_blks_read, 0), 2) AS hit_pct
+FROM pg_statio_user_tables ORDER BY heap_blks_read DESC LIMIT 10;`},
+{h:"Double buffering and the operating-system cache"},
+{ul:["PostgreSQL deliberately relies on the **operating-system page cache** as a second level. A page may therefore exist twice: once in `shared_buffers` and once in the kernel cache (*double buffering*). That is normal and one reason not to give PostgreSQL most of the RAM.","`effective_cache_size` (default 4GB) **allocates nothing**. It tells the planner how much data it may expect to find cached by PostgreSQL *and* the OS, which makes index scans look cheaper. A common starting point is 50 to 75% of RAM on a dedicated server.","The documentation suggests about **25% of RAM** as a reasonable starting value for `shared_buffers` on a dedicated server with at least 1 GB of memory, and notes that values above 40% rarely help because the OS cache also matters. Larger settings usually need a larger `max_wal_size` as well.","Changing `shared_buffers` needs a **restart**. Test with a realistic workload, and compare `pg_stat_io` and query times, rather than copying a number from a blog."]},
+{h:"Huge pages"},
+{p:"With normal 4 KB memory pages, a large shared segment needs a very large page table for every backend process. **Huge pages** (2 MB on x86-64) make those tables much smaller and the translation faster. For servers with several gigabytes of `shared_buffers` and many connections the benefit is clear."},
+{t:[["Setting","Values","Meaning"],["`huge_pages`","`try` (default), `on`, `off`","`try` uses huge pages if available. `on` refuses to start if they cannot be allocated, which makes mistakes visible"],["`huge_page_size`","0 (default) or a size","0 uses the system default size"],["`vm.nr_hugepages` (kernel)","Number of pages","Must be set by the administrator and large enough for the segment"]]},
+{code:`# 1. ask PostgreSQL how many huge pages it needs (15+; on a running server)
+psql -Atc "SHOW shared_memory_size_in_huge_pages;"
+#    or with the server stopped:  postgres -D $PGDATA -C shared_memory_size_in_huge_pages
+
+# 2. reserve them (a little more than the number above)
+echo "vm.nr_hugepages = 2200" | sudo tee /etc/sysctl.d/90-postgres-hugepages.conf
+sudo sysctl --system
+
+# 3. set huge_pages = on in postgresql.conf, restart, and verify
+grep -i huge /proc/meminfo`},
+{note:"Huge pages (reserved, used for the shared segment) are different from **Transparent Huge Pages** (THP), which the kernel assembles automatically. THP can cause latency spikes for database workloads; the OS preparation lecture in Section 02 recommends disabling it or setting it to `madvise`."},
+{h:"The SLRU caches"},
+{p:"Besides data pages, PostgreSQL keeps small, special-purpose caches called **SLRU** (*simple least-recently-used*) buffers for information that is stored in directories under `PGDATA` and is needed by almost every query."},
+{t:[["Cache","Directory","Stores","Size parameter (17+)","`pg_stat_slru` name"],["Transaction status","`pg_xact`","Two bits per transaction: in progress, committed, aborted","`transaction_buffers`","`transaction`"],["Subtransactions","`pg_subtrans`","Parent of each subtransaction","`subtransaction_buffers`","`subtransaction`"],["Multixact offsets and members","`pg_multixact`","Groups of transactions that share a row lock","`multixact_offset_buffers`, `multixact_member_buffers`","`multixact_offset`, `multixact_member`"],["Commit timestamps","`pg_commit_ts`","Commit time per transaction (`track_commit_timestamp`)","`commit_timestamp_buffers`","`commit_timestamp`"],["`LISTEN` and `NOTIFY` queue","`pg_notify`","Pending notifications","`notify_buffers`","`notify`"],["Serializable conflicts","`pg_serial`","Old serializable transaction information","`serializable_buffers`","`serializable`"]]},
+{ul:["In version 17 and later these sizes are parameters; the default `0` means *choose automatically from `shared_buffers`*. Before 17 they were fixed and small, and SLRU lock contention was a known bottleneck on busy systems.","Each **subtransaction** (every `SAVEPOINT`, and every `BEGIN ... EXCEPTION` block in PL/pgSQL) gets its own transaction ID. Each backend can cache only a small number of them (64 in the source code); beyond that, other sessions must read `pg_subtrans`, which shows up as `SubtransSLRU` waits. Avoid creating savepoints per row in long transactions."]},
+{code:`SELECT name, blks_hit, blks_read, blks_written, flushes
+FROM pg_stat_slru ORDER BY blks_read DESC;`},
+{h:"Lock table sizing"},
+{p:"The regular lock table is a shared hash table with room for roughly `max_locks_per_transaction` (default 64) × (`max_connections` + `max_prepared_transactions`) lock entries. It is a *pool* shared by all sessions, so one transaction may take more than 64 locks as long as the total fits. When it overflows, the statement fails with *out of shared memory* and a hint to raise `max_locks_per_transaction`."},
+{ul:["Every table **and every index** a statement touches is locked, and every partition counts. A query over a table with thousands of partitions, or `pg_dump` of a database with many tables, can need thousands of locks.","Each backend can also record a few weak locks in a **fast-path** area that avoids the shared lock table; when a query touches more relations than the fast-path slots, the shared table (and the `LockManager` lightweight lock) becomes a hot spot. Version 18 scales the number of fast-path slots with `max_locks_per_transaction`.","Check usage with `SELECT locktype, mode, count(*) FROM pg_locks GROUP BY 1, 2 ORDER BY 3 DESC;`. A change of `max_locks_per_transaction` needs a restart."]},
+{h:"Local memory: work_mem and its relatives"},
+{t:[["Parameter","Default","Used for","Important detail"],["`work_mem`","4MB","Each **sort or hash step** of a query","One query can have several steps; each parallel worker gets its own allowance. Memory is used only while needed"],["`hash_mem_multiplier`","2.0 (15+)","Hash-based steps (hash join, hash aggregate)","Hash steps may use `work_mem` × this value before spilling to disk"],["`maintenance_work_mem`","64MB","`VACUUM`, `CREATE INDEX`, `ALTER TABLE ADD FOREIGN KEY`","Larger values speed up index builds. Autovacuum workers can use their own `autovacuum_work_mem`"],["`temp_buffers`","8MB","Temporary tables of one session","Allocated on first use; cannot be changed after the session has used temporary tables"],["`logical_decoding_work_mem`","64MB","Logical decoding of a transaction in a walsender","Larger transactions spill to disk"],["`temp_file_limit`","-1 (no limit)","Disk space for temporary files per session","A guard against runaway queries"]]},
+{p:"`work_mem` is the most misunderstood setting because the cost multiplies. A rough upper bound for memory used by active queries is:"},
+{t:[["Quantity","Example","Result"],["Active sessions running big queries","40","—"],["Sort and hash steps per query (typical)","3","—"],["`work_mem` plus hash allowance (assume 16MB × about 2 for hash steps, average 24MB)","24MB","—"],["Worst case for these queries","40 × 3 × 24MB","**about 2.9 GB**, on top of `shared_buffers`, the OS cache and maintenance work"]]},
+{p:"The numbers are only an example. The point: raise `work_mem` for the **roles or sessions that need it** rather than globally, and keep the global value modest."},
+{code:`-- a reporting role gets more, everybody else keeps the default
+ALTER ROLE reporting SET work_mem = '128MB';
+
+-- one heavy statement only
+BEGIN;
+SET LOCAL work_mem = '256MB';
+SELECT ... ;
+COMMIT;
+
+-- is a query spilling to disk?
+EXPLAIN (ANALYZE, BUFFERS) SELECT ... ORDER BY ...;
+--   Sort Method: external merge  Disk: 123456kB      <- too small a work_mem
+--   Sort Method: quicksort  Memory: 24310kB          <- fits in memory
+
+-- log every temporary file so you can see spills across the whole workload
+ALTER SYSTEM SET log_temp_files = '10MB';
+SELECT pg_reload_conf();`},
+{h:"Seeing how much memory a backend uses"},
+{ul:["Add up the numbers with care: the `RES` or `RSS` column in `top` counts the **shared** pages a process has touched, so summing it over all processes counts `shared_buffers` many times. Use `PSS` (`/proc/<pid>/smaps_rollup`) for a fairer figure.","Inside PostgreSQL, `pg_backend_memory_contexts` shows the memory contexts of the **current** session (14+), and `pg_log_backend_memory_contexts(pid)` asks another backend to write its contexts into the server log."]},
+{code:`-- biggest memory contexts of this session
+SELECT name, parent, pg_size_pretty(total_bytes) AS total, pg_size_pretty(used_bytes) AS used
+FROM pg_backend_memory_contexts ORDER BY total_bytes DESC LIMIT 10;
+
+-- ask a busy backend to report to the log
+SELECT pg_log_backend_memory_contexts(12345);
+
+-- fairer OS view of one process
+grep -E 'Pss|Rss' /proc/12345/smaps_rollup`},
+{h:"A sizing checklist"},
+{t:[["Step","Question","Action"],["1","How much RAM, and what else runs on the machine?","Leave room for the OS cache and other services"],["2","Set `shared_buffers`","Start near 25% of RAM; measure; restart needed"],["3","Set `effective_cache_size`","About 50 to 75% of RAM on a dedicated server"],["4","Set `max_connections` and pooling","Keep it as low as the pooler allows"],["5","Set a modest global `work_mem`","Raise per role or per session for reporting"],["6","Set `maintenance_work_mem`","Larger (for example 512MB to 2GB) for index builds and vacuum, bounded by free RAM"],["7","Enable huge pages for a large `shared_buffers`","Use `huge_pages = on` after reserving pages"],["8","Verify under load","`pg_stat_io`, temp file logs, `free -h`, the OOM killer log"]]}
+],[["Resource Consumption: Memory",D+"runtime-config-resource.html#RUNTIME-CONFIG-RESOURCE-MEMORY"],["Managing Kernel Resources: Huge Pages",D+"kernel-resources.html#LINUX-HUGE-PAGES"],["pg_buffercache",D+"pgbuffercache.html"],["pg_prewarm",D+"pgprewarm.html"],["pg_stat_slru",D+"monitoring-stats.html#MONITORING-PG-STAT-SLRU-VIEW"],["Lock Management",D+"runtime-config-locks.html"],["Memory Contexts view",D+"view-pg-backend-memory-contexts.html"],["Planner Cost Constants: effective_cache_size",D+"runtime-config-query.html#RUNTIME-CONFIG-QUERY-CONSTANTS"]]);
+
+/* ================================================================ NEW pg:3:7  Parallel Query, Background Workers and JIT */
+const parSvg=dg(700,240,[
+[10,90,130,60,'Leader backend|runs the Gather node|and the final steps',2],
+[190,15,190,45,'Worker 1|runs the partial plan',0],[190,85,190,45,'Worker 2|runs the partial plan',0],[190,155,190,45,'Leader as a worker|parallel_leader_participation',0],
+[430,70,260,95,'Shared state in dynamic shared memory|parallel scan: next block to hand out|tuple queues: workers send rows to the leader|shared hash table (parallel hash)',1]],
+[[140,105,190,40],[140,115,190,108],[140,130,190,175],[380,38,430,95],[380,108,430,115],[380,178,430,140]]);
+const jitSvg=dg(700,150,[
+[10,50,120,50,'Planner|estimates cost',0],[170,50,150,50,'Total cost above|jit_above_cost ?',2],[360,15,150,45,'No: interpreted|expression evaluation',0],[360,90,150,45,'Yes: compile with LLVM|(expressions, tuple deforming)',2],[550,90,140,45,'Cost above the|inline/optimize limits?',0]],
+[[130,75,170,75],[320,65,360,38],[320,85,360,112],[510,112,550,112]]);
+
+N('pg:3:7',[
+{p:"A single PostgreSQL backend normally uses **one CPU core** for one query. **Parallel query** lets the backend call in helper processes so that a large read-only query can use several cores. The same machinery, the **background worker** framework, also runs logical replication workers and the jobs of extensions. A third feature, **JIT compilation**, speeds up CPU-heavy expressions in big analytic queries. All three are controlled by a handful of settings that every DBA should be able to explain, because they decide how many extra processes the server may start, and so they interact with memory and with `max_connections`."},
+{h:"How a parallel query works"},
+{p:"When the planner decides that a parallel plan is cheaper, it adds a **Gather** (or **Gather Merge**, which keeps sorted order) node on top of a *partial plan*. At execution time the backend that runs the query becomes the **leader**. It requests worker processes from the postmaster, the workers attach to a **dynamic shared memory** segment, and each worker runs its own copy of the partial plan on a share of the data. Workers send their rows to the leader through shared queues, and the leader combines them (and normally also works on the plan itself)."},
+{svg:parSvg},
+{flow:["Planner finds a parallel plan cheaper","Executor reaches the Gather node","Leader asks for workers (limited by the pools)","Workers attach to shared memory and run the partial plan","Workers send rows to the leader","Gather ends and workers exit"]},
+{t:[["Term","Meaning"],["**Leader**","The client backend that owns the query and the transaction. Also executes part of the plan unless `parallel_leader_participation = off`"],["**Parallel worker**","A short-lived background process that exists only for one query. It shows in `pg_stat_activity` as `parallel worker` with `leader_pid` set"],["**Partial plan**","The part of the plan below `Gather` that every participant runs on a different slice of the data"],["**Gather / Gather Merge**","Plan nodes that collect rows from workers. `Gather Merge` preserves the sort order"],["**Parallel-aware node**","A node (for example `Parallel Seq Scan`) that coordinates through shared memory so that participants do not process the same rows twice"]]},
+{h:"What can be parallel"},
+{t:[["Plan node or command","Parallel form","Notes"],["Sequential scan","`Parallel Seq Scan`","Workers take blocks in turn from a shared counter"],["Index scan, index-only scan","`Parallel Index Scan`, `Parallel Index Only Scan`","Currently only B-tree indexes"],["Bitmap heap scan","`Parallel Bitmap Heap Scan`","One process builds the bitmap; the others read heap pages"],["Joins","Nested loop, merge join, `Parallel Hash Join`","With a parallel hash join the build side is shared by all workers"],["Aggregation","`Partial Aggregate` below `Gather`, `Finalize Aggregate` above","Each worker aggregates its share; the leader combines the results"],["Append","`Parallel Append`","Used for partitioned tables and `UNION ALL`: workers spread over the partitions"],["`CREATE INDEX`","Parallel B-tree build (11+); BRIN (17+); GIN (18)","Uses `max_parallel_maintenance_workers`"],["`VACUUM`","Parallel index vacuuming and cleanup (13+), option `PARALLEL n`","Not used by autovacuum"],["`CREATE TABLE AS`, `CREATE MATERIALIZED VIEW`, `REFRESH MATERIALIZED VIEW`","The `SELECT` part can be parallel","The write itself is not"]]},
+{h:"What prevents a parallel plan"},
+{t:[["Blocker","Detail"],["The statement writes data","`INSERT`, `UPDATE`, `DELETE`, `MERGE` run serially"],["`max_parallel_workers_per_gather = 0`","Parallel plans are switched off"],["The table or result is too small","Below `min_parallel_table_scan_size` (8MB) or `min_parallel_index_scan_size` (512kB) a parallel scan is not considered, and cost parameters add a start-up penalty"],["A function that is not **parallel safe**","`PARALLEL UNSAFE` functions (the default for user-defined functions) force a serial plan; `PARALLEL RESTRICTED` ones can run only in the leader"],["Row locking","`SELECT ... FOR UPDATE / SHARE`"],["Cursors and `PL/pgSQL` `FOR` loops over a query","The query cannot run in parallel when it may be suspended"],["Already inside a parallel worker","A worker cannot start workers"],["Not enough free workers at run time","The query still runs, with fewer workers (see below)"]]},
+{code:`-- mark a function as safe if it has no side effects and touches no temp tables or sequences
+CREATE FUNCTION add_tax(numeric) RETURNS numeric
+  LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$ SELECT $1 * 1.18 $$;
+
+SELECT proname, proparallel FROM pg_proc WHERE proname = 'add_tax';   -- s = safe, r = restricted, u = unsafe`},
+{h:"The worker budget"},
+{p:"Parallel workers come from a **pool**. The limits are nested, so a query asks for workers and gets *at most* what every limit allows. If the pool is empty the query does not fail; it runs with fewer workers, or none."},
+{t:[["Parameter","Default","Meaning","Context"],["`max_worker_processes`","8","Total background worker slots for the server (parallel, replication and extension workers)","Restart"],["`max_parallel_workers`","8","How many of those slots parallel queries and parallel maintenance may use together","User, reload"],["`max_parallel_workers_per_gather`","2","Workers one `Gather` node may use (a query with several `Gather` nodes can use more in total)","User, reload"],["`max_parallel_maintenance_workers`","2","Workers for `CREATE INDEX` and `VACUUM`","User, reload"],["`max_logical_replication_workers`","4","Slots for replication workers, taken from `max_worker_processes`","Restart"],["`parallel_leader_participation`","on","Whether the leader also runs the partial plan","User"]]},
+{svg:dg(700,150,[[10,20,680,110,'max_worker_processes = 8 (all background worker slots, restart to change)',1],[30,50,300,60,'max_parallel_workers = 8|used by parallel queries and maintenance|per Gather: max_parallel_workers_per_gather = 2',2],[350,50,150,60,'logical replication|workers (apply, sync)',0],[515,50,160,60,'extension workers|pg_cron, autoprewarm, ...',0]],[])},
+{h:"How the planner decides"},
+{p:"The planner compares the cost of the best serial plan with the best parallel plan. A parallel plan pays two start-up charges, and wins only when the parallel saving is larger. The number of workers is chosen from the **size of the table**: one worker for a table of at least `min_parallel_table_scan_size`, and one more each time the size triples, up to `max_parallel_workers_per_gather`."},
+{t:[["Parameter","Default","Meaning"],["`parallel_setup_cost`","1000","Cost of starting workers and setting up shared memory"],["`parallel_tuple_cost`","0.1","Cost of sending one row from a worker to the leader"],["`min_parallel_table_scan_size`","8MB","Smallest table for which a parallel scan is considered"],["`min_parallel_index_scan_size`","512kB","Same for indexes"],["`enable_parallel_append`, `enable_parallel_hash`","on","Allow those plan types"],["`debug_parallel_query` (16+)","off","Forces parallel plans for testing, to find parallel-unsafe code (earlier name `force_parallel_mode`)"]]},
+{p:"Because workers send *rows* to the leader, parallel query helps most when the workers **reduce the data** first, through filters and aggregation. A query that must return millions of rows to the client gains little."},
+{h:"Reading a parallel plan"},
+{code:`SET max_parallel_workers_per_gather = 4;
+EXPLAIN (ANALYZE, VERBOSE OFF, COSTS OFF)
+SELECT status, count(*) FROM orders GROUP BY status;
+
+ Finalize GroupAggregate (actual time=612.4..612.5 rows=5 loops=1)
+   Group Key: status
+   ->  Gather Merge (actual time=611.9..620.3 rows=20 loops=1)
+         Workers Planned: 4
+         Workers Launched: 3
+         ->  Partial GroupAggregate (actual time=583.0..583.1 rows=5 loops=4)
+               Group Key: status
+               ->  Sort (actual time=556.2..569.8 rows=1000000 loops=4)
+                     Sort Key: status
+                     ->  Parallel Seq Scan on orders (actual time=0.03..201.7 rows=1000000 loops=4)
+
+-- loops=4 means three workers plus the leader. Numbers are illustrative.`},
+{ul:["**Workers Planned** is what the planner wanted; **Workers Launched** is what it got at run time. A gap means the pools were exhausted by other queries. Repeated gaps mean `max_parallel_workers` or `max_worker_processes` is too small for the load.","In `EXPLAIN ANALYZE` the row counts of nodes below `Gather` are **per worker, averaged**; multiply by `loops` to get the total.","Look for `Parallel Seq Scan` where an index would be far better: a parallel plan is not always a good plan."]},
+{code:`-- parallel workers currently running and their leaders
+SELECT pid, leader_pid, backend_type, state, left(query, 40) AS query
+FROM pg_stat_activity WHERE backend_type = 'parallel worker';
+
+-- PostgreSQL 18: how often did queries get fewer workers than planned?
+SELECT datname, parallel_workers_to_launch, parallel_workers_launched FROM pg_stat_database;`},
+{h:"Background workers"},
+{p:"A **background worker** is a process registered with the postmaster through a documented C interface. The server itself uses it for parallel workers and logical replication, and extensions use it for their own tasks. A worker can be started at server start (when the extension is in `shared_preload_libraries`) or **dynamically** later, and it can connect to a database and run SQL."},
+{t:[["Example","Type","Where its slot comes from"],["Parallel query and parallel `CREATE INDEX` workers","Dynamic, short-lived","`max_worker_processes`, limited by `max_parallel_workers`"],["Logical replication apply and table-sync workers","Dynamic, long-lived","`max_worker_processes`, limited by `max_logical_replication_workers`"],["`pg_cron` scheduler (and job workers if configured)","Registered at start","`max_worker_processes`"],["`pg_prewarm` autoprewarm leader","Registered at start","`max_worker_processes`"]]},
+{ul:["If no slot is free, starting a worker fails with *out of background worker slots* and the hint to raise `max_worker_processes`. A restart is needed to change it.","On a **standby**, `max_worker_processes` (and `max_connections`, `max_prepared_transactions`, `max_locks_per_transaction`) must be **at least as large as on the primary**, or the standby refuses to start recovery.","Count the slots you need when you add extensions: the parallel pool plus replication plus every extension worker."]},
+{h:"JIT compilation"},
+{p:"**JIT** (just-in-time compilation) turns parts of a query, mainly **expression evaluation** and **tuple deforming** (unpacking the columns of a row), into native machine code with the LLVM library at run time. Compiling takes time, so JIT is used only when the planner expects the query to be expensive enough for the saving to pay for the compile cost."},
+{svg:jitSvg},
+{t:[["Parameter","Default","Meaning"],["`jit`","on (12+)","Master switch. JIT works only if PostgreSQL was built with LLVM support"],["`jit_above_cost`","100000","Total plan cost above which JIT compilation is used at all"],["`jit_inline_above_cost`","500000","Cost above which small functions and operators are inlined"],["`jit_optimize_above_cost`","500000","Cost above which expensive LLVM optimisation is applied"],["`jit_expressions`, `jit_tuple_deforming`","on","Which parts may be compiled"],["`jit_provider`","`llvmjit`","The shared library that does the work"]]},
+{code:`SELECT pg_jit_available();                 -- is this build and installation able to JIT?
+SHOW jit;  SHOW jit_above_cost;
+
+EXPLAIN (ANALYZE) SELECT sum(amount * 1.18) FROM payments WHERE amount > 10;
+ ...
+ JIT:
+   Functions: 8
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 1.2 ms (Deform 0.3 ms), Inlining 0.0 ms, Optimization 0.6 ms, Emission 9.8 ms, Total 11.6 ms`},
+{ul:["On Red Hat packages JIT is a separate package (`postgresql18-llvmjit`); on Debian it is `postgresql-18-jit` or part of the server package depending on the release. Without it `pg_jit_available()` returns `false` and `jit = on` does nothing.","JIT helps **long analytic queries** that scan and compute over many rows. It can **hurt short OLTP queries** whose estimated cost is high by mistake: the compile time (often tens of milliseconds) exceeds the run time. If you see a large `JIT: Total` in plans of fast queries, raise `jit_above_cost` or set `jit = off` for that role or database.","The cost of JIT is visible only in `EXPLAIN ANALYZE`, in `pg_stat_statements` (`jit_*` columns) and in the log duration, so check them before blaming the plan."]},
+{h:"Tuning by workload"},
+{t:[["Workload","Parallel query","JIT","Notes"],["OLTP, many short queries","Keep `max_parallel_workers_per_gather` low (0 to 2) so a few reports cannot take all cores","Usually `off` or a high `jit_above_cost`","Throughput comes from many sessions, not from parallelism inside one"],["Reporting and analytics, few sessions","Raise `max_parallel_workers_per_gather` (4 to 8) and `max_parallel_workers`, plus `max_worker_processes`","`on`","Watch memory: each worker may use `work_mem` per step"],["Mixed","Set the limits per role: `ALTER ROLE reporting SET max_parallel_workers_per_gather = 6;`","Per role or database","Keep the default for the application role"],["Index builds and maintenance windows","Raise `max_parallel_maintenance_workers` for the session that builds indexes","—","Also raise `maintenance_work_mem`"]]},
+{h:"Troubleshooting"},
+{t:[["Symptom","Likely cause","Action"],["Query never uses parallel workers","Table below `min_parallel_table_scan_size`; unsafe function; `max_parallel_workers_per_gather = 0`; query writes data","Check the plan; check `proparallel` of functions; `SET debug_parallel_query = on` to see whether the plan is possible at all"],["`Workers Launched` lower than `Planned`","Worker pools exhausted","Raise `max_parallel_workers` and `max_worker_processes` (restart), or reduce concurrency"],["Parallel plan slower than serial","Start-up cost, many rows returned to the leader, I/O bound query, too many workers for the disks","Lower the worker count for that role; add an index; check `parallel_tuple_cost`"],["CPU saturated and other sessions slow","Several parallel queries together exceed the cores","Reduce `max_parallel_workers_per_gather`; set per role"],["*out of background worker slots*","`max_worker_processes` too small","Raise it (restart); count extension workers"],["Standby fails to start after a parameter change on the primary","Standby has a lower `max_worker_processes` than the primary","Raise it on the standby and restart"],["Fast queries show JIT time in `EXPLAIN ANALYZE`","`jit_above_cost` is too low for these plans","Raise it, or disable JIT for the role"]]}
+],[["Parallel Query",D+"parallel-query.html"],["How Parallel Query Works",D+"how-parallel-query-works.html"],["When Can Parallel Query Be Used?",D+"when-can-parallel-query-be-used.html"],["Parallel Safety",D+"parallel-safety.html"],["Background Worker Processes",D+"bgworker.html"],["Just-in-Time Compilation (JIT)",D+"jit.html"],["When to JIT?",D+"jit-decision.html"],["Asynchronous Behavior (worker settings)",D+"runtime-config-resource.html#RUNTIME-CONFIG-RESOURCE-ASYNC-BEHAVIOR"]]);
+
+/* ================================================================ NEW pg:3:8  MVCC Internals */
+const pageSvg=dg(700,230,[
+[10,10,680,210,'One 8 KB heap page (a block of a table file)',1],
+[30,40,640,40,'PageHeaderData, 24 bytes: pd_lsn, pd_checksum, pd_flags, pd_lower, pd_upper, pd_special, pd_pagesize_version, pd_prune_xid',0],
+[30,95,200,55,'Line pointer array|4 bytes each, grows to the right|(item 1, item 2, ...)',2],[250,95,170,55,'Free space|between pd_lower|and pd_upper',0],[440,95,230,55,'Tuples (row versions)|grow from the end of the page|toward the free space',2],
+[30,165,640,40,'Each tuple: 23-byte header (t_xmin, t_xmax, t_cid, t_ctid, t_infomask2, t_infomask, t_hoff), null bitmap, column data',0]],
+[[230,122,250,122],[440,122,420,122]]);
+const verSvg=dg(700,190,[
+[10,20,200,60,'Version 1 (old)|t_xmin = 740   t_xmax = 745|t_ctid = (0,2)',0],[250,20,200,60,'Version 2 (new)|t_xmin = 745   t_xmax = 0|t_ctid = (0,2)',2],
+[10,110,200,60,'Snapshot taken before 745|sees version 1',0],[250,110,200,60,'Snapshot taken after 745 commits|sees version 2',2],[490,20,200,150,'Cleanup|VACUUM (or page pruning) removes|version 1 once no snapshot|can still see it',1]],
+[[210,50,250,50],[110,80,110,110],[350,80,350,110]]);
+
+N('pg:3:8',[
+{p:"**MVCC** (*multi-version concurrency control*) is the mechanism that lets PostgreSQL run readers and writers at the same time without making them wait for each other. Instead of changing a row in place, PostgreSQL keeps **several versions of a row** and decides, for each transaction, which version it is allowed to see. Almost everything a DBA does about table growth, `VACUUM`, long transactions, index-only scans, replication conflicts and transaction ID wraparound follows from this one design choice. This lecture shows the mechanism at the level of the actual bytes on a page, so that those topics become predictable instead of mysterious."},
+{h:"The principle in one paragraph"},
+{p:"An `UPDATE` does not overwrite a row. It marks the **old version** as ended by the updating transaction and writes a **new version** as a separate row in the table. A `DELETE` only marks the version as ended. Every version records *which transaction created it* and *which transaction ended it*. When a transaction starts a statement, it takes a **snapshot**, a description of which transactions had finished at that moment, and a version is visible only if its creator was committed in the snapshot and its ender was not. Nothing is ever undone by copying data back, which makes `ROLLBACK` instant. The price is that old versions pile up until `VACUUM` removes them."},
+{svg:verSvg},
+{h:"How PostgreSQL compares with undo-based databases"},
+{t:[["Question","PostgreSQL","Undo-based engines (for example Oracle, InnoDB)"],["Where do old row versions live?","In the **table itself**, next to the current ones","In a separate **undo (rollback) area**"],["What does an `UPDATE` cost?","Writes a full new row version, and a new index entry unless the update is HOT","Changes the row in place and writes undo"],["What does `ROLLBACK` cost?","Almost nothing: the transaction is marked aborted","Must apply the undo to restore the data"],["How is old data cleaned?","`VACUUM` and page pruning","Purge of the undo area"],["What goes wrong with a long transaction?","Table and index **bloat**, because dead versions cannot be removed","Undo area grows or *snapshot too old* errors"],["Typical monitoring","Dead tuples, bloat, oldest `xmin`, wraparound age","Undo usage"]]},
+{h:"Transaction IDs"},
+{p:"Every transaction that **changes** data receives a **transaction ID** (`xid`, 32 bits) from a global counter when it first writes. Read-only transactions get only a virtual ID that costs nothing. `xid`s are compared in a circle: of any two IDs, each one is *older* than the roughly two billion IDs after it and *newer* than the roughly two billion before it. Three IDs are reserved: 0 (invalid), 1 (bootstrap) and 2 (frozen)."},
+{t:[["Fact","Detail"],["Size","32 bits, so about 4.29 billion values, and the counter **wraps around**"],["Visible to you","`SELECT pg_current_xact_id();` (13+; older name `txid_current()`), and the system column `xmin` of any row"],["Status record","The **commit log** in `pg_xact` stores two bits per transaction: in progress, committed or aborted (cached as the *transaction* SLRU, see the Memory lecture)"],["Subtransactions","Savepoints and exception blocks get their own `xid`; their parent is stored in `pg_subtrans`"],["The wraparound problem","If a very old row version kept its `xid` for two billion transactions, it would suddenly look as if it were *in the future* and disappear. **Freezing** prevents this (see below)"]]},
+{h:"Anatomy of a heap page"},
+{p:"Tables are stored in files of 8 KB **pages** (the *heap*). Within a page, the layout has three parts that grow toward each other: a small **header**, an array of **line pointers** (also called item identifiers) at the start, and the **tuples** themselves packed from the end. A row is addressed by its **`ctid`**, the pair *(block number, line pointer number)*. Indexes store `ctid`s, never memory addresses, so a tuple can be moved inside its page without changing any index."},
+{svg:pageSvg},
+{t:[["Part","Size","Content"],["Page header","24 bytes","`pd_lsn` (LSN of the last WAL record that changed the page), `pd_checksum`, `pd_flags`, `pd_lower`/`pd_upper` (the free-space boundaries), `pd_special`, `pd_prune_xid` (hint for pruning)"],["Line pointer","4 bytes each","An offset, a length and a state: `LP_NORMAL` (points to a tuple), `LP_REDIRECT` (HOT chain head), `LP_DEAD` (dead, can be reclaimed once indexes are cleaned), `LP_UNUSED` (free)"],["Tuple header","23 bytes","`t_xmin`, `t_xmax`, `t_cid`, `t_ctid`, `t_infomask2` (attribute count, HOT flags), `t_infomask` (status and hint bits), `t_hoff` (offset to data), then an optional null bitmap"],["Tuple data","Variable","Column values; values over about 2 KB are compressed or moved to TOAST (Section 05)"]]},
+{h:"The fields that decide visibility"},
+{t:[["Field","Meaning","Example"],["`xmin`","`xid` of the transaction that **created** this version (the `INSERT` or the new version from an `UPDATE`)","`745`"],["`xmax`","`xid` of the transaction that **ended** this version (`DELETE`, `UPDATE`) or locked it (`SELECT ... FOR UPDATE`). `0` if nobody","`0`"],["`cmin`, `cmax`","Command number inside the transaction, so that a statement does not see its own half-finished changes","`0`"],["`ctid` (`t_ctid`)","Location of this version, or of the **next** version if the row was updated","`(0,2)`"]]},
+{code:`CREATE TABLE acct (id int PRIMARY KEY, bal int);
+INSERT INTO acct VALUES (1, 100);
+SELECT xmin, xmax, ctid, * FROM acct;
+
+ xmin | xmax | ctid  | id | bal
+------+------+-------+----+-----
+  745 |    0 | (0,1) |  1 | 100
+
+UPDATE acct SET bal = 150 WHERE id = 1;
+SELECT xmin, xmax, ctid, * FROM acct;
+
+ xmin | xmax | ctid  | id | bal
+------+------+-------+----+-----
+  746 |    0 | (0,2) |  1 | 150      -- a NEW version at line pointer 2; the old one is still on the page`},
+{h:"Looking at the real page with pageinspect"},
+{p:"The `pageinspect` extension (contrib) shows the raw page. It needs superuser (or an equivalent grant) and is meant for learning and diagnosis only."},
+{code:`CREATE EXTENSION pageinspect;
+
+SELECT lp, lp_off, lp_flags, lp_len, t_xmin, t_xmax, t_ctid,
+       to_hex(t_infomask) AS infomask
+FROM heap_page_items(get_raw_page('acct', 0));
+
+ lp | lp_off | lp_flags | lp_len | t_xmin | t_xmax | t_ctid | infomask
+----+--------+----------+--------+--------+--------+--------+----------
+  1 |   8160 |        1 |     32 |    745 |    746 | (0,2)  | 502     -- old version: ended by 746
+  2 |   8128 |        1 |     32 |    746 |      0 | (0,2)  | 902     -- current version
+-- (values are illustrative; yours will differ)
+
+SELECT * FROM page_header(get_raw_page('acct', 0));      -- lsn, lower, upper, special`},
+{p:"The old version (line pointer 1) still holds the old balance, its `t_xmax` is the transaction that updated it, and its `t_ctid` points to the new version. `VACUUM` will turn line pointer 1 into free space once no snapshot can see it."},
+{h:"Visibility: which version does a snapshot see?"},
+{p:"A **snapshot** is a small record with three parts: `xmin` (every transaction below it has finished), `xmax` (every transaction at or above it had not started), and the list of transactions **in progress** in between. It is taken at the start of each statement in `READ COMMITTED` and at the first statement of the transaction in `REPEATABLE READ` and `SERIALIZABLE`."},
+{code:`SELECT pg_current_snapshot();            -- e.g. 740:748:742,745    (xmin:xmax:in-progress list)
+SELECT pg_snapshot_xmin(pg_current_snapshot());`},
+{p:"In simplified form, a version is visible to a snapshot when **both** conditions hold:"},
+{t:[["Test","Passes when"],["The creator `xmin`","Committed, and finished before the snapshot (or it is the current transaction, earlier command)"],["The ender `xmax`","Is `0`, or aborted, or still in progress or started after the snapshot (or is the current transaction, later command)"]]},
+{p:"To avoid asking `pg_xact` about every row on every read, the first backend that checks a tuple and learns that its creator or ender has committed or aborted writes the answer into the tuple as a **hint bit** in `t_infomask`: `HEAP_XMIN_COMMITTED`, `HEAP_XMIN_INVALID`, `HEAP_XMAX_COMMITTED`, `HEAP_XMAX_INVALID`. After that, nobody needs the commit log for that tuple."},
+{ul:["A plain `SELECT` can therefore **dirty pages**: the first read after a bulk load sets hint bits and the page must be written back. This is why the first scan of a freshly loaded table is slower, and why `VACUUM` after a load helps.","With data checksums enabled (the default in 18) or `wal_log_hints = on`, setting a hint bit may also write a **full-page image** to WAL the first time after a checkpoint.","Hint bits on a standby come from the primary's WAL, so a standby does not produce the extra writes."]},
+{h:"Isolation levels as snapshot rules"},
+{t:[["Level","Snapshot taken","What you see","Notes"],["`READ COMMITTED` (default)","At the start of **each statement**","Data committed before the statement began, plus your own changes","Two statements in one transaction can see different data. An `UPDATE` that meets a row changed by another transaction waits and then re-checks the row"],["`REPEATABLE READ`","At the **first statement** of the transaction","A frozen picture for the whole transaction","Cannot see phantoms (stronger than the SQL standard requires). Concurrent update of the same row fails with *could not serialize access*, and the application must retry"],["`SERIALIZABLE`","Like `REPEATABLE READ`","Same, plus detection of dangerous patterns (SSI)","May raise *serialization failure* even without a direct conflict; applications must retry"],["`READ UNCOMMITTED`","—","Behaves exactly like `READ COMMITTED`","PostgreSQL never shows uncommitted data"]]},
+{code:`-- session A                                   -- session B
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SELECT bal FROM acct WHERE id = 1;   -- 150
+                                               UPDATE acct SET bal = 200 WHERE id = 1;  -- commits
+SELECT bal FROM acct WHERE id = 1;   -- still 150 (same snapshot)
+UPDATE acct SET bal = bal + 1 WHERE id = 1;
+-- ERROR:  could not serialize access due to concurrent update
+ROLLBACK;`},
+{h:"HOT updates and page pruning"},
+{p:"Every new row version normally needs a **new entry in every index** of the table, which is expensive. A **HOT** (*heap-only tuple*) update avoids this when two conditions hold: no indexed column changed, and the new version fits in the **same page**. The index entry keeps pointing at the original line pointer, which is turned into a *redirect* to the new version. Old versions of a HOT chain can be removed **without VACUUM**: any backend that visits a nearly full page performs **page pruning** (hint `pd_prune_xid`), reclaiming the space of dead versions in that page."},
+{t:[["Topic","Detail"],["Make HOT likely","Lower `fillfactor` on frequently updated tables, for example `ALTER TABLE acct SET (fillfactor = 80)`, so that pages keep free space"],["Do not index frequently updated columns","An update that touches an indexed column can never be HOT"],["Check","`SELECT relname, n_tup_upd, n_tup_hot_upd FROM pg_stat_user_tables ORDER BY n_tup_upd DESC;`"],["What pruning does not do","It does not remove index entries. Only `VACUUM` removes dead index entries and fully reclaims `LP_DEAD` pointers"]]},
+{h:"What VACUUM does with all this"},
+{flow:["Compute the oldest snapshot horizon in the cluster","Scan pages that have dead versions (the visibility map skips the rest)","Collect the `ctid`s of dead versions","Remove the matching entries from every index","Mark the line pointers unused, record free space","Update the visibility map and statistics"]},
+{t:[["Side structure","File suffix","Purpose"],["**Free space map**","`_fsm`","Where in the table a new row version can fit"],["**Visibility map**","`_vm`","Two bits per heap page: *all-visible* (every tuple is visible to all, so `VACUUM` can skip it and index-only scans need not visit the heap) and *all-frozen*"],["Main fork","(none)","The table data itself"],["Init fork","`_init`","Template for unlogged tables"]]},
+{h:"What holds back cleanup: the xmin horizon"},
+{p:"`VACUUM` may remove a dead version only if **no existing or future snapshot can still see it**. The oldest `xmin` that anything in the cluster still needs is the **horizon**. Whatever holds the horizon back makes dead rows accumulate in *every* table, not only the one it touches."},
+{t:[["What holds the horizon","How to find it","Remedy"],["A long-running query or open transaction","`pg_stat_activity.backend_xmin`, `xact_start`","End or fix the session; set `idle_in_transaction_session_timeout`"],["`idle in transaction` sessions","`state` column","Fix the application; use the timeout"],["Prepared transactions left behind (two-phase commit)","`pg_prepared_xacts`","`COMMIT PREPARED` or `ROLLBACK PREPARED`"],["A replication slot that is not advancing","`pg_replication_slots.xmin`, `catalog_xmin`","Fix the consumer or drop the slot (Section 10)"],["`hot_standby_feedback` with a long query on a standby","`pg_stat_replication.backend_xmin`","Shorter queries or turn the feedback off (trade-off in Section 10)"]]},
+{code:`-- oldest snapshots in the cluster
+SELECT pid, usename, state, backend_xmin, age(backend_xmin) AS xmin_age,
+       now() - xact_start AS xact_age, left(query, 40) AS query
+FROM pg_stat_activity WHERE backend_xmin IS NOT NULL ORDER BY age(backend_xmin) DESC LIMIT 5;
+
+SELECT slot_name, active, xmin, catalog_xmin, age(xmin) AS xmin_age FROM pg_replication_slots;
+SELECT gid, prepared, owner FROM pg_prepared_xacts;
+
+-- dead versions waiting for cleanup
+SELECT relname, n_live_tup, n_dead_tup, last_autovacuum
+FROM pg_stat_user_tables ORDER BY n_dead_tup DESC LIMIT 10;`},
+{h:"Freezing and transaction ID wraparound"},
+{p:"Since `xid`s are 32 bits, a row version that is never touched would, after about two billion more transactions, appear to belong to the future. To prevent it, `VACUUM` **freezes** old versions: it sets a *frozen* flag in the tuple header (the `xid` is then ignored and the version counts as older than everything). A table's `relfrozenxid` records that all versions older than it are frozen."},
+{t:[["Parameter","Default","Role"],["`vacuum_freeze_min_age`","50 million","Versions older than this may be frozen when `VACUUM` visits their page"],["`vacuum_freeze_table_age`","150 million","`VACUUM` scans the whole table (not only pages not yet frozen) when `relfrozenxid` is this old"],["`autovacuum_freeze_max_age`","200 million","Autovacuum starts an anti-wraparound `VACUUM` even if autovacuum is off. Needs a restart to change"],["`vacuum_failsafe_age`","1.6 billion","`VACUUM` abandons nice behaviour (cost limits, index cleanup) to finish quickly"]]},
+{code:`-- how close is each database to the limit? (200 million is where autovacuum forces action)
+SELECT datname, age(datfrozenxid) AS xid_age FROM pg_database ORDER BY 2 DESC;
+
+-- and the tables
+SELECT c.oid::regclass AS tbl, age(c.relfrozenxid) AS xid_age
+FROM pg_class c WHERE c.relkind IN ('r','m','t') ORDER BY 2 DESC LIMIT 10;`},
+{note:"Monitor `age(datfrozenxid)` on every server. If it ever approaches two billion, PostgreSQL stops accepting new transaction IDs to protect the data and the cluster needs urgent, careful `VACUUM`. Reaching that point is the result of long-running autovacuum failures that went unnoticed, so alert at a much lower value, for example 500 million."},
+{h:"Row locks and multixacts"},
+{p:"Row-level locks (`SELECT ... FOR UPDATE`, `FOR SHARE`, foreign-key checks) are **stored in the tuple**, not in a lock table: the locking transaction's `xid` is written into `t_xmax` with a lock-only flag in `t_infomask`. This lets millions of rows be locked without using any shared memory, but it means that **locking a row dirties its page**. When several transactions hold a shared lock on the same row, `t_xmax` holds a **multixact ID** that refers to the group (stored in `pg_multixact`), which needs its own freezing."},
+{h:"Putting it together: a checklist for DBAs"},
+{t:[["Symptom","What MVCC says","First checks"],["Table keeps growing although the data volume is stable","Dead versions are not being removed","`n_dead_tup`, `last_autovacuum`, the xmin horizon table above"],["Update-heavy table slow after months","Bloat, few HOT updates","`n_tup_hot_upd`, `fillfactor`, `pgstattuple`, `VACUUM` settings (Section 05)"],["`SELECT` after a bulk load is slow and writes","Hint bits being set","Run `VACUUM` after loading; consider `COPY ... FREEZE` for static data"],["Index-only scan still reads the heap","Visibility map bits not set","`VACUUM`; check `heap_fetches` in `EXPLAIN ANALYZE`"],["Standby queries cancelled with *conflict with recovery*","Replay must remove versions that a standby snapshot still needs","`max_standby_streaming_delay`, `hot_standby_feedback` (Section 10)"],["*could not serialize access due to concurrent update*","Expected at `REPEATABLE READ` and `SERIALIZABLE`","Application must retry the transaction"],["Warning about wraparound in the log","`age(datfrozenxid)` is high","Find what blocks vacuum; run `VACUUM (FREEZE, VERBOSE)` on the oldest tables"]]}
+],[["Concurrency Control (MVCC)",D+"mvcc.html"],["Introduction to MVCC",D+"mvcc-intro.html"],["Transaction Isolation",D+"transaction-iso.html"],["Database Page Layout",D+"storage-page-layout.html"],["Routine Vacuuming",D+"routine-vacuuming.html"],["Visibility Map and Free Space Map",D+"storage-vm.html"],["pageinspect",D+"pageinspect.html"],["Heap-Only Tuples (HOT)",D+"storage-hot.html"],["System Columns",D+"ddl-system-columns.html"]]);
+
+/* ================================================================ BACK-FILL into earlier lectures */
+X('pg:0:1',[
+{h:"MVCC in depth (Section 03)"},
+{p:"This lecture introduces MVCC in one picture. The *MVCC Internals* lecture in Section 3 opens the heap page itself: tuple headers, `xmin` and `xmax`, snapshots, hint bits, HOT updates and the horizon that decides when `VACUUM` may clean up. Read it before the sections on table storage and replication, because bloat, long transactions and standby query conflicts all come from the design described here."}
+]);
+X('pg:2:2',[
+{h:"Shutdown modes are signals to the postmaster (Section 03)"},
+{t:[["Mode","`pg_ctl` option","Signal","Sessions","Shutdown checkpoint","Next start"],["Smart","`-m smart`","`SIGTERM`","Waits until all clients disconnect; new connections refused","Yes","Clean"],["Fast","`-m fast`","`SIGINT`","Active transactions rolled back, clients disconnected","Yes","Clean"],["Immediate","`-m immediate`","`SIGQUIT`","Stopped at once","**No**","Crash recovery from WAL"]]},
+{p:"The *Backend and Postmaster* lecture explains what the postmaster does with each signal and what happens when a child process dies, and the *Background Process* lecture explains the checkpoint that a clean shutdown performs. Never use `kill -9` on the postmaster: use `immediate` if you must stop at once."}
+]);
+X('pg:3:4',[
+{h:"Hint bits, checksums and WAL (Section 03)"},
+{p:"Setting a **hint bit** on a tuple is a change to a data page that is normally *not* WAL-logged, because the information can always be recomputed from the commit log. When data checksums or `wal_log_hints` are on, a hint-bit change that makes a clean page dirty for the first time after a checkpoint writes a full-page image to WAL, so that a torn page cannot be mistaken for corruption. The *MVCC Internals* lecture explains hint bits, and the *Background Process* lecture shows why WAL volume jumps just after each checkpoint (full-page writes)."}
+]);
+X('pg:3:5',[
+{h:"Where the row versions come from (Section 03)"},
+{p:"In the write path above, step *create new row version* is MVCC at work: the old tuple's `xmax` is set and a new tuple is placed in the page, possibly as a HOT update. The *MVCC Internals* lecture shows these bytes with `pageinspect`, and the *Parallel Query, Background Workers and JIT* lecture shows how the executor can spread the read path over several processes."}
+]);
+
+/* ---------- register the 2 new lectures with the course outline ---------- */
+window.EXTRA_LECTURES=window.EXTRA_LECTURES||{};
+window.EXTRA_LECTURES[3]=(window.EXTRA_LECTURES[3]||[]).concat([
+['Parallel Query, Background Workers and JIT','0:00','How parallel plans work (Gather, workers, partial plans), the worker budget and its settings, parallel safety, background worker slots, JIT compilation and tuning by workload.'],
+['MVCC Internals: Tuples, Snapshots and Visibility','0:00','Row versions on the heap page, xmin/xmax and hint bits, snapshots and isolation levels, HOT updates and pruning, visibility and free-space maps, the xmin horizon, freezing and wraparound.']]);
+})();
