@@ -12,7 +12,7 @@ docs/                    <- GitHub Pages root
   rs-s01.js ... rs-s14.js  Redshift lessons, one file per section, lazy-loaded on first open
   rs-q01.js ... rs-q14.js  Redshift quizzes (window.QUIZZES['rs:<section>']), one file per section, lazy-loaded with the lessons
                          (key = rs:<section>:<lecture>; add new files to ASSETS in sw.js)
-  docker-common.js, docker-s01.js ... docker-s05.js, docker-q01.js ... docker-q05.js  Docker lessons and quizzes (sections 1-5 so far), lazy-loaded
+  docker-common.js, docker-s01.js ... docker-s12.js, docker-q01.js ... docker-q12.js  Docker lessons and quizzes (core lectures; additional topics later), lazy-loaded
                          (lesson key = docker:<section>:<lecture>, quiz key = docker:<section>)
   manifest.webmanifest   PWA manifest
   sw.js                  service worker (offline cache)
