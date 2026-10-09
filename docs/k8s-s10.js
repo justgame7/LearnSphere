@@ -16,133 +16,176 @@ const enc=K.dg(700,200,[
 
 /* ---------- 0: PSA ---------- */
 L['k8s:9:0']={blocks:[
-{p:'**Pod Security Admission (PSA)** is a built-in admission controller that checks Pods against the **Pod Security Standards** and is configured with **namespace labels**. It replaced PodSecurityPolicy, which was removed in v1.25.'},
+{p:'By default a Pod may ask for almost anything: run as root, mount the host filesystem, use the host network, add powerful Linux capabilities. If a workload like that is compromised, the attacker has the node. **Pod Security Admission (PSA)** is the built-in guardrail: an admission controller that checks every new Pod against three standard **profiles**, configured simply by **labelling a namespace**. It replaced PodSecurityPolicy, which was removed in v1.25.'},
 {svg:psa},
 {h:'The three profiles'},
-{t:[['Profile','Meaning','Examples of what it blocks'],
-['**privileged**','Unrestricted','Nothing. For system namespaces and trusted infrastructure only'],
-['**baseline**','Prevents known privilege escalations; easy to adopt','`privileged: true`, `hostNetwork`, `hostPID`, `hostPath` volumes, dangerous capabilities, host ports'],
-['**restricted**','Current hardening best practice','Everything in baseline plus: must run as non-root, must drop `ALL` capabilities, must set `seccompProfile`, `allowPrivilegeEscalation: false`']]},
+{t:[['Profile','Idea','What it blocks (examples)','Use for'],
+['**privileged**','Unrestricted','Nothing','Trusted system components: CNI, CSI, monitoring agents'],
+['**baseline**','Stops **known privilege escalations**, still easy to adopt','`privileged: true`, `hostNetwork`, `hostPID`, `hostIPC`, `hostPath` volumes, host ports, dangerous capabilities, unsafe `procMount`, unsafe sysctls','Default for most application namespaces'],
+['**restricted**','Current **hardening best practice**','Everything in baseline plus: must run as **non-root**, must set `allowPrivilegeEscalation: false`, must **drop ALL capabilities**, must use a `seccompProfile` (RuntimeDefault or Localhost), restricted volume types','Security-sensitive and new workloads']]},
 {h:'The three modes'},
-{ul:['**enforce**: violating Pods are rejected.','**audit**: allowed, but recorded in the audit log.','**warn**: allowed, but the user gets a warning in the response.']},
-{code:`# Apply to a namespace with labels
-kubectl label ns shop \\
+{t:[['Mode','When a Pod violates the profile'],
+['`enforce`','The Pod is **rejected**'],
+['`audit`','The Pod is **allowed**; the violation is recorded in the audit log'],
+['`warn`','The Pod is **allowed**; the user receives a warning in the response']]},
+{p:'Each mode is set independently by a label on the namespace, and each can use a different profile and Kubernetes version. This is how you roll out gradually: **warn and audit at `restricted`, enforce at `baseline`**.'},
+{code:`kubectl label ns shop \\
   pod-security.kubernetes.io/enforce=baseline \\
   pod-security.kubernetes.io/enforce-version=latest \\
   pod-security.kubernetes.io/warn=restricted \\
   pod-security.kubernetes.io/audit=restricted
 
-# Dry-run first: which existing Pods would violate restricted?
+$ kubectl get ns shop --show-labels
+$ kubectl -n shop run bad --image=nginx --privileged
+Error from server (Forbidden): pods "bad" is forbidden: violates PodSecurity "baseline:latest": privileged (container "bad" must not set securityContext.privileged=true)
+$ kubectl -n shop run ok --image=nginx
+Warning: would violate PodSecurity "restricted:latest": allowPrivilegeEscalation != false (container "ok" must set securityContext.allowPrivilegeEscalation=false), unrestricted capabilities (container "ok" must set securityContext.capabilities.drop=["ALL"]), runAsNonRoot != true, seccompProfile ...
+pod/ok created                                     # allowed by baseline, with a warning against restricted`},
+{h:'Rolling it out safely'},
+{flow:['Set warn and audit to the target profile on a namespace (no impact on users)','Collect warnings and audit events; fix workloads (Section 10 security contexts)','Dry-run the stricter enforce label: kubectl label --dry-run=server --overwrite ns shop pod-security.kubernetes.io/enforce=restricted','Set enforce on that namespace','Repeat per namespace; keep kube-system on privileged']},
+{code:`# What would break if I enforced restricted now? (the server lists existing Pods that violate it)
 kubectl label --dry-run=server --overwrite ns shop pod-security.kubernetes.io/enforce=restricted`},
-{h:'Rollout strategy'},
-{flow:['Set audit and warn to the target profile on a namespace','Review warnings and audit events; fix workloads','Set enforce to the same profile','Repeat per namespace; keep kube-system privileged']},
-{ul:['PSA checks **Pods**. Deployments are accepted, and the failure shows up when the ReplicaSet tries to create Pods (look at ReplicaSet events). Warnings do appear for workload objects too.','Existing Pods are not evicted when you change labels; only new Pods are checked.','You can set cluster-wide defaults and exemptions with an `AdmissionConfiguration` for the API server.','PSA offers three coarse levels. For custom rules use ValidatingAdmissionPolicy or a policy engine (later in this section).']},
-{code:`kubectl -n shop run bad --image=nginx --privileged
-# Error ... violates PodSecurity "baseline:latest": privileged (container "bad" must not set securityContext.privileged=true)`},
-{note:'A reasonable default: `baseline` enforced with `restricted` in warn and audit for all application namespaces, and `restricted` enforced for new, well-behaved workloads.'}],
+{h:'What PSA does and does not cover'},
+{ul:['It checks **Pods** (and the Pod templates inside Deployments, Jobs and so on **for warnings**). A Deployment is accepted, and the failure appears when its ReplicaSet tries to create Pods: look at **ReplicaSet events**.','Existing running Pods are **not** evicted when you change labels; only new Pods are checked.','Namespace-wide defaults and **exemptions** (users, runtime classes, namespaces) are set in the API server `AdmissionConfiguration`.','PSA is deliberately coarse: three levels. For custom rules (allowed registries, required labels) use ValidatingAdmissionPolicy or a policy engine.']},
+{h:'Diagnosing a rejected Deployment'},
+{code:`$ kubectl -n shop get deploy api
+NAME   READY   UP-TO-DATE   AVAILABLE
+api    0/2     0            0
+$ kubectl -n shop describe rs -l app=api | grep -A3 Events
+  Warning  FailedCreate  replicaset-controller  Error creating: pods "api-xxx" is forbidden: violates PodSecurity "restricted:latest": runAsNonRoot != true (container "api" must set securityContext.runAsNonRoot=true)`},
+{t:[['Violation message','Fix in the Pod spec'],
+['`privileged`','Remove `privileged: true`'],
+['`hostNetwork`, `hostPID`, `hostPath volumes`','Remove or move to a privileged namespace if truly required'],
+['`allowPrivilegeEscalation != false`','Set `allowPrivilegeEscalation: false`'],
+['`unrestricted capabilities`','`capabilities: {drop: ["ALL"]}`'],
+['`runAsNonRoot != true`','`runAsNonRoot: true` and a numeric `runAsUser`'],
+['`seccompProfile`','`seccompProfile: {type: RuntimeDefault}`']]},
+{note:'A sensible default: `baseline` enforced and `restricted` in warn and audit for application namespaces; `restricted` enforced for new, well-behaved workloads; `privileged` only for the few system namespaces that need it.'}],
 src:[['Pod Security Admission',SEC+'pod-security-admission/'],['Pod Security Standards',C+'security/pod-security-standards/'],['Enforce Pod Security Standards with Namespace Labels',T+'configure-pod-container/enforce-standards-namespace-labels/']]};
 
 /* ---------- 1: Security contexts ---------- */
 L['k8s:9:1']={blocks:[
-{p:'A **securityContext** sets privilege and access controls on a Pod or an individual container. It is how you make a workload satisfy the `restricted` profile and shrink what an attacker gains from a compromised container.'},
+{p:'A **securityContext** is how a Pod or container declares **which privileges it needs**, and how you strip away the ones it does not. It is the practical half of Pod Security: PSA decides what is allowed, and the security context is what you write so that your workload qualifies. Each setting closes a specific attack path, and understanding the path tells you why it is worth the effort.'},
+{h:'The settings and what each prevents'},
+{t:[['Setting','What it controls','Attack it limits'],
+['`runAsNonRoot: true`, `runAsUser: 10001`','Process UID inside the container','Root in the container can write root-owned files, load tools, and has far more kernel attack surface'],
+['`allowPrivilegeEscalation: false`','Whether a process can gain more privilege than its parent (setuid binaries, `no_new_privs`)','Local privilege escalation inside the container'],
+['`capabilities.drop: ["ALL"]` (add back only what is needed)','Linux capabilities (fine-grained root powers such as `NET_RAW`, `SYS_ADMIN`)','Network sniffing, mounting filesystems, kernel interaction'],
+['`readOnlyRootFilesystem: true`','Root filesystem is read-only','Malware and tools dropped to disk, tampering with binaries'],
+['`seccompProfile: RuntimeDefault`','Which system calls are allowed (runtime default filter)','Kernel exploits through rare system calls'],
+['`privileged: true`','Gives nearly all host powers','**Avoid**: close to root on the node'],
+['`fsGroup`, `supplementalGroups`','Group ownership of volumes','Lets a non-root user write to mounted storage'],
+['`seLinuxOptions`, `appArmorProfile`','Mandatory access control where available','Containers reaching files or resources they should not']]},
+{h:'Pod level versus container level'},
 {code:`apiVersion: v1
 kind: Pod
 metadata: {name: hardened}
 spec:
-  securityContext:                       # Pod level (applies to all containers)
+  securityContext:                       # Pod level: applies to all containers (and volumes)
     runAsNonRoot: true
     runAsUser: 10001
     runAsGroup: 10001
-    fsGroup: 10001                       # group ownership for mounted volumes
+    fsGroup: 10001
     seccompProfile: {type: RuntimeDefault}
   containers:
   - name: app
     image: myapp:2.1
-    securityContext:                     # container level (overrides Pod level)
+    securityContext:                     # container level: overrides the Pod level for this container
       allowPrivilegeEscalation: false
       readOnlyRootFilesystem: true
-      capabilities:
-        drop: ["ALL"]
-        # add: ["NET_BIND_SERVICE"]      # only if truly required
+      capabilities: {drop: ["ALL"]}
     volumeMounts:
-    - {name: tmp, mountPath: /tmp}       # writable scratch because root fs is read-only
+    - {name: tmp, mountPath: /tmp}       # the app needs a writable place: give it a volume
   volumes:
   - name: tmp
     emptyDir: {}`},
-{t:[['Setting','What it prevents'],
-['`runAsNonRoot` / `runAsUser`','Running as UID 0; limits damage from an escape and file access'],
-['`allowPrivilegeEscalation: false`','Processes gaining more privilege than their parent (setuid binaries)'],
-['`capabilities.drop: ["ALL"]`','Linux capabilities such as `NET_RAW` and `SYS_ADMIN`; add back only the ones needed'],
-['`readOnlyRootFilesystem`','Malware writing to the container filesystem'],
-['`seccompProfile: RuntimeDefault`','Dangerous system calls filtered by the runtime default profile'],
-['`privileged: true`','Avoid: gives nearly full host access'],
-['`fsGroup`','Volume file ownership so a non-root user can write']]},
-{h:'Other security-related Pod settings'},
-{ul:['`hostNetwork`, `hostPID`, `hostIPC`: leave `false`.','`hostPath` volumes expose the node; avoid.','Linux **AppArmor** and **SELinux** options add mandatory access control where your distribution supports them.','`automountServiceAccountToken: false` where the API is not needed.','Resource limits also protect the node from runaway containers.']},
-{h:'Check what a container is doing'},
-{code:`kubectl exec hardened -- id                        # uid=10001 gid=10001
-kubectl exec hardened -- touch /etc/x              # read-only file system
-kubectl exec hardened -- touch /tmp/ok             # works
-kubectl get pod hardened -o jsonpath='{.spec.containers[0].securityContext}'`},
-{ul:['Image runs as root and you set `runAsNonRoot: true`: the Pod fails with `container has runAsNonRoot and image will run as root`. Rebuild the image with a numeric `USER`, or set `runAsUser`.','App needs to write files: mount an `emptyDir` or PVC for the writable paths.','Ports below 1024 need `NET_BIND_SERVICE`; prefer listening on a high port and mapping with the Service.']},
-{note:'Every setting above is a "dropped by default" improvement. Start with `runAsNonRoot`, `allowPrivilegeEscalation: false`, `drop: [ALL]`, seccomp RuntimeDefault and a read-only root filesystem, and relax only with a documented reason.'}],
+{h:'Proving it works from the inside'},
+{code:`$ kubectl exec hardened -- id
+uid=10001 gid=10001 groups=10001            # not root
+$ kubectl exec hardened -- touch /etc/test
+touch: /etc/test: Read-only file system     # read-only root
+$ kubectl exec hardened -- touch /tmp/ok    # the writable volume works
+$ kubectl exec hardened -- cat /proc/1/status | grep -E "CapEff|NoNewPrivs"
+CapEff: 0000000000000000                    # no effective capabilities
+NoNewPrivs: 1
+$ kubectl get pod hardened -o jsonpath='{.spec.containers[0].securityContext}{"\\n"}'`},
+{h:'The usual friction and how to solve it'},
+{t:[['Error or symptom','Cause','Fix'],
+['`container has runAsNonRoot and image will run as root`','The image defines no numeric user','Rebuild with a numeric `USER 10001`, or set `runAsUser`'],
+['`permission denied` writing a file','Non-root user and a root-owned path or volume','`fsGroup`, correct ownership in the image, or an `emptyDir`'],
+['`read-only file system` errors','App writes to the image filesystem (logs, temp, caches)','Mount `emptyDir` at those paths; log to stdout'],
+['Cannot bind to port 80 or 443','Ports below 1024 need a capability for non-root','Listen on 8080 and map with the Service, or add `NET_BIND_SERVICE`'],
+['Tool needing a capability fails (ping, mount)','Capability dropped','Add only that one back, if justified']]},
+{h:'Other Pod settings with security impact'},
+{ul:['`hostNetwork`, `hostPID`, `hostIPC`: keep `false`.','`hostPath` volumes: avoid; read-only if unavoidable.','`automountServiceAccountToken: false` when the app does not call the API.','**Resource limits** also protect the node from a runaway container.','**Sysctls**: only safe ones may be set in the Pod; unsafe sysctls need node configuration.']},
+{h:'Common mistakes'},
+{ul:['Setting `runAsNonRoot: true` and forgetting that the image still starts as root: Pod fails to start.','Using `privileged: true` to fix a permission problem instead of fixing the permission.','Dropping capabilities but leaving `allowPrivilegeEscalation` unset (the default allows it).','Applying only Pod-level settings when a container must override them, or the reverse.']},
+{note:'Start with the five that cost almost nothing: `runAsNonRoot`, `allowPrivilegeEscalation: false`, `drop: [ALL]`, `seccompProfile: RuntimeDefault` and a read-only root filesystem with writable volumes where needed. Relax only with a documented reason.'}],
 src:[['Configure a Security Context for a Pod or Container',T+'configure-pod-container/security-context/'],['Linux kernel security constraints',SEC+'linux-kernel-security-constraints/']]};
 
 /* ---------- 2: Secrets and encryption at rest ---------- */
 L['k8s:9:2']={blocks:[
-{p:'By default the API server stores Secrets **base64 encoded, not encrypted**, in etcd. Anyone with access to etcd, its disk or its backups can read them. **Encryption at rest** makes the API server encrypt resources before writing them.'},
+{p:'Secrets are the most sensitive objects in a cluster: database passwords, API keys, TLS private keys, registry credentials. A common misunderstanding is that a Kubernetes Secret is "encrypted". **By default it is not**: the API server stores it in etcd as **base64-encoded** text. Anyone who can read etcd, its disk or a backup can recover every Secret. **Encryption at rest** makes the API server encrypt selected resources before writing them to etcd.'},
 {svg:enc},
+{h:'Proving the default'},
+{code:`$ kubectl create secret generic demo --from-literal=password=S3cr3t!
+$ sudo ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 \\
+    --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key \\
+    get /registry/secrets/default/demo | strings | grep -i secret
+S3cr3t!                                         # readable straight from etcd`},
 {h:'EncryptionConfiguration'},
-{code:`# /etc/kubernetes/enc/enc.yaml  (readable only by root)
+{code:`# /etc/kubernetes/enc/enc.yaml  (root only)
 apiVersion: apiserver.config.k8s.io/v1
 kind: EncryptionConfiguration
 resources:
 - resources: ["secrets"]
   providers:
-  - aescbc:                           # first provider is used to ENCRYPT new writes
+  - aescbc:                           # FIRST provider encrypts every new write
       keys:
       - name: key1
         secret: <base64 of 32 random bytes>
-  - identity: {}                      # last: still lets the server READ old plaintext data`},
-{code:`head -c 32 /dev/urandom | base64          # generate a key
+  - identity: {}                      # LAST: lets the server still READ old unencrypted data`},
+{ul:['Providers are tried **in order**. The **first** is used to encrypt; **all** listed providers can decrypt. `identity` means "no encryption".','Keep `identity` **last** during migration so existing plaintext Secrets remain readable. Once everything is rewritten, you may remove it.','Other resources (ConfigMaps, custom resources) can be listed too.']},
+{h:'Turning it on (kubeadm)'},
+{flow:['Generate a 32 byte key: head -c 32 /dev/urandom | base64','Write the configuration file on every control plane node (root readable only)','Mount the file into the kube-apiserver static Pod (hostPath volume and volumeMount)','Add --encryption-provider-config=/etc/kubernetes/enc/enc.yaml to the API server flags','The kubelet restarts the API server; wait until kubectl works again','Create a new Secret, then verify it is encrypted in etcd','Rewrite all existing Secrets so they are encrypted too']},
+{code:`$ sudo ETCDCTL_API=3 etcdctl ... get /registry/secrets/default/new | hexdump -C | head -n 3
+00000000  2f 72 65 67 69 73 74 72  79 2f 73 65 63 72 65 74  |/registry/secret|
+00000010  73 2f 64 65 66 61 75 6c  74 2f 6e 65 77 0a 6b 38  |s/default/new.k8|
+00000020  73 3a 65 6e 63 3a 61 65  73 63 62 63 3a 76 31 3a  |s:enc:aescbc:v1:|      # k8s:enc:aescbc:v1:key1 prefix: encrypted
 
-# API server manifest: mount the file and set the flag
-#   --encryption-provider-config=/etc/kubernetes/enc/enc.yaml
-#   volumeMounts / hostPath for /etc/kubernetes/enc
-sudo vim /etc/kubernetes/manifests/kube-apiserver.yaml
-kubectl get nodes                           # API server restarts; wait for it`},
-{h:'Verify and migrate old data'},
-{code:`# New Secrets are encrypted. Look at the raw etcd value:
-kubectl create secret generic enc-test --from-literal=k=v
-sudo ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 \\
-  --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key \\
-  get /registry/secrets/default/enc-test | hexdump -C | head
-# should start with  k8s:enc:aescbc:v1:key1   (not plaintext)
-
-# Existing Secrets stay plaintext until rewritten:
-kubectl get secrets -A -o json | kubectl replace -f -`},
+# existing Secrets stay plaintext until they are written again
+$ kubectl get secrets -A -o json | kubectl replace -f -`},
+{h:'Providers compared'},
+{t:[['Provider','Where the key lives','Notes'],
+['`identity`','None','No encryption (default)'],
+['`aescbc`','In the configuration file on the control plane','AES-CBC; protects etcd disks and backups, not a root user on the control plane'],
+['`secretbox`','In the configuration file','XSalsa20-Poly1305; strong and fast, also a local key'],
+['`kms` (v2)','In an **external KMS or HSM**','Envelope encryption; preferred for production (additional lecture)']]},
 {h:'Key rotation'},
-{flow:['Add a new key as the FIRST entry; keep the old key second','Restart all API servers so every one can read both','Rewrite all Secrets so they are re-encrypted with the new key','Remove the old key after everything is rewritten']},
-{h:'Providers'},
-{t:[['Provider','Notes'],
-['`identity`','No encryption (the default)'],
-['`aescbc`','AES-CBC; local key stored in the config file, so protect the file'],
-['`secretbox`','XSalsa20-Poly1305; strong and fast, also a local key'],
-['`kms` (v2)','Data encryption keys protected by an external KMS or HSM (additional lecture); preferred for real clusters']]},
-{ul:['The key in the config file sits on the control plane disk. Encryption at rest then protects **etcd backups and disk theft**, not someone who has root on the control plane. KMS improves this.','Do not lose the key: encrypted data cannot be read without it.','You can encrypt other resources too (`configmaps`, custom resources) by listing them.','Managed services (EKS, AKS, GKE) offer envelope encryption with the cloud KMS as an option you enable.']},
-{note:'Encryption at rest does not hide Secrets from anyone who can `get secrets` through the API, and Secrets in Git or CI logs remain a risk. RBAC, namespace isolation and external secret managers complete the picture.'}],
+{flow:['Add a new key as the FIRST entry; keep the old key second','Restart all API servers so every instance can read both','Rewrite all Secrets so they are re-encrypted with the new key','Remove the old key after everything is rewritten and verified']},
+{h:'What encryption at rest does not do'},
+{ul:['It does **not** hide Secrets from anyone who can `get secrets` through the API: use RBAC.','A **local key** sits on the control plane disk, so root on that node can read it. KMS improves this.','Secrets in Git, CI logs, environment dumps and backups of the application remain your responsibility.','**Losing the key means losing the data**: back up the configuration securely.','Managed services (EKS, AKS, GKE) offer envelope encryption with the cloud KMS as an option to enable.']},
+{h:'Other good Secret practices'},
+{t:[['Practice','Why'],
+['Restrict RBAC for `secrets` (`get`, `list`, `watch`)','`list` returns every Secret value in the namespace'],
+['Mount Secrets as files, not environment variables','Env vars leak through process listings and crash dumps'],
+['Use an external manager (External Secrets, Secrets Store CSI, Vault)','Central rotation, audit and revocation'],
+['Never commit Secret YAML','Use SOPS or Sealed Secrets for GitOps'],
+['Short-lived credentials where possible','Limits the value of a leak']]},
+{note:'Exam tip: the encryption task is: write the EncryptionConfiguration, mount it into the API server manifest, add the flag, wait for the API server, create a Secret and verify it with `etcdctl` that the value starts with `k8s:enc:`.'}],
 src:[['Encrypting Confidential Data at Rest',T+'administer-cluster/encrypt-data/'],['Good practices for Kubernetes Secrets',SEC+'secrets-good-practices/'],['Secrets',C+'configuration/secret/']]};
 
 /* ---------- 3: Admission and VAP ---------- */
 L['k8s:9:3']={blocks:[
-{p:'**Admission control** runs after authentication and authorization and before an object is stored. Admission plugins can **mutate** objects (add defaults, inject sidecars) and **validate** them (accept or reject).'},
-{h:'Built-in and dynamic admission'},
-{t:[['Kind','Examples'],
-['Built-in plugins (compiled in)','`NamespaceLifecycle`, `LimitRanger`, `ResourceQuota`, `ServiceAccount`, `PodSecurity`, `DefaultStorageClass`'],
-['Admission webhooks (your service)','`MutatingWebhookConfiguration`, `ValidatingWebhookConfiguration` call an HTTPS endpoint (Kyverno, Gatekeeper, Istio injection)'],
-['Declarative CEL policies (no service to run)','`ValidatingAdmissionPolicy` + `ValidatingAdmissionPolicyBinding`']]},
-{h:'ValidatingAdmissionPolicy'},
-{p:'Rules are written in **CEL** (Common Expression Language) and evaluated inside the API server: no webhook to deploy, no network hop, no extra failure mode. It is stable in recent Kubernetes releases.'},
+{p:'Authentication says who you are and RBAC says what you may do, but neither inspects **what is inside the object** you are creating. **Admission control** does. It runs after authorization and before the object is stored, and it can **change** the object (mutating) or **reject** it (validating). It enforces rules such as "every Pod must set limits", "images only from our registry" or "Deployments need an owner label".'},
+{h:'Where admission sits'},
+{flow:['Request authenticated and authorized','Mutating admission: plugins and webhooks may modify the object (defaults, injected sidecars)','Schema validation of the resulting object','Validating admission: plugins, policies and webhooks may reject it','The object is persisted to etcd']},
+{t:[['Kind','Examples','Where it runs'],
+['**Built-in plugins**','`NamespaceLifecycle`, `LimitRanger`, `ResourceQuota`, `ServiceAccount`, `PodSecurity`, `DefaultStorageClass`, `NodeRestriction`','Inside the API server'],
+['**Admission webhooks**','Policy engines (Kyverno, Gatekeeper), sidecar injectors (service meshes)','**Your service** called over HTTPS'],
+['**ValidatingAdmissionPolicy**','CEL rules you write as YAML','Inside the API server, **no webhook service to run**']]},
+{h:'ValidatingAdmissionPolicy: rules without a webhook'},
+{p:'A policy states **what to match** and **which CEL expressions must be true**. A separate **binding** decides **where** it applies and **what happens on violation** (deny, warn or audit). Because it runs inside the API server there is no network call and no extra component that can be down.'},
 {code:`apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata: {name: require-team-label}
@@ -165,101 +208,150 @@ kind: ValidatingAdmissionPolicyBinding
 metadata: {name: require-team-label-prod}
 spec:
   policyName: require-team-label
-  validationActions: [Deny]            # also: Warn, Audit
+  validationActions: [Deny]              # also Warn, Audit
   matchResources:
-    namespaceSelector:
-      matchLabels: {environment: prod}`},
-{ul:['**Policy** defines the rule; **Binding** decides where it applies and what happens (`Deny`, `Warn`, `Audit`).','Use `Warn` and `Audit` first to see what would break.','Parameters can live in a ConfigMap or custom resource (`paramKind`) so one policy serves many settings.','`object`, `oldObject`, `request` and `params` are available in expressions.']},
-{code:`kubectl create deployment web --image=nginx -n shop   # in a prod-labelled namespace
-# Error ... ValidatingAdmissionPolicy 'require-team-label' with binding 'require-team-label-prod' denied request: Every Deployment must have a team label
-
-kubectl get validatingadmissionpolicy,validatingadmissionpolicybinding`},
-{h:'Webhook caveats'},
-{ul:['A webhook with `failurePolicy: Fail` that is down can **block all matching requests**, including those needed to repair the webhook. Exclude `kube-system` and the webhook own namespace.','Set tight `matchPolicy`, `namespaceSelector` and short `timeoutSeconds`.','Mutating webhooks run before validating ones; their order is not guaranteed relative to each other.']},
-{note:'Choose the lightest tool that works: built-in PSA for Pod standards, ValidatingAdmissionPolicy for simple field rules, and a policy engine such as Kyverno or Gatekeeper for complex, mutating or reporting needs.'}],
+    namespaceSelector: {matchLabels: {environment: prod}}`},
+{code:`$ kubectl -n shop create deployment web --image=nginx            # shop is labelled environment=prod
+error: failed to create deployment: deployments.apps "web" is forbidden: ValidatingAdmissionPolicy 'require-team-label' with binding 'require-team-label-prod' denied request: Every Deployment must have a team label
+$ kubectl get validatingadmissionpolicy,validatingadmissionpolicybinding`},
+{ul:['In expressions, `object` is the new object, `oldObject` the previous one (on update), `request` the request attributes and `params` optional parameters.','Start with `validationActions: [Warn]` or `[Audit]` to see impact before switching to `Deny`.','The expression language is CEL: `has()`, `in`, `all()`, `exists()`, `startsWith()`, string and list functions.']},
+{h:'Admission webhooks and their dangers'},
+{t:[['Risk','What happens','Mitigation'],
+['Webhook unavailable with `failurePolicy: Fail`','All matching requests are rejected, possibly blocking the cluster','Run several replicas; exclude `kube-system` and the webhook own namespace'],
+['Slow webhook','Every matching request waits','Short `timeoutSeconds`, narrow `rules`'],
+['Expired webhook certificate','Silent failures','Automate certificates (cert-manager)'],
+['Mutation conflicts','Two webhooks edit the same field','Idempotent mutations, `reinvocationPolicy`']]},
+{h:'Choosing the right tool'},
+{t:[['Need','Use'],
+['Standard Pod hardening','Pod Security Admission'],
+['Simple field rules, required labels, limits','ValidatingAdmissionPolicy'],
+['Defaults and injection with logic','Mutating policy or webhook'],
+['Complex logic, reports, generation, image verification','A policy engine (Kyverno, Gatekeeper)'],
+['Resource quotas and defaults','ResourceQuota and LimitRange']]},
+{h:'Debugging an admission rejection'},
+{code:`# The error message names the plugin, policy or webhook that rejected it
+kubectl get validatingwebhookconfigurations,mutatingwebhookconfigurations
+kubectl get validatingadmissionpolicy,validatingadmissionpolicybinding
+kubectl apply --dry-run=server -f deploy.yaml          # runs admission without persisting
+kubectl -n kube-system get pods | grep -i -E "policy|webhook|kyverno|gatekeeper"`},
+{note:'Choose the lightest tool that does the job: built-in PSA first, then ValidatingAdmissionPolicy, then a policy engine for what CEL cannot express. Every webhook you add is another component in the request path.'}],
 src:[['Validating Admission Policy',R+'access-authn-authz/validating-admission-policy/'],['Admission Controllers',R+'access-authn-authz/admission-controllers/'],['Dynamic Admission Control',R+'access-authn-authz/extensible-admission-controllers/']]};
 
 /* ---------- 4: Image security ---------- */
 L['k8s:9:4']={blocks:[
-{p:'Your cluster runs whatever images you tell it to. Image security reduces the chance that a vulnerable, tampered or surprise image runs in production.'},
-{h:'Pull from private registries'},
-{code:`kubectl create secret docker-registry regcred \\
-  --docker-server=registry.example.com --docker-username=ci --docker-password="$REG_TOKEN" \\
-  --docker-email=ci@example.com -n shop
+{p:'Your cluster will run whatever images you tell it to. An image is code with the privileges you give it, so **where the image came from, whether it can be changed under you, and what is inside it** are security questions, not just packaging details. This lecture covers the controls you can apply without any special tooling, and where the extra tools fit.'},
+{h:'1. Private registries and pull secrets'},
+{p:'A private registry requires credentials. The kubelet pulls images on behalf of the Pod, so the credentials must be attached to the Pod (or its ServiceAccount) as an **imagePullSecret**, in the **same namespace**.'},
+{code:`kubectl create secret docker-registry regcred -n shop \\
+  --docker-server=registry.example.com --docker-username=ci --docker-password="$REG_TOKEN" --docker-email=ci@example.com
 
-# Per Pod
+# per Pod
 spec:
   imagePullSecrets: [{name: regcred}]
+# or once for every Pod that uses a ServiceAccount
+kubectl patch serviceaccount default -n shop -p '{"imagePullSecrets":[{"name":"regcred"}]}'
 
-# Or once for every Pod using a ServiceAccount
-kubectl patch serviceaccount default -n shop -p '{"imagePullSecrets":[{"name":"regcred"}]}'`},
-{ul:['On cloud services prefer **workload identity** or node IAM roles (ECR, ACR, Artifact Registry) over static registry passwords.','Pull secrets are namespaced; create one per namespace that needs it.','Use a read-only registry credential; never reuse a push credential.']},
-{h:'Pin images'},
-{t:[['Reference','Behaviour'],
-['`nginx` or `nginx:latest`','Changes under you; avoid'],
-['`nginx:1.27.2`','A version tag; the publisher can still move it'],
-['`nginx@sha256:3f1c...`','Immutable. The same bytes every time']]},
-{code:`kubectl get pod web -o jsonpath='{.status.containerStatuses[0].imageID}'    # the digest actually running
-imagePullPolicy: IfNotPresent      # default for tagged images; Always for :latest`},
-{h:'Reduce attack surface'},
-{ul:['Use **minimal base images** (distroless, scratch, Alpine) with no shell or package manager when possible.','Build **multi-stage** images so compilers and test tools never ship.','**Scan** images for known vulnerabilities in CI and in the registry (Trivy, Grype) and rebuild regularly.','Run as a **non-root** user with a numeric `USER`.','Keep secrets out of image layers; they are readable by anyone who can pull the image.']},
-{h:'Control which images may run'},
-{ul:['An **admission policy** can allow only images from approved registries.','**Signature verification** (Cosign with Kyverno or a verifying admission webhook) ensures an image came from your pipeline.','`ImagePolicyWebhook` or `AlwaysPullImages` admission plugins add API-server-side checks.']},
-{code:`# ValidatingAdmissionPolicy expression: only our registry
+$ kubectl get secret regcred -n shop -o jsonpath='{.type}{"\\n"}'
+kubernetes.io/dockerconfigjson
+$ kubectl describe pod web | grep -A3 "Failed to pull"
+  Failed to pull image "registry.example.com/web:1.4": ... pull access denied, repository does not exist or may require authorization`},
+{ul:['The pull secret is **namespaced**: a Secret in `default` does nothing for a Pod in `shop`.','On clouds prefer **identity-based pulls** (node IAM roles, workload identity) over static passwords.','Use a **read-only** registry credential, never a push credential.']},
+{h:'2. Tags are mutable, digests are not'},
+{t:[['Reference','Behaviour','Risk'],
+['`nginx`, `nginx:latest`','Whatever the publisher pushed last','Unreproducible; different nodes may run different content'],
+['`nginx:1.27.2`','A version tag; usually stable but **the publisher can re-point it**','Supply chain surprise'],
+['`nginx@sha256:3f1c...`','**Immutable**: the exact bytes','None: also what you scan and sign']]},
+{code:`$ kubectl get pod web -o jsonpath='{.status.containerStatuses[0].imageID}{"\\n"}'
+registry.example.com/web@sha256:3f1c9a...                  # the digest actually running
+imagePullPolicy: IfNotPresent                              # default for tagged images; Always for :latest`},
+{h:'3. Reduce what is inside'},
+{ul:['Use **minimal base images** (distroless, scratch, slim): no shell or package manager means fewer tools for an attacker.','**Multi-stage builds** keep compilers and test tools out of the final image.','Run as a **non-root numeric user** (`USER 10001`).','**Scan** images in CI and in the registry for known vulnerabilities (Trivy, Grype) and **rebuild regularly**, because a clean image today has CVEs next month.','Never bake **secrets** into layers: anyone who can pull the image can read them.']},
+{h:'4. Control what may run'},
+{t:[['Control','What it enforces'],
+['Admission policy on image registry','Only `registry.example.com/*` images allowed'],
+['Signature verification (Cosign, with Kyverno or similar)','Only images signed by your pipeline'],
+['`AlwaysPullImages` admission plugin','Credentials are checked on every pull (see below)'],
+['Digest pinning in manifests','Exactly the scanned bytes run']]},
+{code:`# ValidatingAdmissionPolicy expression: all containers must come from our registry
 validations:
 - expression: "object.spec.template.spec.containers.all(c, c.image.startsWith('registry.example.com/'))"
   message: "Images must come from registry.example.com"`},
-{note:'`AlwaysPullImages` matters in multi-tenant clusters: without it, a Pod can use an image already cached on a node without presenting credentials, bypassing pull-secret checks.'}],
+{p:'**Why AlwaysPullImages matters in shared clusters:** without it, a Pod that does **not** present credentials can still use an image that another tenant already pulled to the node (`imagePullPolicy: IfNotPresent`), bypassing the pull secret check.'},
+{h:'Diagnosing image problems'},
+{t:[['Symptom','Cause','Check'],
+['`ErrImagePull`, `unauthorized`','Missing or wrong pull secret, wrong namespace','`kubectl get secret regcred -n <ns>`'],
+['`manifest unknown`','Tag or name does not exist','Registry UI, `crictl pull` on a node'],
+['Works on one node, fails on another','Image cached on one node only; credentials missing','Pull policy and pull secrets'],
+['Different behaviour per node','`latest` or a moved tag','Pin by digest'],
+['`x509: certificate signed by unknown authority`','Registry uses a private CA','Add the CA to the runtime trust store']]},
+{note:'The highest-value habits are cheap: pin versions or digests, scan in CI, run as non-root, pull only from your own registry, and rebuild often.'}],
 src:[['Images',C+'containers/images/'],['Pull an Image from a Private Registry',T+'configure-pod-container/pull-image-private-registry/'],['Container Image Security',SEC+'#container']]};
 
 /* ---------- 5: Audit and CIS ---------- */
 L['k8s:9:5']={blocks:[
-{p:'Two practices tell you **what happened** and **how hardened you are**: audit logging and benchmark scanning.'},
-{h:'Audit logging'},
-{p:'The API server can record a chronological log of requests: who did what, to which object, when, and what the outcome was. An **audit policy** decides what to log and at which level.'},
-{t:[['Level','Records'],['`None`','Nothing'],['`Metadata`','User, verb, resource, time, response code; not bodies'],['`Request`','Metadata plus the request body'],['`RequestResponse`','Metadata plus request and response bodies (large)']]},
+{p:'Two practices answer two different security questions. **Audit logging** tells you **what happened**: who did what, to which object, when, and with what result. **Benchmark scanning** (CIS with kube-bench) tells you **how well hardened** the cluster is against an agreed checklist. One is evidence after the fact, the other is a way to find weaknesses before an attacker does.'},
+{h:'Audit logging: a recording of the API'},
+{p:'The API server can write an **audit event** for each request at several **stages**. A **policy** decides what to record and how much detail, which matters because detailed audit logs are large and can contain sensitive data.'},
+{t:[['Level','Records'],
+['`None`','Nothing for matching requests'],
+['`Metadata`','Who, what verb, which resource, when, response code. **No request or response bodies**'],
+['`Request`','Metadata plus the request body'],
+['`RequestResponse`','Metadata plus request and response bodies (large)']]},
 {code:`# /etc/kubernetes/audit/policy.yaml
 apiVersion: audit.k8s.io/v1
 kind: Policy
 omitStages: ["RequestReceived"]
 rules:
-- level: None                                   # drop noisy read-only health traffic
+- level: None                                         # skip noisy health checks
   nonResourceURLs: ["/healthz*", "/livez*", "/readyz*"]
 - level: None
   users: ["system:kube-proxy"]
   verbs: ["watch"]
-- level: Metadata                               # never log Secret contents
-  resources:
-  - {group: "", resources: ["secrets", "configmaps", "tokenreviews"]}
-- level: RequestResponse                        # full detail for RBAC changes
-  resources:
-  - {group: "rbac.authorization.k8s.io"}
-- level: Metadata                               # everything else`},
-{code:`# kube-apiserver static Pod manifest additions
-#   --audit-policy-file=/etc/kubernetes/audit/policy.yaml
-#   --audit-log-path=/var/log/kubernetes/audit/audit.log
-#   --audit-log-maxage=30  --audit-log-maxbackup=10  --audit-log-maxsize=100
-# plus hostPath volumes and volumeMounts for the policy file and the log directory
+- level: Metadata                                     # NEVER log the contents of Secrets or ConfigMaps
+  resources: [{group: "", resources: ["secrets", "configmaps", "tokenreviews"]}]
+- level: RequestResponse                              # full detail for access control changes
+  resources: [{group: "rbac.authorization.k8s.io"}]
+- level: Metadata                                     # everything else`},
+{ul:['Rules are evaluated **in order**; the **first** match decides the level. Put specific rules before the catch-all.','Log Secrets at **Metadata** only: a body level would write secret values into the log.']},
+{h:'Enabling it on kubeadm'},
+{code:`# kube-apiserver static Pod manifest: flags
+    - --audit-policy-file=/etc/kubernetes/audit/policy.yaml
+    - --audit-log-path=/var/log/kubernetes/audit/audit.log
+    - --audit-log-maxage=30
+    - --audit-log-maxbackup=10
+    - --audit-log-maxsize=100
+# plus hostPath volumes and volumeMounts for /etc/kubernetes/audit and /var/log/kubernetes/audit
+# (a missing mount or typo stops the API server from starting: edit with a backup, check crictl logs)
 
-sudo tail -n 2 /var/log/kubernetes/audit/audit.log | jq '{user:.user.username, verb:.verb, uri:.requestURI, code:.responseStatus.code}'
-sudo jq 'select(.verb=="delete" and .objectRef.resource=="secrets")' /var/log/kubernetes/audit/audit.log`},
-{ul:['Rules are evaluated **in order**; the first match decides the level.','Ship audit logs off the node to a central store; an attacker with node access can edit local files.','Managed services expose audit logs through their logging products (CloudWatch, Azure Monitor, Cloud Logging).','A bad flag or missing volume mount stops the API server from starting. Back up the manifest first.']},
-{h:'CIS Kubernetes Benchmark and kube-bench'},
-{p:'The **CIS Benchmark** is a consensus checklist for hardening Kubernetes components. **kube-bench** (Aqua Security) runs its checks against a node and reports PASS, FAIL, WARN and INFO with remediation text.'},
-{code:`# On a control plane node (kubeadm); pick the benchmark that matches your version
-kube-bench run --targets master
-kube-bench run --targets node,etcd,policies
+$ sudo tail -n 1 /var/log/kubernetes/audit/audit.log | jq '{user:.user.username, verb:.verb, uri:.requestURI, code:.responseStatus.code}'
+{"user":"kubernetes-admin","verb":"delete","uri":"/api/v1/namespaces/shop/pods/web-1","code":200}
+$ sudo jq -r 'select(.verb=="delete" and .objectRef.resource=="secrets") | [.requestReceivedTimestamp,.user.username,.objectRef.name] | @tsv' /var/log/kubernetes/audit/audit.log`},
+{ul:['Ship audit logs **off the node** to a central, tamper-resistant store; an attacker with node access can edit local files.','Managed services expose audit logs through their logging products (CloudWatch, Azure Monitor, Cloud Logging).','Useful questions audit logs answer: who deleted that Deployment, which service account listed Secrets, which IP made failed login attempts.']},
+{h:'CIS Benchmark and kube-bench'},
+{p:'The **CIS Kubernetes Benchmark** is a consensus checklist for hardening the control plane, etcd, kubelet and policies. **kube-bench** (Aqua Security) runs the checks on a node and reports each as PASS, FAIL, WARN or INFO with remediation text.'},
+{code:`# on a control plane node (choose the benchmark version that matches your Kubernetes version)
+$ kube-bench run --targets master,etcd,node,policies
+[INFO] 1 Control Plane Security Configuration
+[PASS] 1.1.1 Ensure that the API server pod specification file permissions are set to 600 or more restrictive
+[FAIL] 1.2.2 Ensure that the --token-auth-file parameter is not set ...
+[FAIL] 1.2.18 Ensure that the --profiling argument is set to false
+== Summary master ==
+42 checks PASS    11 checks FAIL    9 checks WARN    0 checks INFO
 
-# As a Job inside the cluster
+# or as a Job in the cluster
 kubectl apply -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml
 kubectl logs job/kube-bench | grep -E "\\[FAIL\\]|== Summary"`},
-{t:[['Typical finding','Fix'],
-['`1.2.x` API server flag not set (audit, anonymous-auth, profiling)','Edit the static Pod manifest'],
-['`4.2.x` kubelet settings (anonymous auth, read-only port)','Edit `/var/lib/kubelet/config.yaml` and restart the kubelet'],
-['`1.1.x` file permissions on manifests and PKI','`chmod 600` / `chown root:root`'],
-['`5.x` policies (network policies, namespaces, default SA)','Cluster configuration work']]},
-{note:'Treat a scan as a starting point, not a pass mark. Some findings do not apply to managed clusters (you cannot edit the control plane), and some need a business decision. Record each exception and re-run the scan after upgrades.'}],
+{t:[['Typical finding','Where to fix'],
+['API server flags (profiling, anonymous auth, audit, admission plugins)','Edit `/etc/kubernetes/manifests/kube-apiserver.yaml`'],
+['Kubelet settings (anonymous auth, read-only port, rotate certificates)','`/var/lib/kubelet/config.yaml`, restart the kubelet'],
+['File permissions and ownership of manifests, PKI, kubeconfig','`chmod 600`, `chown root:root`'],
+['etcd settings (client cert auth, peer TLS)','`/etc/kubernetes/manifests/etcd.yaml`'],
+['Policies (network policies exist, default ServiceAccount, Pod Security)','Cluster configuration and namespaces']]},
+{h:'Reading results sensibly'},
+{ul:['**FAIL** needs a fix or a recorded exception; **WARN** needs a manual check; some checks do not apply to managed services where the provider owns the control plane.','Fix in small batches and re-run: one wrong API server flag can stop the cluster.','Scan again **after upgrades**, because defaults and file locations change.','Treat the scan as a starting point, not a certificate: it cannot see your applications or your RBAC design.']},
+{note:'Exam tip: for audit logging tasks you are given a policy to write or apply; the work is in the API server manifest (flags plus hostPath volume mounts). After editing, wait for the API server with `crictl ps`, then confirm the log file receives events.'}],
 src:[['Auditing',C+'cluster-administration/audit/'],['Securing a Cluster',T+'administer-cluster/securing-a-cluster/'],['kube-bench','https://github.com/aquasecurity/kube-bench'],['CIS Kubernetes Benchmark','https://www.cisecurity.org/benchmark/kubernetes']]};
+
 /* ---------- Additional content ---------- */
 /* 6: Mutating admission policies */
 L['k8s:9:6']={blocks:[

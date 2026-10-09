@@ -27,122 +27,155 @@ const ifaces=K.dg(700,200,[
 
 /* ---------- 0: Helm basics ---------- */
 L['k8s:11:0']={blocks:[
-{p:'**Helm** is the package manager for Kubernetes. It bundles the manifests an application needs into a **chart**, lets you configure it with **values**, and tracks each installation as a **release** so you can upgrade and roll back.'},
+{p:'A real application is not one YAML file: it is a Deployment, a Service, a ConfigMap, an Ingress, a ServiceAccount, maybe a HorizontalPodAutoscaler, all with values that differ between dev and prod. Copying and editing those files for every environment does not scale. **Helm** is the package manager for Kubernetes: it bundles the manifests into a **chart**, fills them in from **values**, and tracks each installation as a **release** you can upgrade and roll back.'},
 {svg:helm},
-{h:'Key terms'},
-{t:[['Term','Meaning'],
-['**Chart**','A package: templates, default values, metadata and optional dependencies'],
-['**Repository**','A place charts are published (an HTTP index or an OCI registry)'],
-['**Release**','One installed instance of a chart, with a name, namespace and revision number'],
-['**Values**','Configuration inputs that fill the templates'],
-['**Revision**','Each install or upgrade of a release creates a new numbered revision']]},
-{h:'Chart structure'},
+{h:'The vocabulary'},
+{t:[['Term','Meaning','Analogy'],
+['**Chart**','A package: templates, default values and metadata','An installer package'],
+['**Repository**','A place charts are published: an HTTP index or an **OCI registry**','A package repository'],
+['**Release**','One installed instance of a chart in a namespace, with a name and a **revision** history','An installed application'],
+['**Values**','The configuration inputs that fill the templates','Installer options'],
+['**Revision**','A numbered version of a release; every install or upgrade creates one','A save point']]},
+{h:'What is in a chart'},
 {code:`mychart/
-  Chart.yaml          # name, version (chart), appVersion (the app), dependencies
-  values.yaml         # default values
-  values.schema.json  # optional: validate values
-  templates/          # Go-templated manifests
+  Chart.yaml            # name, version (the CHART version), appVersion (the app), dependencies
+  values.yaml           # default values
+  values.schema.json    # optional: validates user values
+  templates/            # Go-templated Kubernetes manifests
     deployment.yaml
     service.yaml
-    _helpers.tpl      # named template helpers
-    NOTES.txt         # message printed after install
-  charts/             # packaged dependencies`},
+    _helpers.tpl        # named snippets (names, labels)
+    NOTES.txt           # message printed after install
+  charts/               # packaged dependency charts`},
 {h:'Working with repositories'},
-{code:`helm version
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo update
-helm search repo nginx                      # search added repositories
-helm search hub wordpress                   # search Artifact Hub
-helm show chart bitnami/nginx
-helm show values bitnami/nginx > values.yaml
-helm pull bitnami/nginx --untar             # download and unpack to read it`},
-{h:'Releases'},
-{code:`helm install web bitnami/nginx -n shop --create-namespace
-helm list -A
-helm status web -n shop
-helm get values web -n shop
-helm get manifest web -n shop
-helm uninstall web -n shop`},
-{ul:['Release state is stored in the cluster, by default as **Secrets** of type `helm.sh/release.v1` in the release namespace. Anyone who can read Secrets there can read the release values.','A release belongs to a namespace; the same release name can exist in different namespaces.','Helm uses your kubeconfig and RBAC permissions: it can only create what you are allowed to create.']},
-{h:'Look before you install'},
-{code:`helm template web bitnami/nginx -f values.yaml | less     # render locally, no cluster changes
-helm install web bitnami/nginx --dry-run --debug             # render against the cluster API`},
-{note:'A chart is third-party code that creates cluster objects. Read the rendered manifests, check the chart source and pin the **chart version** (`--version`) so installs are reproducible.'}],
+{code:`$ helm version
+$ helm repo add bitnami https://charts.bitnami.com/bitnami
+$ helm repo update
+$ helm search repo nginx
+NAME                CHART VERSION   APP VERSION   DESCRIPTION
+bitnami/nginx       18.2.0          1.27.2        NGINX Open Source is a web server ...
+$ helm search hub wordpress                       # search Artifact Hub, the public index
+$ helm show chart bitnami/nginx
+$ helm show values bitnami/nginx > values.yaml    # every option and its default: READ this before installing
+$ helm pull bitnami/nginx --untar                 # download and unpack to read the templates`},
+{h:'Installing and inspecting a release'},
+{code:`$ helm install web bitnami/nginx -n shop --create-namespace --version 18.2.0
+NAME: web
+LAST DEPLOYED: Fri Oct  9 10:20:00 2026
+NAMESPACE: shop
+STATUS: deployed
+REVISION: 1
+$ helm list -A
+NAME   NAMESPACE   REVISION   UPDATED                    STATUS     CHART          APP VERSION
+web    shop        1          2026-10-09 10:20:00 UTC    deployed   nginx-18.2.0   1.27.2
+$ helm status web -n shop
+$ helm get values web -n shop                     # the values YOU supplied
+$ helm get manifest web -n shop | head -n 30      # the YAML that was applied
+$ kubectl -n shop get all
+$ helm uninstall web -n shop`},
+{h:'Where Helm keeps its state'},
+{p:'Helm 3 has no server component. Release records are stored **in the cluster** as Secrets of type `helm.sh/release.v1` in the release namespace, one per revision. That is why `helm list` works from any machine, and also why **anyone who can read Secrets in that namespace can read the release values** (which may include passwords).'},
+{code:`$ kubectl -n shop get secrets -l owner=helm
+NAME                          TYPE                 DATA
+sh.helm.release.v1.web.v1     helm.sh/release.v1   1`},
+{h:'Look before you leap'},
+{code:`helm template web bitnami/nginx -f values.yaml | less                 # render locally: nothing touches the cluster
+helm install web bitnami/nginx --dry-run --debug -n shop              # render with server-side checks
+helm lint ./mychart                                                   # check a chart you wrote`},
+{h:'Common mistakes'},
+{t:[['Mistake','Consequence','Better'],
+['Installing a chart without reading `helm show values`','Surprising defaults (exposed Services, no persistence, wrong resources)','Review values and rendered manifests first'],
+['No `--version`','Unpinned chart; installs differ over time','Pin the chart version in automation'],
+['Treating a chart as trusted code','It creates cluster objects, including RBAC','Read templates, check the source, mirror charts you depend on'],
+['Mixing `helm` and `kubectl edit` on the same objects','Helm overwrites your edits at the next upgrade','Change values, not live objects'],
+['Forgetting the namespace','Two releases of the same name in different places','Always pass `-n` and set the context']]},
+{note:'Think of Helm as `apt` for clusters, with one difference that matters: it is configuration, not just binaries. Always review what a chart will create, and keep your own values files in Git.'}],
 src:[['Helm documentation','https://helm.sh/docs/'],['Using Helm','https://helm.sh/docs/intro/using_helm/'],['Helm quickstart','https://helm.sh/docs/intro/quickstart/']]};
 
 /* ---------- 1: Helm operations ---------- */
 L['k8s:11:1']={blocks:[
-{p:'Day-two Helm work: change configuration, upgrade, look at history and recover from a bad change.'},
-{h:'Values'},
-{p:'Values are merged in this order, later sources winning: chart `values.yaml`, then each `-f` file in order, then `--set` flags.'},
+{p:'Installing a chart is the easy part. Operating it means changing configuration, upgrading to new chart versions, understanding what Helm will do to your running application, and recovering when an upgrade goes wrong. The key idea: **you change values, Helm re-renders and applies, and every change is a numbered revision you can return to**.'},
+{h:'How values are merged'},
+{p:'Several sources can supply values. They are merged in a fixed order, and **later sources override earlier ones**:'},
+{flow:['The chart default values.yaml','Each -f values file, in the order given','--set and --set-string flags (highest priority)']},
 {code:`# values-prod.yaml
 replicaCount: 3
 image:
   tag: "1.27.2"
 resources:
   requests: {cpu: 100m, memory: 128Mi}
-service:
-  type: ClusterIP
+service: {type: ClusterIP}
 
 helm install web bitnami/nginx -n shop -f values-prod.yaml --set replicaCount=5 --version 18.2.0
-helm get values web -n shop                    # values you supplied
-helm get values web -n shop --all              # merged, including defaults`},
-{ul:['`--set a.b=c` for scalars, `--set list[0]=x` for lists, `--set-string` to force text, `--set-file` for file contents.','Keep environment values in **files under version control**, not long `--set` chains.','Never put secrets in values files committed to Git; use an external secrets mechanism.']},
-{h:'Upgrade and rollback'},
-{code:`helm upgrade web bitnami/nginx -n shop -f values-prod.yaml --version 18.3.0
-helm upgrade --install web bitnami/nginx -n shop -f values-prod.yaml     # idempotent: install if missing
-helm upgrade web bitnami/nginx -n shop --reuse-values --set replicaCount=4
+$ helm get values web -n shop                  # only what you supplied (replicaCount is 5)
+$ helm get values web -n shop --all            # merged with every chart default`},
+{ul:['`--set a.b=c` for scalars, `--set list[0]=x` for lists, `--set-string` to force text (so `"1.10"` is not turned into a number), `--set-file` to read a file.','Keep real configuration in **files under version control**; long `--set` chains cannot be reviewed.','Never put secrets in values files committed to Git.']},
+{h:'Upgrade, history and rollback'},
+{code:`$ helm upgrade web bitnami/nginx -n shop -f values-prod.yaml --version 18.3.0
+Release "web" has been upgraded. Happy Helming!
+REVISION: 2
+$ helm upgrade --install web bitnami/nginx -n shop -f values-prod.yaml     # idempotent: install if missing, upgrade if present
 
-helm history web -n shop
-# REVISION  STATUS      CHART         DESCRIPTION
-# 1         superseded  nginx-18.2.0  Install complete
-# 2         deployed    nginx-18.3.0  Upgrade complete
+$ helm history web -n shop
+REVISION   UPDATED                    STATUS       CHART          APP VERSION   DESCRIPTION
+1          Fri Oct  9 10:20:00 2026   superseded   nginx-18.2.0   1.27.2        Install complete
+2          Fri Oct  9 11:05:00 2026   deployed     nginx-18.3.0   1.27.3        Upgrade complete
 
-helm rollback web 1 -n shop                    # creates revision 3 with revision 1 content
-helm uninstall web -n shop --keep-history`},
-{h:'Safer upgrades'},
-{ul:['`--atomic` rolls back automatically if the upgrade fails; `--wait --timeout 5m` waits for resources to become ready.','`helm diff upgrade` (plugin) shows what would change before you apply it.','`--reuse-values` can hide new chart defaults; prefer passing a full values file.','Test changes in a lower environment with the same chart version.']},
+$ helm rollback web 1 -n shop                    # creates revision 3 with the content of revision 1
+$ helm history web -n shop | tail -n 2
+$ helm uninstall web -n shop --keep-history      # keep records so a rollback is still possible`},
+{p:'A rollback re-applies the **Kubernetes manifests** of an earlier revision. It does **not** undo database migrations, deleted data or volumes changed by the application.'},
+{h:'Making upgrades safer'},
+{t:[['Option','What it does'],
+['`--atomic`','Wait for readiness; **roll back automatically** if the upgrade fails or times out'],
+['`--wait --timeout 5m`','Wait until Deployments, StatefulSets and Jobs are ready'],
+['`helm diff upgrade` (plugin)','Show exactly what would change in the cluster before you apply it'],
+['`--dry-run --debug`','Render and validate without applying'],
+['`--reuse-values`','Reuse previous values: convenient but **hides new chart defaults**; prefer passing a full values file'],
+['`--history-max 10`','Limit stored revisions (each is a Secret)']]},
 {h:'Troubleshooting'},
-{t:[['Symptom','Cause'],
-['`cannot re-use a name that is still in use`','A release with that name exists; use `upgrade --install`'],
-['`UPGRADE FAILED: another operation is in progress`','A previous operation left the release in a pending state; inspect with `helm history` and roll back or retry'],
-['`rendered manifests contain a resource that already exists`','The object was created outside Helm; adopt it with Helm ownership labels and annotations or delete it'],
-['Pods not changed after upgrade','A ConfigMap changed but the Pod template did not; add a checksum annotation in the chart or restart the Deployment']]},
-{note:'Helm rollback restores the **Kubernetes manifests** of an earlier revision. It does not undo database migrations, deleted PVCs or data written by the application.'}],
-src:[['Helm: upgrade and rollback','https://helm.sh/docs/helm/helm_upgrade/'],['Helm: values','https://helm.sh/docs/chart_best_practices/values/'],['helm rollback','https://helm.sh/docs/helm/helm_rollback/']]};
+{t:[['Message','Cause','Fix'],
+['`cannot re-use a name that is still in use`','A release of that name exists in the namespace','`helm upgrade --install` or a new name'],
+['`UPGRADE FAILED: another operation (install/upgrade/rollback) is in progress`','A previous run left the release in a pending state','`helm history`; roll back to the last good revision or fix and retry'],
+['`rendered manifests contain a resource that already exists`','The object was created outside Helm','Adopt it (ownership labels and annotations) or delete it'],
+['`Error: UPGRADE FAILED: timed out waiting for the condition`','New Pods never became Ready','`kubectl describe` the new Pods; `helm rollback`'],
+['Pods unchanged after upgrading a ConfigMap value','Pod template did not change, so no rollout','Add a checksum annotation in the chart, or `kubectl rollout restart`'],
+['Template error `nil pointer evaluating`','A value used by the template is missing','Compare your values with `helm show values`']]},
+{h:'Habits for production'},
+{ul:['Pin **chart versions** and keep `values-<env>.yaml` in Git next to your Kustomize or GitOps config.','Upgrade in a lower environment first with the **same chart version**.','Read the chart **changelog** before each upgrade: defaults and required values change between versions.','Use `helm get manifest` and `kubectl diff` when you need to see the actual objects.']},
+{note:'Exam tip: for Helm tasks, the commands are `helm repo add`, `helm search repo`, `helm install` with `--set` or `-f`, `helm upgrade`, `helm rollback` and `helm uninstall`. Always check the release with `helm list -A` and the objects with `kubectl get`.'}],
+src:[['helm upgrade','https://helm.sh/docs/helm/helm_upgrade/'],['Values','https://helm.sh/docs/chart_best_practices/values/'],['helm rollback','https://helm.sh/docs/helm/helm_rollback/']]};
 
 /* ---------- 2: Kustomize ---------- */
 L['k8s:11:2']={blocks:[
-{p:'**Kustomize** customises plain YAML **without templates**. It is built into kubectl (`kubectl apply -k`) and works by layering patches over a base.'},
+{p:'Helm solves "package and configure" with templates. **Kustomize** solves a narrower problem with a different philosophy: you keep **plain, valid YAML** and describe **how to modify it** for each environment, using overlays and patches. There are no template languages, so every file is a normal Kubernetes manifest that you can read and apply. Kustomize is built into `kubectl`.'},
 {svg:kust},
-{h:'Structure'},
+{h:'Bases and overlays'},
+{ul:['A **base** is a directory with the common manifests and a `kustomization.yaml` that lists them.','An **overlay** is another directory (dev, staging, prod) whose `kustomization.yaml` points at the base and **adds changes**: patches, a name prefix, a namespace, different image tags, extra resources.','Rendering = base + overlay changes. The base files are never edited for one environment.']},
 {code:`app/
   base/
     kustomization.yaml
     deployment.yaml
     service.yaml
   overlays/
-    dev/
-      kustomization.yaml
+    dev/kustomization.yaml
     prod/
       kustomization.yaml
       replica-patch.yaml`},
 {code:`# base/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-resources:
-- deployment.yaml
-- service.yaml
-commonLabels:
-  app: web
+resources: [deployment.yaml, service.yaml]
+labels:
+- pairs: {app: web}
+  includeSelectors: true
 
 # overlays/prod/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: shop-prod
 namePrefix: prod-
-resources:
-- ../../base
+resources: [../../base]
 images:
 - name: nginx
   newTag: "1.27.2"
@@ -156,37 +189,71 @@ configMapGenerator:
 apiVersion: apps/v1
 kind: Deployment
 metadata: {name: web}
+spec: {replicas: 5}`},
+{h:'Build, review, apply'},
+{code:`$ kubectl kustomize overlays/prod | head -n 20          # render to stdout: ALWAYS review first
+apiVersion: v1
+kind: Service
+metadata: {labels: {app: web}, name: prod-web, namespace: shop-prod}
+...
+$ kubectl diff -k overlays/prod                         # what would change in the cluster
+$ kubectl apply -k overlays/prod
+$ kubectl get all -n shop-prod
+$ kubectl delete -k overlays/prod`},
+{h:'What Kustomize can do'},
+{t:[['Field','Effect'],
+['`resources`','Include files, directories or other bases (also remote URLs)'],
+['`namespace`, `namePrefix`, `nameSuffix`','Retarget and rename **every** object and fix references between them'],
+['`labels`, `commonLabels`, `commonAnnotations`','Add metadata to all objects (careful: labels in selectors are immutable on existing Deployments)'],
+['`images`','Change image names, tags or digests without editing the base'],
+['`patches`','Strategic merge or JSON 6902 patches targeting objects by name or label'],
+['`configMapGenerator`, `secretGenerator`','Create ConfigMaps and Secrets from literals and files, with a **content hash suffix**'],
+['`components`','Reusable optional features you can add to overlays']]},
+{p:'The **hash suffix** on generated ConfigMaps is clever: `app-config-7k2f9m` changes whenever the content changes, Kustomize rewrites every reference to it, and the Deployment template changes, so the Pods **roll out automatically** with the new configuration.'},
+{h:'Patching'},
+{code:`# strategic merge patch: merges into the matching object by name
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web}
 spec:
-  replicas: 5`},
-{code:`kubectl kustomize overlays/prod              # render to stdout, review first
-kubectl apply -k overlays/prod
-kubectl diff -k overlays/prod
-kubectl delete -k overlays/prod`},
-{h:'What it can do'},
-{t:[['Feature','Use'],
-['`resources`','Include files, directories or other bases'],
-['`namespace`, `namePrefix`, `nameSuffix`','Retarget and rename everything consistently, including references'],
-['`commonLabels`, `commonAnnotations`','Add metadata to every object (labels in selectors are immutable, be careful)'],
-['`images`','Change image names and tags without editing the base'],
-['`patches`','Strategic-merge or JSON patches targeting specific objects'],
-['`configMapGenerator`, `secretGenerator`','Create ConfigMaps and Secrets with a content hash suffix, so changes trigger a rollout'],
-['`components`','Reusable optional pieces']]},
+  template:
+    spec:
+      containers:
+      - name: web
+        resources: {limits: {memory: 512Mi}}
+
+# JSON 6902 patch (precise operations)
+patches:
+- target: {kind: Deployment, name: web}
+  patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 5`},
 {h:'Helm or Kustomize?'},
-{t:[['','Helm','Kustomize'],['Style','Templates and values','Patches over plain YAML'],['Packaging','Versioned charts, repositories','Directories in Git'],['Release tracking','Yes (history, rollback)','No (use Git and GitOps)'],['Best for','Third-party software','Your own apps and per-environment differences']]},
-{p:'They combine well: render a third-party Helm chart with `helm template` and apply Kustomize patches on top, or let a GitOps tool do both.'}],
+{t:[['','Helm','Kustomize'],
+['Style','Templates and values','Plain YAML with overlays and patches'],
+['Packaging and versioning','Charts in repositories, versions','Directories in Git (version control is the packaging)'],
+['Release tracking and rollback','Yes (`helm history`, `rollback`)','No: use Git and GitOps'],
+['Learning curve','Template language','Small and declarative'],
+['Best for','Third-party software with many options','Your own apps and per-environment differences']]},
+{p:'They combine well: render a third-party chart with `helm template` and apply Kustomize patches on top, or let a GitOps tool such as Argo CD or Flux do both.'},
+{h:'Common mistakes'},
+{ul:['Editing the base for one environment, defeating the purpose.','Using `commonLabels` on existing Deployments: the selector changes and the update is rejected (selectors are immutable).','Forgetting that patches match by **name**: a `namePrefix` applied in the same file changes what the target is called.','Applying an overlay without rendering it first, and discovering surprises in the cluster.','Mixing manual `kubectl edit` with Kustomize applies.']},
+{note:'Exam tip: `kubectl kustomize DIR` to look, `kubectl apply -k DIR` to apply. For a quick patch, copy the example from the Kustomize page of the documentation.'}],
 src:[['Declarative Management using Kustomize',T+'manage-kubernetes-objects/kustomization/'],['Kustomize','https://kubectl.docs.kubernetes.io/references/kustomize/'],['kubectl kustomize',R+'kubectl/generated/kubectl_kustomize/']]};
 
 /* ---------- 3: CRDs ---------- */
 L['k8s:11:3']={blocks:[
-{p:'A **CustomResourceDefinition (CRD)** teaches the API server a new resource type. After you create it, you can `kubectl get` and apply objects of that kind exactly like built-in ones, and RBAC, namespaces and watches work the same.'},
+{p:'Kubernetes ships with types such as Pod, Deployment and Service. A **CustomResourceDefinition (CRD)** lets you teach the API server a **new type**. Once you create it, objects of that type behave like built-in ones: you `kubectl get` and `apply` them, RBAC and namespaces apply, they are stored in etcd and can be watched. This is the foundation of the operator ecosystem: cert-manager, Argo CD, Prometheus Operator and Gateway API are all CRDs.'},
 {svg:crd},
+{h:'A CRD in practice'},
 {code:`apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: backups.example.com            # <plural>.<group>
+  name: backups.example.com              # must be <plural>.<group>
 spec:
   group: example.com
-  scope: Namespaced                     # or Cluster
+  scope: Namespaced                       # or Cluster
   names:
     plural: backups
     singular: backup
@@ -195,7 +262,7 @@ spec:
   versions:
   - name: v1
     served: true
-    storage: true                       # exactly one version is the storage version
+    storage: true                         # exactly one version is the storage version
     schema:
       openAPIV3Schema:
         type: object
@@ -207,48 +274,72 @@ spec:
               schedule: {type: string}
               target:   {type: string}
               keep:     {type: integer, minimum: 1, default: 7}
-            x-kubernetes-validations:
+            x-kubernetes-validations:     # CEL rule evaluated by the API server
             - rule: "self.keep <= 100"
               message: "keep must be at most 100"
           status:
             type: object
             x-kubernetes-preserve-unknown-fields: true
-    subresources:
-      status: {}
+    subresources: {status: {}}
     additionalPrinterColumns:
     - {name: Schedule, type: string, jsonPath: .spec.schedule}`},
-{code:`kubectl apply -f backup-crd.yaml
-kubectl get crd backups.example.com
-kubectl api-resources --api-group=example.com
+{h:'Use it like any other resource'},
+{code:`$ kubectl apply -f backup-crd.yaml
+customresourcedefinition.apiextensions.k8s.io/backups.example.com created
+$ kubectl get crd backups.example.com
+$ kubectl api-resources --api-group=example.com
+NAME      SHORTNAMES   APIVERSION       NAMESPACED   KIND
+backups   bk           example.com/v1   true         Backup
 
-cat <<EOF | kubectl apply -f -
+$ kubectl apply -f - <<EOF
 apiVersion: example.com/v1
 kind: Backup
 metadata: {name: nightly, namespace: shop}
 spec: {schedule: "0 2 * * *", target: db}
 EOF
-kubectl get backups -n shop
-kubectl get bk -A
-kubectl explain backup.spec`},
-{ul:['**Schema is required** in `apiextensions.k8s.io/v1`: it validates input and drops unknown fields (pruning). CEL rules in `x-kubernetes-validations` add checks without a webhook.','**Versions** let a type evolve (`v1alpha1` to `v1`). A conversion strategy (none or a webhook) converts between served versions.','A custom resource alone does nothing: it is just stored data. A **controller** must watch it and act.','Deleting a CRD **deletes all custom resources of that kind**. Treat it as a destructive operation and back up first.','CRDs are cluster-scoped objects; creating them usually needs cluster-admin.']},
-{note:'Debugging tips: `kubectl get crd | grep <name>`, `kubectl describe crd <name>` (look at `Established` and `NamesAccepted` conditions) and `kubectl get <kind> -o yaml` to see the stored object with defaults applied.'}],
+$ kubectl get backups -n shop
+NAME      SCHEDULE
+nightly   0 2 * * *
+$ kubectl explain backup.spec                      # schema documentation comes for free
+$ kubectl get bk nightly -n shop -o yaml | grep keep      # default applied: keep: 7`},
+{h:'The schema is the contract'},
+{ul:['In `apiextensions.k8s.io/v1` a **structural schema is required**. The API server uses it to **validate** input, apply **defaults**, and **prune unknown fields** (fields not in the schema are silently dropped unless preserved).','**CEL rules** (`x-kubernetes-validations`) add cross-field validation without writing a webhook.','`subresources.status` separates `spec` (what users write) from `status` (what the controller writes); `scale` lets the HPA and `kubectl scale` work.','`additionalPrinterColumns` shapes the output of `kubectl get`.']},
+{h:'Versions and conversion'},
+{p:'A CRD can serve several versions (`v1alpha1`, `v1beta1`, `v1`), but **one** is the storage version. When versions differ in schema, a **conversion** strategy translates between them (none for identical schemas, or a conversion webhook). Evolving a CRD is like evolving an API: add optional fields, deprecate before removing, and never change the meaning of an existing field.'},
+{h:'A CRD alone does nothing'},
+{p:'Creating a `Backup` object only **stores** it. Nothing performs a backup until a **controller** watches `Backup` objects and acts, which is exactly what an **operator** is (next lecture). CRD plus controller is the whole pattern.'},
+{h:'Operating CRDs: dangers and checks'},
+{t:[['Risk','Consequence','Mitigation'],
+['**Deleting a CRD**','**Deletes every custom resource of that kind**','Back up first; protect with RBAC and review before deleting'],
+['Wrong or loose schema','Bad data stored, or fields pruned unexpectedly','Test with `kubectl apply --dry-run=server`'],
+['CRD installed but controller missing','Objects sit without effect','Check the operator Deployment'],
+['Helm and CRDs','Helm installs files in `crds/` once but **does not upgrade or delete** them','Manage CRD upgrades deliberately'],
+['Cluster-scoped, shared','One team change affects everyone','Review CRD changes like API changes']]},
+{code:`kubectl get crd | grep example.com
+kubectl describe crd backups.example.com | sed -n '/Conditions:/,/Events:/p'      # Established=True, NamesAccepted=True
+kubectl get crd backups.example.com -o jsonpath='{.status.storedVersions}{"\\n"}'
+kubectl auth can-i create backups.example.com --as jane -n shop`},
+{note:'Exam tip: CRD tasks usually ask you to inspect (`kubectl get crd`, `kubectl explain`), create a custom resource from a given CRD, or list resources of a custom kind: all with ordinary kubectl commands.'}],
 src:[['Custom Resources',EX+'api-extension/custom-resources/'],['Extend the Kubernetes API with CustomResourceDefinitions',T+'extend-kubernetes/custom-resources/custom-resource-definitions/'],['Versions of CustomResourceDefinitions',T+'extend-kubernetes/custom-resources/custom-resource-definition-versioning/']]};
 
 /* ---------- 4: Operators ---------- */
 L['k8s:11:4']={blocks:[
-{p:'An **operator** is a CRD plus a controller that encodes how to run one piece of software: install it, scale it, back it up, upgrade it and heal it. It automates what a human administrator of that application would do.'},
-{flow:['You create a custom resource (for example a Postgres cluster with 3 instances)','The operator controller sees it through a watch','It creates the StatefulSets, Services, Secrets and volumes','It keeps reconciling: replaces failed members, promotes a new primary','You change the spec; the operator performs the safe sequence (rolling upgrade, resize)']},
-{h:'Example: a database operator'},
-{code:`# 1. Install the operator (CRDs + controller Deployment), usually with Helm or a manifest
+{p:'Running a complex stateful application, such as a database cluster, involves human knowledge: how to bootstrap it, add a replica, take a consistent backup, upgrade versions in the right order, fail over safely. An **operator** captures that knowledge in software. It is a **custom resource definition plus a controller** that continuously reconciles the real application toward what the custom resource declares.'},
+{h:'The operator idea'},
+{flow:['You create a custom resource: for example a PostgreSQL cluster with 3 instances and 50Gi storage','The operator controller sees it through a watch','It creates what is needed: StatefulSets, Services, Secrets, volumes, configuration','It keeps reconciling: replaces failed members, promotes a new primary, runs backups','You edit the custom resource (version, size); the operator performs the safe sequence']},
+{p:'This is the same control-loop pattern as the built-in Deployment controller (Section 3), applied to your application. The difference is that the **operational knowledge of that specific software** lives in the controller.'},
+{h:'A worked example'},
+{code:`# 1. Install the operator: CRDs plus the controller Deployment (Helm, manifests or OLM)
 helm repo add cnpg https://cloudnative-pg.github.io/charts
 helm install cnpg cnpg/cloudnative-pg -n cnpg-system --create-namespace
 
-# 2. Check what it added
-kubectl get crd | grep cnpg
-kubectl -n cnpg-system get deploy,pods
+# 2. See what it added
+$ kubectl get crd | grep cnpg
+clusters.postgresql.cnpg.io        poolers.postgresql.cnpg.io  ...
+$ kubectl -n cnpg-system get deploy,pods
 
 # 3. Declare a database cluster as a custom resource
-cat <<EOF | kubectl apply -f -
+$ kubectl apply -f - <<EOF
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata: {name: pg, namespace: shop}
@@ -256,40 +347,74 @@ spec:
   instances: 3
   storage: {size: 10Gi}
 EOF
-kubectl get cluster -n shop
-kubectl get pods,pvc -n shop`},
-{h:'Operating operators'},
-{ul:['**Install order**: CRDs first, then the controller. Helm charts normally include a `crds/` directory that Helm installs but **does not upgrade or delete**, so handle CRD upgrades deliberately.','**RBAC**: operators are powerful. Review the ClusterRole they ask for; many need broad access.','**Namespace scope**: some operators watch one namespace, others the whole cluster. Match it to your tenancy model.','**Upgrades**: read the operator release notes, back up the data, upgrade the operator **before** the managed instances and test on a copy.','**Failure mode**: if the operator is down, running workloads continue, but no healing or changes occur.']},
-{h:'Where to find operators'},
-{p:'Artifact Hub and OperatorHub.io list community and vendor operators. The **Operator Lifecycle Manager (OLM)** is an optional layer that installs, updates and manages operators with catalogs; many clusters simply use Helm or plain manifests instead.'},
+$ kubectl get cluster -n shop
+NAME   AGE   INSTANCES   READY   STATUS                     PRIMARY
+pg     2m    3           3       Cluster in healthy state   pg-1
+$ kubectl get pods,pvc,svc -n shop                   # the operator created Pods, volumes and Services for you`},
+{h:'What operators are good at'},
+{t:[['Task','Why an operator helps'],
+['Provisioning','A few lines of YAML instead of dozens of objects'],
+['Day-2 operations','Backup schedules, restores, rolling upgrades in the right order'],
+['Self-healing with application knowledge','Failover, re-sync of a replica, quorum handling'],
+['Configuration changes','Safe sequence, with status reporting'],
+['Consistency','The same declared state everywhere, driven by GitOps']]},
+{h:'Operating operators: what you must know'},
+{ul:['**Install order**: CRDs first, then the controller. Helm charts keep CRDs in a `crds/` directory that Helm installs once but **never upgrades or deletes**, so plan CRD upgrades.','**RBAC**: operators are powerful and often need wide permissions. Read the ClusterRole they ask for.','**Scope**: some watch one namespace, others the whole cluster. Match your tenancy model.','**Upgrades**: read release notes, back up data, upgrade the **operator before** the managed instances, and test on a copy.','**Failure mode**: if the operator is down, the **running database keeps running**, but there is no healing or change handling until it returns.','**Observability**: look at the custom resource **status**, the operator logs and Kubernetes events.']},
 {code:`kubectl get crd
-kubectl api-resources | grep -v "k8s.io"
+kubectl api-resources | grep -v "k8s.io"                     # custom kinds in the cluster
 kubectl -n cnpg-system logs -l app.kubernetes.io/name=cloudnative-pg --tail=20
-kubectl describe cluster pg -n shop             # events and status written by the operator`},
-{note:'Choosing an operator is choosing a dependency for your most important data. Check maintenance activity, how upgrades and backups work, and whether you can restore without the operator.'}],
+kubectl describe cluster pg -n shop                          # events and conditions written by the operator
+kubectl get cluster pg -n shop -o jsonpath='{.status.phase}{"\\n"}'`},
+{h:'Finding and choosing operators'},
+{p:'**Artifact Hub** and **OperatorHub.io** list community and vendor operators. The **Operator Lifecycle Manager (OLM)** is an optional layer that installs and updates operators from catalogs; many clusters simply use Helm or plain manifests.'},
+{t:[['Check before adopting','Why'],
+['Maintenance activity and release cadence','You are adding a dependency for critical data'],
+['How **backups and restores** work','You must be able to recover without the operator'],
+['Upgrade path and CRD versioning','Avoid being stuck on an old version'],
+['RBAC requested','Security review'],
+['Support model','Community, vendor, or your team']]},
+{note:'An operator is a convenience, not a substitute for understanding the software it runs. Practise a restore and a failover on a test instance before you depend on it in production.'}],
 src:[['Operator pattern',EX+'operator/'],['Custom Resources',EX+'api-extension/custom-resources/'],['Artifact Hub','https://artifacthub.io/']]};
 
 /* ---------- 5: CNI CSI CRI ---------- */
 L['k8s:11:5']={blocks:[
-{p:'Kubernetes does not ship its own container runtime, network or storage implementation. Instead it defines **interfaces**, and vendors provide interchangeable plugins. Knowing which interface sits where makes troubleshooting much faster.'},
+{p:'Kubernetes does not ship its own container runtime, network implementation or storage drivers. Instead it defines **interfaces**, and vendors provide interchangeable plugins behind them. Three of them matter most to an administrator: **CRI**, **CNI** and **CSI**. Knowing which interface sits where makes troubleshooting much faster: a Pod stuck `ContainerCreating` is a clue that points at one of the three.'},
 {svg:ifaces},
-{t:[['Interface','Between','Examples','Where to look when broken'],
-['**CRI** (Container Runtime Interface)','kubelet and the container runtime','containerd, CRI-O','`crictl ps`, `crictl info`, runtime logs, kubelet logs'],
-['**CNI** (Container Network Interface)','Runtime and the network plugin','Calico, Cilium, Flannel, cloud CNIs','`/etc/cni/net.d`, `/opt/cni/bin`, CNI DaemonSet Pods'],
-['**CSI** (Container Storage Interface)','kubelet and storage drivers','EBS, Azure Disk, Ceph, NFS, local','CSIDriver, CSINode, driver Pods, `VolumeAttachment` objects']]},
-{h:'How a Pod start crosses all three'},
-{flow:['Kubelet receives a Pod and calls the runtime over CRI (RunPodSandbox)','The runtime invokes the CNI plugin to give the sandbox an IP','The kubelet asks the CSI node plugin to mount volumes','The runtime pulls images and creates the containers','Probes and status flow back to the API server']},
+{t:[['Interface','Between','Examples','Typical failure messages','Where to look'],
+['**CRI** (Container Runtime Interface)','kubelet and the container runtime','containerd, CRI-O','`container runtime is down`, image pull errors, `failed to create containerd task`','`crictl info`, runtime and kubelet logs'],
+['**CNI** (Container Network Interface)','Runtime (sandbox creation) and the network plugin','Calico, Cilium, Flannel, cloud CNIs','`cni plugin not initialized`, `failed to set up sandbox network`','`/etc/cni/net.d`, `/opt/cni/bin`, CNI DaemonSet Pods'],
+['**CSI** (Container Storage Interface)','kubelet and storage drivers','EBS, Azure Disk, Ceph, NFS, local','`AttachVolume.Attach failed`, `MountVolume.SetUp failed`','CSIDriver, CSINode, `VolumeAttachment`, driver Pod logs']]},
+{h:'How one Pod start crosses all three'},
+{flow:['The kubelet receives a Pod and calls the runtime over CRI to create a sandbox (RunPodSandbox)','The runtime invokes the CNI plugin, which gives the sandbox an IP address and network','The kubelet asks the CSI node plugin to stage and mount the Pod volumes','The runtime pulls the images and creates the containers (CRI)','Probes run; status flows back to the API server']},
+{code:`# Which plugins does this node use?
+$ kubectl get nodes -o wide                                     # CONTAINER-RUNTIME column: containerd://2.0.x
+$ sudo crictl info | grep -E "RuntimeReady|NetworkReady"
+$ ls /etc/cni/net.d /opt/cni/bin
+$ kubectl get csidrivers ; kubectl get csinodes
+$ kubectl describe pod stuck | sed -n '/Events:/,$p'            # the reason names the failing layer`},
+{h:'Using the three to diagnose'},
+{t:[['Event reason','Layer','First check'],
+['`FailedCreatePodSandBox`','CNI or runtime','CNI Pod on that node; `crictl info`; `/etc/cni/net.d`'],
+['`ErrImagePull`, `ImagePullBackOff`','Runtime and registry','Image name, credentials, DNS from the node'],
+['`FailedAttachVolume`, `FailedMount`','CSI','Driver Pods, `VolumeAttachment`, cloud permissions'],
+['`NetworkNotReady`','CNI','CNI installation and CIDR']]},
 {h:'Other extension points'},
-{ul:['**Device plugins**: expose GPUs, FPGAs and other hardware to the scheduler and containers.','**Admission webhooks** and **ValidatingAdmissionPolicy**: change or reject requests (Section 10).','**Aggregated API servers**: add whole API groups served by another process.','**Scheduler plugins and extra schedulers**: customise placement.','**kubectl plugins**: executables named `kubectl-foo` on your PATH become `kubectl foo`.','**Cloud controller manager**: provider-specific node, route and load balancer logic.','**Custom controllers and operators**: the pattern from the previous lecture.']},
-{code:`# Which runtime, network and storage plugins does this node use?
-kubectl get nodes -o wide                                      # CONTAINER-RUNTIME column
-kubectl get csidrivers
-ls /etc/cni/net.d /opt/cni/bin                                 # on a node
-sudo crictl --runtime-endpoint unix:///run/containerd/containerd.sock info | head`},
+{t:[['Extension point','What it lets you add'],
+['**Device plugins** / **DRA**','GPUs, FPGAs and other hardware'],
+['**Admission webhooks** and policies','Rules and mutation on API requests'],
+['**Aggregated API servers**','Whole new API groups (metrics.k8s.io)'],
+['**Custom controllers and operators**','Domain logic, reconciling custom resources'],
+['**Scheduler plugins** and extra schedulers','Custom placement'],
+['**kubectl plugins**','New `kubectl` subcommands (executables named `kubectl-foo`)'],
+['**Cloud controller manager**','Cloud load balancers, routes and node lifecycle'],
+['**Authentication webhooks**','External identity systems']]},
 {h:'Practical consequences'},
-{ul:['Replacing a CNI plugin is a disruptive change: plan a maintenance window and expect Pod restarts.','Storage drivers need permissions and sometimes node-level packages (NFS client, iSCSI tools). Missing ones appear as mount errors.','Always match the runtime and its cgroup driver to the kubelet (Section 4).']},
-{note:'Exam hint: when a Pod is stuck in `ContainerCreating`, ask which interface failed. A sandbox or IP error points at CNI, an image or container error at CRI, and a volume attach or mount error at CSI.'}],
+{ul:['**Replacing a CNI plugin** is disruptive: plan a maintenance window; remove leftover config; expect Pod restarts.','**Storage drivers** need cloud permissions and sometimes node packages (NFS client, iSCSI tools); missing ones appear as mount errors.','The **runtime and kubelet cgroup drivers** must match (Section 4).','You can swap implementations of an interface **without changing your applications**: that is the point of the interfaces.']},
+{h:'Common mistakes'},
+{ul:['Debugging the application when the Pod never left `ContainerCreating`: the failure is in CNI, CSI or CRI.','Installing two CNI plugins.','Upgrading Kubernetes without checking that the CNI and CSI versions support it.','Forgetting that on managed clusters these plugins are add-ons you may need to upgrade yourself.']},
+{note:'Exam hint: when a Pod is stuck in `ContainerCreating`, read the event reason: sandbox errors point at the CNI, image errors at the CRI and registry, volume errors at the CSI.'}],
 src:[['Container Runtime Interface',C+'architecture/cri/'],['Network Plugins',EX+'compute-storage-net/network-plugins/'],['Device Plugins',EX+'compute-storage-net/device-plugins/']]};
+
 /* ---------- Additional content ---------- */
 /* 6: Writing Helm charts */
 L['k8s:11:6']={blocks:[

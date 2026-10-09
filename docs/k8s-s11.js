@@ -24,237 +24,384 @@ const snap=K.dg(700,200,[
 
 /* ---------- 0: Version skew ---------- */
 L['k8s:10:0']={blocks:[
-{p:'A cluster is made of components released together but upgraded at different times. The **version skew policy** says which combinations are supported, and it dictates the order of every upgrade.'},
+{p:'A cluster is not one program but a set of components, released together and **upgraded at different moments**. During an upgrade the control plane is on one version while nodes are still on another. The **version skew policy** states which combinations are supported. It is the rulebook behind every upgrade plan, and it explains why upgrades must happen **in a fixed order, one minor version at a time**.'},
+{h:'Reading a version'},
+{p:'Versions look like `v1.37.1`: major 1, **minor 37**, **patch 1**. A **minor** release (1.36 to 1.37) brings features and may deprecate or remove APIs. A **patch** release (1.37.0 to 1.37.1) contains only bug and security fixes. The project ships about **three minor releases a year** and supports the three newest (each with roughly a year of patches).'},
 {svg:skew},
-{t:[['Component','Allowed relative to kube-apiserver'],
-['kube-apiserver (HA members)','At most one minor apart during an upgrade'],
-['kube-controller-manager, kube-scheduler, cloud-controller-manager','Same minor as the API server, or one minor older; never newer'],
-['kubelet','Same minor, or up to **three** minors older; never newer'],
-['kube-proxy','Same minor as the kubelet on the node, within three minors of the API server'],
-['kubectl','Within **one** minor, older or newer']]},
-{note:'These limits have changed over time (the kubelet allowance used to be two minors). Always read the Version Skew Policy for the exact version you run before planning an upgrade.'},
-{h:'Rules that follow from the table'},
-{ul:['**Control plane first, workers second.** A kubelet must never be newer than the API server.','**One minor at a time.** Skipping minors is unsupported. 1.34 to 1.37 means three separate upgrades (1.35, 1.36, 1.37).','**Patch upgrades can jump**: 1.37.1 to 1.37.9 directly.','Because kubelets can lag, you can upgrade the control plane promptly and roll workers out over days, but do not rely on long gaps: stay within support.']},
+{h:'The skew rules'},
+{t:[['Component','Allowed relative to the kube-apiserver','Why'],
+['kube-apiserver (HA members)','At most **one minor** apart while upgrading','Instances share etcd and must agree on stored formats'],
+['kube-controller-manager, kube-scheduler, cloud-controller-manager','Same minor, or **one minor older**; never newer','They speak to the API server and must understand its API'],
+['**kubelet**','Same minor, or up to **three minors older**; **never newer**','Nodes can lag behind a control plane upgrade'],
+['kube-proxy','Same minor as the kubelet on that node; within the kubelet range','It runs beside the kubelet'],
+['**kubectl**','Within **one minor**, older or newer','The client should understand the server API']]},
+{note:'Skew allowances have changed over time (the kubelet allowance used to be two minors). Always read the Version Skew Policy for the exact release you run before planning an upgrade, and do not rely on a table you memorised.'},
+{h:'What the rules imply for upgrades'},
+{ul:['**Control plane first, workers second.** A kubelet must never be newer than the API server.','**One minor at a time.** Skipping minors is unsupported: 1.34 to 1.37 means three separate upgrades (1.35, 1.36, 1.37).','**Patch upgrades may jump**: 1.37.1 to 1.37.9 in one step is fine.','Within an HA control plane, upgrade the API servers one by one; the one-minor difference is only for the duration of the upgrade.','Because kubelets may lag, you can upgrade the control plane promptly and roll workers over days, but do not stay long in the mixed state.']},
 {h:'Support window'},
-{ul:['Only the three most recent minor releases receive patches (roughly one year each).','Falling behind means several upgrades in a row, each with its own deprecations. Plan one upgrade per release or at least a few per year.','Managed services publish their own supported-version lists and force-upgrade clusters that fall out of support.']},
-{code:`kubectl version                                  # client and server
-kubectl get nodes -o custom-columns=NAME:.metadata.name,KUBELET:.status.nodeInfo.kubeletVersion
-kubectl -n kube-system get pods -o custom-columns=NAME:.metadata.name,IMAGE:.spec.containers[0].image | grep -E "apiserver|scheduler|controller|proxy|etcd"
-kubeadm version -o short`},
-{p:'Check what the plan is before you start: current version, target version, the kubelet versions on every node and how many minors apart they are.'}],
+{t:[['Situation','Consequence'],
+['You run the newest minor','Patched for about a year; plan the next upgrade within that window'],
+['You are one or two minors behind','Still supported, but each skipped release adds deprecations to handle later'],
+['Out of support (older than the three newest)','**No security patches**; upgrading means several sequential upgrades'],
+['Managed service','The provider publishes its own supported list and can force-upgrade clusters that fall out of support']]},
+{p:'Falling behind compounds: a cluster two years behind needs many upgrades back to back, each with its own removed APIs. A steady cadence (one upgrade per release, or at least a few per year) is cheaper than heroic catch-ups.'},
+{h:'Check your versions'},
+{code:`$ kubectl version
+Client Version: v1.37.1
+Server Version: v1.37.1
+$ kubectl get nodes -o custom-columns=NAME:.metadata.name,KUBELET:.status.nodeInfo.kubeletVersion,RUNTIME:.status.nodeInfo.containerRuntimeVersion
+NAME   KUBELET   RUNTIME
+cp1    v1.37.1   containerd://2.0.x
+w1     v1.36.4   containerd://2.0.x            # one minor behind the API server: allowed
+$ kubectl -n kube-system get pods -o custom-columns=NAME:.metadata.name,IMAGE:.spec.containers[0].image | grep -E "apiserver|scheduler|controller|proxy|etcd|coredns"
+$ kubeadm version -o short`},
+{h:'Common mistakes'},
+{t:[['Mistake','Consequence','Better'],
+['Upgrading workers before the control plane','Kubelet newer than the API server: unsupported, may fail','Control plane first, always'],
+['Skipping a minor version','Unsupported, can corrupt or break components','One minor at a time'],
+['Leaving kubelets several minors behind indefinitely','Fall out of the skew window; harder upgrade later','Roll workers soon after the control plane'],
+['Using a very old kubectl','Odd behaviour with new APIs','Keep within one minor of the server'],
+['Ignoring that add-ons have their own skew rules','CNI, CoreDNS or ingress break after upgrade','Check each add-on compatibility']]},
+{note:'Exam tip: for an upgrade task the order is fixed: plan, control plane first (`kubeadm upgrade apply`), then each worker (drain, upgrade, uncordon). Always check the current and target versions with `kubeadm version` and `kubectl get nodes`.'}],
 src:[['Version Skew Policy','https://kubernetes.io/releases/version-skew-policy/'],['Kubernetes Releases','https://kubernetes.io/releases/'],['Upgrade a kubeadm cluster',K.T+'administer-cluster/kubeadm/kubeadm-upgrade/']]};
 
 /* ---------- 1: Pre-upgrade checks ---------- */
 L['k8s:10:1']={blocks:[
-{p:'Most failed upgrades fail **before** they start: removed APIs, an incompatible runtime, or no way back. This checklist takes about an hour and prevents most surprises.'},
+{p:'Most failed upgrades fail **before they start**: a manifest uses an API that the new version removed, the container runtime is too old, an add-on does not support the target release, or there is no way back. A pre-upgrade review takes about an hour and prevents most of these. Think of it as the safety briefing before a flight.'},
 {svg:order},
-{h:'Checklist'},
-{t:[['Check','How'],
-['Read the release notes for **every** minor you cross','Look for "Urgent upgrade notes", deprecations and removals'],
-['Find objects using **deprecated or removed APIs**','`kubectl get --raw /metrics | grep apiserver_requested_deprecated_apis`; scan manifests and Helm charts with a tool such as kubent or pluto'],
-['Container runtime and cgroup mode compatible with the target kubelet','`containerd --version`, `stat -fc %T /sys/fs/cgroup`'],
-['CNI, CoreDNS, ingress and other add-ons support the target version','Add-on release notes'],
-['Cluster is healthy','Nodes Ready, system Pods Running, no Pending workloads'],
-['Workloads can survive a node drain','At least two replicas, PodDisruptionBudgets, no bare Pods or local-only storage'],
-['**Backup**','etcd snapshot (see the etcd lecture) plus application data backups'],
-['Rollback plan and maintenance window','Written down, with who does what']]},
-{code:`kubectl get nodes
-kubectl get pods -A | grep -v -E "Running|Completed"
-kubectl get --raw /metrics | grep apiserver_requested_deprecated_apis | head
-kubectl get pdb -A
-kubectl get pods -A --field-selector spec.nodeName= -o wide     # unscheduled Pods
-containerd --version
-stat -fc %T /sys/fs/cgroup                                       # cgroup2fs`},
+{h:'The checklist and why each item exists'},
+{t:[['Check','Why it matters','How'],
+['**Release notes** of every minor you cross','Removals and behaviour changes are listed under "Urgent upgrade notes"','Read kubernetes.io release notes'],
+['**Deprecated or removed APIs** in use','After the upgrade the API server rejects removed versions; CI and GitOps start failing','Metric `apiserver_requested_deprecated_apis`, scan manifests and charts (kubent, pluto)'],
+['**Container runtime** version and **cgroup** setup','A newer kubelet may require a newer runtime (containerd 2.x) and the systemd driver on cgroup v2','`containerd --version`, `stat -fc %T /sys/fs/cgroup`'],
+['**Add-ons** support the target version','CNI, CoreDNS, ingress, CSI, metrics-server, policy engines','Their release notes'],
+['Cluster is **healthy now**','You cannot tell a problem you caused from one that was already there','Nodes Ready, system Pods Running, no stuck Pending'],
+['Workloads survive a **drain**','Upgrading drains nodes: single replicas and missing PDBs cause outages','Replicas, PDBs, no bare Pods or local-only data'],
+['**Backup**','Your way back','etcd snapshot plus application and volume backups'],
+['Window, owners and **rollback plan**','Decisions are hard at 2 am','Written plan, tested in a non-production cluster']]},
+{h:'Finding deprecated APIs'},
+{code:`# the API server counts requests made to deprecated APIs
+$ kubectl get --raw /metrics | grep apiserver_requested_deprecated_apis | head -n 3
+apiserver_requested_deprecated_apis{group="policy",removed_release="1.25",resource="podsecuritypolicies",version="v1beta1"} 1
+
+# scan what is stored in the cluster and what is in Git
+$ kubectl convert -f old.yaml --output-version networking.k8s.io/v1        # kubectl-convert plugin
+$ grep -rn "apiVersion:" manifests/ charts/ | sed 's/.*apiVersion: //' | sort | uniq -c | sort -rn
+# tools: kubent (cluster), pluto (files and Helm releases)`},
+{p:'Stored objects are served in the new version automatically; the danger is **manifests in Git, Helm charts and operators** that still use the removed version: they will fail the next time they are applied.'},
 {h:'Runtime and cgroup considerations'},
-{ul:['Check the target release notes for runtime requirements. Official runtime documentation states that older containerd (1.x) stops working with newer kubelets because a fallback is dropped (in Kubernetes 1.38), so move to containerd 2.x before you reach that version.','Make sure the kubelet and runtime use the **systemd cgroup driver** and that the host uses cgroup v2, since support for cgroup v1 is on a removal path.']},
-{h:'Deprecated API example'},
-{p:'An old manifest using `apiVersion: policy/v1beta1` for PodDisruptionBudget stops applying once that version is removed. Convert manifests **before** the upgrade, because the API server will reject the old version afterwards, and your CI or GitOps tool will start failing.'},
-{code:`kubectl convert -f old.yaml --output-version policy/v1      # kubectl-convert plugin
-grep -rn "apiVersion:" manifests/ | sort | uniq -c | sort -rn`},
-{note:'Upgrade a non-production cluster first, with the same add-ons and a representative workload. Surprises on a clone are free; surprises in production are not.'}],
+{ul:['Official runtime documentation states that older containerd (1.x) stops working with newer kubelets: the fallback that lets the kubelet cope with runtimes that cannot report their cgroup driver is dropped in Kubernetes 1.38, and Kubernetes 1.35 was the last release to support containerd 1.x. **Upgrade to containerd 2.x before you reach that version.**','Use the **systemd cgroup driver** and cgroup v2; support for cgroup v1 is on a removal path.','Check the **kernel and OS** support for the target release.']},
+{h:'Health and readiness baseline'},
+{code:`kubectl get nodes
+kubectl get pods -A | grep -v -E "Running|Completed"          # should be empty
+kubectl get --raw='/readyz?verbose' | grep -v ok
+kubectl get pdb -A                                            # any ALLOWED DISRUPTIONS = 0 will block a drain
+kubectl get deploy -A -o json | jq -r '.items[] | select(.spec.replicas==1) | .metadata.namespace+"/"+.metadata.name'   # single replicas
+kubectl get pods -A --field-selector status.phase=Pending
+kubeadm certs check-expiration                                # an upgrade renews them, but know the state
+sudo ETCDCTL_API=3 etcdctl ... snapshot save /root/pre-upgrade.db      # the backup, last`},
+{h:'Rehearse'},
+{ul:['Upgrade a **non-production cluster first**, with the same add-ons, policies and a representative workload.','Time the drain of one node: how long until its Pods are healthy elsewhere?','Write down the **rollback**: for kubeadm that usually means restoring an etcd snapshot and static Pod manifests of the same version, or rebuilding.']},
+{h:'Common mistakes'},
+{t:[['Mistake','Consequence','Better'],
+['Reading only the target release notes, not those of every minor crossed','Missing removals from intermediate versions','Read each'],
+['No etcd snapshot','No way back','Always snapshot, and keep it off the node'],
+['Testing nothing before production','Surprises in the live cluster','A staging cluster that mirrors production'],
+['Upgrading add-ons after the cluster without checking support','CNI or ingress failures mid-upgrade','Check add-on compatibility first'],
+['Starting with an unhealthy cluster','Cannot attribute failures','Fix existing problems first']]},
+{note:'The best upgrade is boring: every risk was found in the checklist, the cluster was healthy, a backup exists and the steps are written down.'}],
 src:[['Deprecated API Migration Guide',R+'using-api/deprecation-guide/'],['Upgrade a kubeadm cluster',T+'administer-cluster/kubeadm/kubeadm-upgrade/'],['Kubernetes Release Notes','https://kubernetes.io/releases/notes/']]};
 
 /* ---------- 2: Upgrading control plane ---------- */
 L['k8s:10:2']={blocks:[
-{p:'Upgrade the **first control plane node** with `kubeadm upgrade apply`; every **other** control plane node uses `kubeadm upgrade node`. This example moves a cluster from one minor to the next. Substitute your versions.'},
-{h:'1. Switch the package repository to the target minor'},
-{code:`# Debian / Ubuntu: edit the repository file to the NEW minor
+{p:'Upgrading a kubeadm control plane has a fixed shape: the **first** control plane node uses `kubeadm upgrade apply`, every **other** control plane node uses `kubeadm upgrade node`, and on each of them you then upgrade the **kubelet and kubectl packages**. The commands are few; the value is in knowing **what each one changes**, because that tells you how to recover when a step fails. The example moves from 1.36 to 1.37; use your own versions.'},
+{h:'What `kubeadm upgrade` does and does not touch'},
+{t:[['Changes','Does not change'],
+['Static Pod manifests of apiserver, controller manager, scheduler, etcd (new image tags and flags)','Your **workloads**'],
+['The `kube-proxy` and CoreDNS add-ons','The **CNI** plugin and other add-ons you installed yourself'],
+['Cluster configuration stored in the `kubeadm-config` ConfigMap','The kubelet **package** (you upgrade it)'],
+['Leaf **certificates** (renewed if due)','The CAs']]},
+{flow:['Switch the package repository to the target minor','Upgrade the kubeadm package','kubeadm upgrade plan: see what is available and what will change','kubeadm upgrade apply vX.Y.Z on the FIRST control plane node','Drain, upgrade kubelet and kubectl, restart the kubelet, uncordon','Other control plane nodes: kubeadm upgrade node, then the same kubelet steps','Then the workers (next lecture)']},
+{h:'1. Repository and kubeadm'},
+{code:`# Debian or Ubuntu: edit the repository to the NEW minor
 sudo sed -i 's#/stable:/v1.36/#/stable:/v1.37/#' /etc/apt/sources.list.d/kubernetes.list
 sudo apt-get update
-apt-cache madison kubeadm | head                 # find the latest patch, for example 1.37.1-1.1`},
-{h:'2. Upgrade kubeadm and plan'},
-{code:`sudo apt-mark unhold kubeadm
+apt-cache madison kubeadm | head -n 3                 # find the latest patch of the new minor
+
+sudo apt-mark unhold kubeadm
 sudo apt-get install -y kubeadm='1.37.1-*'
 sudo apt-mark hold kubeadm
-kubeadm version -o short
-
-sudo kubeadm upgrade plan                        # shows available versions and what will change`},
+kubeadm version -o short`},
+{h:'2. Plan'},
+{code:`$ sudo kubeadm upgrade plan
+[upgrade/config] Making sure the configuration is correct:
+[upgrade] Running cluster health checks
+Components that must be upgraded manually after you have upgraded the control plane with 'kubeadm upgrade apply':
+COMPONENT   NODE   CURRENT    TARGET
+kubelet     cp1    v1.36.4    v1.37.1
+kubelet     w1     v1.36.4    v1.37.1
+Upgrade to the latest stable version:
+COMPONENT                 NODE   CURRENT    TARGET
+kube-apiserver            cp1    v1.36.4    v1.37.1
+etcd                      cp1    3.5.x      3.5.y
+You can now apply the upgrade by executing: kubeadm upgrade apply v1.37.1`},
 {h:'3. Apply on the first control plane node'},
-{code:`sudo kubeadm upgrade apply v1.37.1
-# ... [upgrade/successful] SUCCESS! Your cluster was upgraded to "v1.37.1". Enjoy!
-
-# What it did: preflight checks, backed up the static Pod manifests and etcd data directory
-# (see /etc/kubernetes/tmp), upgraded apiserver, controller-manager, scheduler, etcd and
-# kube-proxy and CoreDNS add-ons, renewed certificates that were about to expire`},
-{h:'4. Upgrade kubelet and kubectl on that node'},
-{code:`kubectl drain cp1 --ignore-daemonsets            # control plane nodes can run CoreDNS and other workloads
+{code:`$ sudo kubeadm upgrade apply v1.37.1
+[upgrade/versions] Cluster version: v1.36.4 -> v1.37.1
+[upgrade/prepull] Pulling images required for setting up a Kubernetes cluster
+[upgrade/staticpods] Preparing for "kube-apiserver" upgrade
+[upgrade/staticpods] Renewing apiserver certificate ... Moved new manifest to "/etc/kubernetes/manifests/kube-apiserver.yaml" and backed up old manifest to "/etc/kubernetes/tmp/kubeadm-backup-manifests-.../kube-apiserver.yaml"
+[upgrade/staticpods] Component "kube-apiserver" upgraded successfully!
+[addons] Applied essential addon: CoreDNS
+[addons] Applied essential addon: kube-proxy
+[upgrade] SUCCESS! Your cluster was upgraded to "v1.37.1". Enjoy!`},
+{p:'kubeadm **backs up the old manifests and etcd data** before changing anything (look in `/etc/kubernetes/tmp`). The static Pods restart because their manifests change; with a single API server, `kubectl` is briefly unavailable. With an HA load balancer it is not.'},
+{h:'4. The kubelet and kubectl on that node'},
+{code:`kubectl drain cp1 --ignore-daemonsets                    # control plane nodes may run CoreDNS and other workloads
 sudo apt-mark unhold kubelet kubectl
 sudo apt-get install -y kubelet='1.37.1-*' kubectl='1.37.1-*'
 sudo apt-mark hold kubelet kubectl
 sudo systemctl daemon-reload
 sudo systemctl restart kubelet
-kubectl uncordon cp1`},
+kubectl uncordon cp1
+kubectl get nodes                                        # cp1 shows v1.37.1`},
 {h:'5. Other control plane nodes'},
-{code:`# on each additional control plane node, one at a time
-# (switch the repo and upgrade the kubeadm package as above)
-sudo kubeadm upgrade node                        # NOT "apply"
-# then drain, upgrade kubelet/kubectl, restart kubelet, uncordon as in step 4`},
+{code:`# on cp2 and cp3, one at a time
+# (switch the repo, upgrade the kubeadm package as above)
+sudo kubeadm upgrade node                                # NOT "apply": the cluster-wide steps are already done
+# then drain, upgrade kubelet and kubectl, restart kubelet, uncordon`},
 {h:'Verify'},
-{code:`kubectl get nodes                                # control plane nodes show the new VERSION
+{code:`kubectl get nodes
+kubectl get --raw='/readyz?verbose' | tail -n 3
 kubectl -n kube-system get pods -o wide
-kubectl get --raw=/readyz?verbose | tail -n 3
-kubectl -n kube-system get pods -l component=kube-apiserver -o jsonpath='{.items[*].spec.containers[0].image}'`},
-{ul:['All control plane containers restart during the upgrade because their configuration changes. With one API server, `kubectl` is briefly unavailable; with an HA load balancer it is not.','If `apply` fails midway, read the output, fix the cause and run it again: it is designed to be re-run. The backed-up manifests can restore a component.','`kubeadm upgrade` does not touch your workloads, only Kubernetes components. It also does not install a CNI or other add-ons that you manage yourself: upgrade those separately.']},
-{note:'Do not drain a single control plane node cluster in a way that removes CoreDNS with nowhere to go. In a lab with one control plane node it is fine to skip the drain for the control plane, but never skip it for workers.'}],
+kubectl -n kube-system get pods -l component=kube-apiserver -o jsonpath='{.items[*].spec.containers[0].image}{"\\n"}'
+sudo kubeadm certs check-expiration                      # renewed by the upgrade`},
+{h:'When a step fails'},
+{t:[['Symptom','Cause and response'],
+['`upgrade plan` reports a failed health check','Fix the unhealthy component first; do not force'],
+['`apply` fails midway','Read the error, fix, **re-run it** (it is designed to be re-run); the backups allow manual restoration of a component'],
+['API server does not come back after apply','`crictl logs`; compare with the backed-up manifest in `/etc/kubernetes/tmp`'],
+['Node stays NotReady after the kubelet upgrade','Check `systemctl status kubelet`, runtime compatibility, cgroup driver'],
+['Wrong version installed','`apt-cache madison kubeadm`, repository still pointing at the old minor'],
+['Drain hangs on a control plane node','A PodDisruptionBudget or a bare Pod: handle as in Section 6']]},
+{note:'Do not skip `kubeadm upgrade plan`: it is a free dry run that checks health and tells you exactly what will change.'}],
 src:[['Upgrading kubeadm clusters',K.T+'administer-cluster/kubeadm/kubeadm-upgrade/'],['kubeadm upgrade',K.R+'setup-tools/kubeadm/kubeadm-upgrade/'],['Changing the package repository',K.T+'administer-cluster/kubeadm/change-package-repository/']]};
 
 /* ---------- 3: Workers ---------- */
 L['k8s:10:3']={blocks:[
-{p:'Once the control plane is on the new version, upgrade workers **one at a time** (or in small batches that your workload capacity allows).'},
-{flow:['Drain the node from a machine with kubectl','On the node: switch the repository and upgrade kubeadm','kubeadm upgrade node','Upgrade kubelet and kubectl packages','Restart the kubelet','Uncordon and verify']},
+{p:'With the control plane upgraded, the workers follow. This is where users feel an upgrade, because each worker is **drained**: its Pods are evicted and recreated elsewhere. Done carefully, one node at a time with a PodDisruptionBudget protecting each application, nobody notices. Done carelessly, the application is briefly or completely unavailable.'},
+{h:'The routine for one worker'},
+{flow:['Drain the node from a machine with kubectl (workloads move away)','On the node: switch the repository and upgrade kubeadm','kubeadm upgrade node: updates the local kubelet configuration','Upgrade the kubelet and kubectl packages and restart the kubelet','Uncordon and wait until the node is Ready and Pods spread back','Move on to the next node']},
 {code:`# from your admin machine
-kubectl drain w1 --ignore-daemonsets --delete-emptydir-data
+kubectl drain w1 --ignore-daemonsets --delete-emptydir-data --timeout=300s
 
 # on w1
 sudo sed -i 's#/stable:/v1.36/#/stable:/v1.37/#' /etc/apt/sources.list.d/kubernetes.list
 sudo apt-get update
 sudo apt-mark unhold kubeadm kubelet kubectl
 sudo apt-get install -y kubeadm='1.37.1-*'
-sudo kubeadm upgrade node                         # updates the local kubelet configuration
+sudo kubeadm upgrade node
 sudo apt-get install -y kubelet='1.37.1-*' kubectl='1.37.1-*'
 sudo apt-mark hold kubeadm kubelet kubectl
-sudo systemctl daemon-reload
-sudo systemctl restart kubelet
+sudo systemctl daemon-reload && sudo systemctl restart kubelet
 
 # from your admin machine
 kubectl uncordon w1
-kubectl get nodes`},
-{h:'What can go wrong'},
-{t:[['Symptom','Cause and fix'],
-['Drain stuck','A PodDisruptionBudget blocks eviction, or a bare Pod or emptyDir Pod needs flags. Fix the app or use `--force` knowingly'],
-['Node NotReady after the kubelet restart','Runtime or cgroup driver mismatch, or the kubelet cannot read its config. `journalctl -u kubelet`'],
-['Workloads lose capacity during the upgrade','Too many nodes drained at once; reduce batch size'],
-['Version shows the old kubelet','Package not upgraded or kubelet not restarted']]},
-{ul:['Keep node pools or groups: upgrade one pool at a time to limit blast radius.','Never upgrade a worker before the control plane: the kubelet must not be newer than the API server.','After an upgrade all Pods on the node were recreated, so applications must tolerate restarts. This is why replicas and PDBs matter.']},
-{h:'Managed services and immutable nodes'},
-{p:'On EKS, AKS and GKE you upgrade the control plane with a provider API, then **roll node pools** (replace nodes with new images, surge or blue-green) instead of upgrading packages in place. The same rules apply: control plane first, drain gracefully, one minor at a time. Many teams also treat self-managed workers as **replaceable**: build a new node on the new version, join it and remove an old one.'}],
+$ kubectl get nodes
+NAME   STATUS   ROLES           VERSION
+cp1    Ready    control-plane   v1.37.1
+w1     Ready    <none>          v1.37.1          # done
+w2     Ready    <none>          v1.36.4          # next`},
+{h:'Watching the effect on users'},
+{p:'While you drain and upgrade, watch the application from a second terminal. With enough replicas and a PodDisruptionBudget you should see at most a few failures, and often none:'},
+{code:`kubectl get pods -o wide -w                                  # Pods leave w1, appear elsewhere
+kubectl run probe --rm -it --image=busybox:1.36 --restart=Never -- sh -c 'while true; do wget -qO- -T 2 http://web >/dev/null && echo ok || echo FAIL; sleep 1; done'`},
+{h:'Capacity: how many nodes at a time?'},
+{ul:['Draining a node removes its capacity. Make sure the **remaining nodes can host the evicted Pods**: check allocated resources (`kubectl describe node`).','One node at a time is the safe default. For big pools drain a small batch only if you have spare capacity (a surge node).','Stateful workloads: wait until replicas are caught up and healthy before the next node.','Spread critical Pods across zones so a batch does not take a whole zone.']},
+{h:'What goes wrong'},
+{t:[['Symptom','Cause','Fix'],
+['Drain stuck','A PDB would be violated, a bare Pod, or emptyDir data without the flag','`kubectl get pdb -A`; add replicas or relax; use the correct flags'],
+['Node `NotReady` after restarting the kubelet','Runtime or cgroup mismatch, bad kubelet config','`journalctl -u kubelet`, `systemctl status containerd`'],
+['Pods Pending after the drain','Not enough capacity elsewhere, or taints and affinity','`describe pod`, add capacity'],
+['Node still shows the old version','Package not upgraded or kubelet not restarted','`kubelet --version`, restart'],
+['Application errors during the drain','Single replica, no readiness probe, slow shutdown','More replicas, probes, `preStop`'],
+['Workloads do not return to the node','Uncordon only allows scheduling','`kubectl rollout restart` to rebalance if needed']]},
+{h:'Managed services and replaceable nodes'},
+{p:'On EKS, AKS and GKE you upgrade the control plane through the provider, then **roll node pools**: new nodes with the target version are created, old ones drained and deleted (surge or blue-green), rather than upgrading packages in place. Many self-managed teams do the same: treat workers as **replaceable**, build a new node on the new version, join it, remove an old one. The rules remain: control plane first, graceful drains, one minor at a time.'},
+{note:'Exam tip: for a worker node upgrade task the commands are drain, then on that node `apt-get install kubeadm`, `kubeadm upgrade node`, install kubelet and kubectl, restart kubelet, then uncordon. Practise the whole sequence until it takes about five minutes.'}],
 src:[['Upgrade Linux nodes',K.T+'administer-cluster/kubeadm/upgrading-linux-nodes/'],['Safely Drain a Node',K.T+'administer-cluster/safely-drain-node/']]};
 
 /* ---------- 4: etcd backup and restore ---------- */
 L['k8s:10:4']={blocks:[
-{p:'The cluster state lives in etcd, so **an etcd snapshot is the cluster backup** for self-managed control planes. Take one before every upgrade and on a schedule, and practise restoring it.'},
+{p:'On a self-managed cluster the only complete backup of the cluster **definition** is a snapshot of **etcd**. Every object, every RBAC rule, every Deployment lives there. Taking snapshots is easy; the skill that matters is knowing **exactly what a snapshot contains, what it does not, and how a restore works**, because you will only find out you got it wrong during an emergency.'},
 {svg:snap},
-{h:'Take a snapshot'},
-{code:`sudo ETCDCTL_API=3 etcdctl snapshot save /var/backups/etcd-$(date +%F-%H%M).db \\
-  --endpoints=https://127.0.0.1:2379 \\
-  --cacert=/etc/kubernetes/pki/etcd/ca.crt \\
-  --cert=/etc/kubernetes/pki/etcd/server.crt \\
-  --key=/etc/kubernetes/pki/etcd/server.key
+{h:'What a snapshot contains'},
+{t:[['In an etcd snapshot','Not in an etcd snapshot'],
+['All API objects: Deployments, Services, ConfigMaps, **Secrets**, RBAC, CRDs and custom resources, Nodes, Events','**Volume data** (PersistentVolume contents)'],
+['Cluster state at that moment','Certificates and keys in `/etc/kubernetes/pki`'],
+['','Static Pod manifests and kubeconfigs on the nodes'],
+['','Images, application databases, anything outside Kubernetes']]},
+{p:'So a full cluster backup is **three** things: the etcd snapshot, the PKI and configuration files from the control plane nodes, and backups of persistent data. Because the snapshot contains every Secret, **protect and encrypt it**.'},
+{h:'Taking a snapshot'},
+{code:`$ sudo ETCDCTL_API=3 etcdctl snapshot save /var/backups/etcd-$(date +%F-%H%M).db \\
+    --endpoints=https://127.0.0.1:2379 \\
+    --cacert=/etc/kubernetes/pki/etcd/ca.crt \\
+    --cert=/etc/kubernetes/pki/etcd/server.crt \\
+    --key=/etc/kubernetes/pki/etcd/server.key
+Snapshot saved at /var/backups/etcd-2026-10-09-1200.db
 
-# Verify it (etcdutl is the offline tool in current etcd releases; older etcdctl also has snapshot status)
-sudo etcdutl snapshot status /var/backups/etcd-2026-10-09-1200.db --write-out=table`},
-{ul:['Find the certificate paths and endpoint in `/etc/kubernetes/manifests/etcd.yaml` (`--cert-file`, `--key-file`, `--trusted-ca-file`, `--listen-client-urls`).','Copy snapshots **off the node**, to object storage or another host, and encrypt them: they contain every Secret.','Snapshots capture etcd only. **Persistent volume data is not included**, nor are certificates in `/etc/kubernetes/pki`. Back those up as well.']},
-{h:'Restore'},
-{p:'A restore creates a **new data directory** from the snapshot. Then the etcd static Pod is pointed at it. On a multi-member cluster, restore every member from the same snapshot with a new cluster identity.'},
-{code:`# 1. Restore into a NEW directory (single-node control plane example)
+$ sudo etcdutl snapshot status /var/backups/etcd-2026-10-09-1200.db --write-out=table      # verify (offline tool in recent etcd releases)
++----------+----------+------------+------------+
+|   HASH   | REVISION | TOTAL KEYS | TOTAL SIZE |
++----------+----------+------------+------------+
+| 7a1c0e3f |   482113 |       1342 |      12 MB |
+$ scp /var/backups/etcd-*.db backup-host:/backups/            # OFF the node, encrypted`},
+{ul:['The endpoint and certificate paths come from `/etc/kubernetes/manifests/etcd.yaml` (`--listen-client-urls`, `--cert-file`, `--key-file`, `--trusted-ca-file`).','Take snapshots **on a schedule** (a CronJob, systemd timer or backup tool) and **before every upgrade or risky change**.','A backup stored on the failing machine is not a backup.']},
+{h:'Restoring: a new data directory'},
+{p:'A restore does **not** overwrite the running database. It builds a **new data directory** from the snapshot, and then you point the etcd static Pod at it. The cluster returns to the **state at snapshot time**: objects created later are gone, objects deleted later come back.'},
+{code:`# 1. restore into a NEW directory (single control plane example)
 sudo etcdutl snapshot restore /var/backups/etcd-2026-10-09-1200.db --data-dir /var/lib/etcd-restored
 # older tooling: sudo ETCDCTL_API=3 etcdctl snapshot restore <file> --data-dir /var/lib/etcd-restored
 
-# 2. Edit the etcd static Pod manifest: change the hostPath of the data volume
+# 2. edit the etcd static Pod manifest: change the hostPath of the data volume
 sudo vim /etc/kubernetes/manifests/etcd.yaml
 #   volumes:
 #   - hostPath:
-#       path: /var/lib/etcd-restored        # was /var/lib/etcd
+#       path: /var/lib/etcd-restored          # was /var/lib/etcd
 #       type: DirectoryOrCreate
 #     name: etcd-data
 
-# 3. The kubelet recreates etcd; wait, then check
+# 3. the kubelet recreates etcd; wait and verify
 sudo crictl ps | grep etcd
-kubectl get nodes
-kubectl get pods -A`},
-{h:'What a restore means'},
-{ul:['The cluster returns to the **state at snapshot time**. Objects created after it are gone, objects deleted after it reappear.','Running containers on nodes are reconciled against the restored state: Pods that no longer exist in the API are killed.','Practise restore on a throwaway cluster. A backup you have never restored is a hope, not a plan.','On managed services the provider backs up etcd for you; use Velero or similar to back up your own resources and volumes.']},
-{note:'Exam tip: you are usually told the snapshot path and the certificate locations. Use `etcdutl snapshot restore` (or `etcdctl` if told) with a new `--data-dir`, then change the hostPath in the etcd manifest. Do not forget this last step.'}],
+kubectl get nodes ; kubectl get pods -A`},
+{flow:['Stop relying on the cluster; announce the restore','Restore the snapshot into a new data directory on the control plane node','Repoint the etcd manifest data hostPath to the new directory','The kubelet restarts etcd, then the API server reconnects','Verify objects, nodes and workloads; let controllers reconcile','Re-create anything created after the snapshot, from Git or your records']},
+{h:'What a restore means for running workloads'},
+{ul:['Kubelets reconcile node state with the restored API: Pods that **do not exist** in the restored data are stopped; Pods that exist but are missing on nodes are recreated.','Anything you created **after** the snapshot (a Deployment, a Secret) is gone. GitOps makes recovering it automatic.','Persistent volumes are **not** rolled back; the data on disk stays at its current state. A mismatch between application data and cluster objects can need manual care.','Restoring a snapshot into a cluster that has **already been upgraded** is not a supported rollback of Kubernetes versions: restore to the **same version** the snapshot came from.','For an HA control plane, restore **every** member from the same snapshot with new cluster identity, following the etcd disaster recovery guide.']},
+{h:'Common mistakes'},
+{t:[['Mistake','Consequence','Better'],
+['Snapshot never tested','You find a corrupt or unusable backup in the emergency','Restore into a scratch cluster regularly'],
+['Backup only on the control plane node','Lost with the machine','Copy off-site, encrypted, with retention'],
+['Forgetting to edit the etcd manifest after restoring','etcd still runs the old data','Repoint `hostPath` to the restored directory'],
+['No copy of the PKI directory','Rebuilt control plane cannot be trusted by existing nodes','Back up `/etc/kubernetes/pki` too'],
+['Assuming a snapshot covers volumes','Application data lost','Back up persistent data separately (Velero, storage snapshots)'],
+['Restoring across different cluster versions','Unsupported and unpredictable','Same version, then upgrade']]},
+{note:'Exam tip: you are usually given the snapshot path and certificate locations. Use `etcdutl snapshot restore` (or `etcdctl` if told) with a **new** `--data-dir`, then change the etcd manifest `hostPath` to it. The last step is the one people forget.'}],
 src:[['Operating etcd clusters for Kubernetes',K.T+'administer-cluster/configure-upgrade-etcd/'],['etcd disaster recovery','https://etcd.io/docs/latest/op-guide/recovery/']]};
 
 /* ---------- 5: Certificate expiry ---------- */
 L['k8s:10:5']={blocks:[
-{p:'kubeadm leaf certificates last about **one year**. If you never upgrade and never renew, one day the API server stops accepting kubelet or admin connections. This lecture covers checking and renewing them.'},
-{code:`sudo kubeadm certs check-expiration
-# CERTIFICATE                EXPIRES                  RESIDUAL TIME   CERTIFICATE AUTHORITY
-# admin.conf                 Oct 09, 2027 12:00 UTC   364d            ca
-# apiserver                  Oct 09, 2027 12:00 UTC   364d            ca
-# ...
-# CERTIFICATE AUTHORITY      EXPIRES                  RESIDUAL TIME
-# ca                         Oct 07, 2036 12:00 UTC   9y`},
-{ul:['Leaf certificates: about 1 year. CAs: about 10 years.','`kubeadm upgrade apply` and `upgrade node` **renew** certificates automatically, so regularly upgraded clusters rarely expire.','Kubelet client certificates can rotate automatically when `rotateCertificates` is enabled (default with kubeadm).','Certificates that kubeadm does not manage, such as your own user certificates, need their own tracking.']},
-{h:'Renew'},
-{code:`sudo kubeadm certs renew all                      # or one: apiserver, apiserver-kubelet-client, front-proxy-client ...
+{p:'Certificates expire. On a kubeadm cluster the leaf certificates last **one year**, so a cluster that is never upgraded and never renewed will, one day, refuse to work: the API server rejects its own kubelets or you cannot log in with `kubectl`. This is an entirely avoidable outage once you know the dates and the procedure.'},
+{h:'What expires and when'},
+{code:`$ sudo kubeadm certs check-expiration
+CERTIFICATE                EXPIRES                  RESIDUAL TIME   CERTIFICATE AUTHORITY   EXTERNALLY MANAGED
+admin.conf                 Oct 01, 2027 08:00 UTC   357d            ca                      no
+apiserver                  Oct 01, 2027 08:00 UTC   357d            ca                      no
+apiserver-etcd-client      Oct 01, 2027 08:00 UTC   357d            etcd-ca                 no
+apiserver-kubelet-client   Oct 01, 2027 08:00 UTC   357d            ca                      no
+controller-manager.conf    Oct 01, 2027 08:00 UTC   357d            ca                      no
+etcd-server                Oct 01, 2027 08:00 UTC   357d            etcd-ca                 no
+front-proxy-client         Oct 01, 2027 08:00 UTC   357d            front-proxy-ca          no
+scheduler.conf             Oct 01, 2027 08:00 UTC   357d            ca                      no
+CERTIFICATE AUTHORITY      EXPIRES                  RESIDUAL TIME   EXTERNALLY MANAGED
+ca                         Sep 28, 2036 08:00 UTC   9y              no`},
+{t:[['Item','Lifetime','Renewed by'],
+['Leaf certificates (API server, etcd, kubeconfigs of components, admin)','**1 year**','`kubeadm upgrade`, or `kubeadm certs renew`'],
+['Cluster CAs (cluster, etcd, front-proxy)','**10 years**','Manual, a major project'],
+['Kubelet client certificate','About 1 year','The kubelet itself when `rotateCertificates: true` (kubeadm default)'],
+['Kubelet **serving** certificate','Per signer','Needs CSR approval when `serverTLSBootstrap` is on'],
+['ServiceAccount signing key (`sa.key`)','No expiry','Manual rotation'],
+['Your application certificates (Ingress TLS)','Per issuer','cert-manager']]},
+{p:'`kubeadm upgrade apply` and `upgrade node` **renew** the leaf certificates, so a cluster upgraded at least once a year never expires. The danger is the "stable" cluster nobody touches.'},
+{h:'Renewing'},
+{code:`sudo kubeadm certs renew all                           # or one: apiserver, apiserver-kubelet-client, front-proxy-client ...
 sudo kubeadm certs check-expiration
 
-# Control plane components must reload the new certificates:
-# move the manifests out and back (the kubelet stops, then recreates the static Pods)
-cd /etc/kubernetes/manifests && sudo mkdir -p /root/manifests-hold && sudo mv *.yaml /root/manifests-hold/
-sleep 30
-sudo mv /root/manifests-hold/*.yaml /etc/kubernetes/manifests/
-# admin.conf was renewed too: refresh your kubeconfig copy
-sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config`},
-{h:'If it already expired'},
-{ul:['`kubectl` shows `x509: certificate has expired`. Run the renewal **on the control plane node** using the local files: `kubeadm certs renew all` works even when the API is down.','Then restart the control plane Pods (above), restart the kubelet and refresh kubeconfig files.','Check the system clock first: a wrong date makes valid certificates look expired.']},
-{h:'Monitoring'},
-{p:'Alert at 30 days remaining. Prometheus exporters or a simple cron job running `kubeadm certs check-expiration` and posting to chat are enough. Also track **external** certificates such as Ingress TLS, which cert-manager can renew automatically.'},
-{note:'Do not renew the CA lightly. Replacing a CA means redistributing trust to every kubelet and kubeconfig, which is a full maintenance project of its own.'}],
+# Control plane components must reload the new certificates: recreate the static Pods
+cd /etc/kubernetes/manifests && sudo mkdir -p /root/mh && sudo mv *.yaml /root/mh/ && sleep 30 && sudo mv /root/mh/*.yaml . && cd -
+sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config     # admin.conf was renewed too: refresh your copy
+kubectl get nodes`},
+{h:'After expiry: the recovery path'},
+{code:`$ kubectl get nodes
+Unable to connect to the server: x509: certificate has expired or is not yet valid: current time 2027-10-02T09:00:00Z is after 2027-10-01T08:00:00Z
+# Renewal works LOCALLY on the control plane node even though the API is unreachable
+sudo kubeadm certs renew all
+# restart the control plane Pods (move manifests out and back) and restart the kubelet
+sudo systemctl restart kubelet
+# refresh admin.conf, then check workers: kubelets use their own rotating certificates`},
+{flow:['Check the system clock first: a wrong date makes valid certificates look expired','SSH to a control plane node (kubectl will not work yet)','kubeadm certs renew all (works offline from the API)','Recreate the control plane static Pods and restart the kubelet','Copy the renewed admin.conf; confirm kubectl works','Repeat on every control plane node; check kubelet certificates on workers']},
+{h:'Preventing it'},
+{ul:['Put **expiry dates on a dashboard** and alert at 30 days: `kubeadm certs check-expiration` in a daily job, or exporters that read certificate files.','Include certificate renewal in your **upgrade routine** and in a calendar entry.','Enable kubelet **certificate rotation** and plan how serving certificate requests are approved.','Track **application** certificates separately with cert-manager and its metrics.','Never let the clock drift: run NTP on every node.']},
+{h:'Common mistakes'},
+{t:[['Mistake','Consequence','Better'],
+['Renewing but not restarting the control plane Pods','The old certificates stay in memory; errors persist','Recreate the static Pods'],
+['Forgetting to refresh `$HOME/.kube/config` after renewing `admin.conf`','kubectl still uses the expired client certificate','Copy the new file'],
+['Renewing only one control plane node of an HA cluster','Other nodes expire later and surprise you','Renew on all'],
+['Replacing a CA casually','Every kubeconfig and kubelet must trust the new CA','Treat CA rotation as a project'],
+['Assuming a managed service covers application certificates','Your Ingress certificate still expires','cert-manager with alerts']]},
+{note:'Exam tip: certificate tasks use `kubeadm certs check-expiration` to find expiry and `kubeadm certs renew <name>` to renew. Practise reading the table and renewing a single certificate as well as `all`.'}],
 src:[['Certificate Management with kubeadm',K.T+'administer-cluster/kubeadm/kubeadm-certs/'],['PKI certificates and requirements',K.S+'best-practices/certificates/']]};
 
 /* ---------- 6: Practical ---------- */
 L['k8s:10:6']={blocks:[
-{p:'Capstone lab for the section. You need a kubeadm cluster (1 control plane, 2 workers) on a version **one minor behind** a release you can upgrade to, with a small workload running. Work in a lab only.'},
+{p:'This lab is the capstone of the section: you take a snapshot, upgrade the control plane and a worker by **one minor version** while an application keeps serving, verify everything, and optionally rehearse an etcd restore. You need a kubeadm cluster (one control plane, two workers) one minor behind the version you can upgrade to. **Use a lab only.** Read each step and **predict the result** before running it.'},
+{h:'Plan'},
+{flow:['Record the baseline: versions, workload, probe loop','Snapshot etcd and copy it off the node','Upgrade the control plane (plan, apply, kubelet)','Upgrade worker 1 while watching the application','Upgrade worker 2','Verify nodes, certificates and workload','Optional: delete an object and restore it from the snapshot']},
 {h:'1. Baseline'},
 {code:`kubectl get nodes -o wide
 kubectl create deployment web --image=nginx:1.27 --replicas=3
+kubectl expose deployment web --port=80
 kubectl create configmap marker --from-literal=state=before-upgrade
 kubectl create poddisruptionbudget web-pdb --selector=app=web --min-available=2
-kubectl get all,cm,pdb`},
-{h:'2. Snapshot etcd and keep it off the node'},
+kubectl get all,cm,pdb
+# in a second terminal, a continuous probe
+kubectl run probe --image=busybox:1.36 --restart=Never -- sh -c 'while true; do wget -qO- -T 2 http://web >/dev/null && echo "$(date +%T) ok" || echo "$(date +%T) FAIL"; sleep 1; done'
+kubectl logs -f probe`},
+{h:'2. Snapshot and copy it away'},
 {code:`sudo ETCDCTL_API=3 etcdctl snapshot save /root/pre-upgrade.db \\
   --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt \\
   --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key
 sudo etcdutl snapshot status /root/pre-upgrade.db --write-out=table
-scp /root/pre-upgrade.db backup-host:/backups/`},
-{h:'3. Upgrade the control plane'},
-{flow:['Change the repo to the next minor','Upgrade kubeadm, run kubeadm upgrade plan','kubeadm upgrade apply','Drain, upgrade kubelet and kubectl, restart, uncordon','Check kubectl get nodes and system Pods']},
-{h:'4. Upgrade one worker while watching the app'},
-{code:`# terminal 1
-kubectl get pods -o wide -w
-# terminal 2: keep requesting the app through a Service
-kubectl expose deployment web --port=80
-kubectl run probe --rm -it --image=busybox:1.36 --restart=Never -- sh -c 'while true; do wget -qO- -T 2 http://web >/dev/null && echo ok || echo FAIL; sleep 1; done'
-# terminal 3: drain w1, upgrade kubeadm/kubelet, restart kubelet, uncordon w1
-# repeat for w2`},
-{p:'You should see Pods rescheduled but few or no FAIL lines, because the PDB keeps two replicas available and the Service only sends traffic to Ready Pods.'},
+scp /root/pre-upgrade.db backup-host:/backups/
+sudo cp -r /etc/kubernetes /root/k8s-config-backup       # PKI and manifests too`},
+{h:'3. Control plane'},
+{code:`# switch the package repository to the next minor, then
+sudo apt-mark unhold kubeadm && sudo apt-get install -y kubeadm='1.37.1-*' && sudo apt-mark hold kubeadm
+sudo kubeadm upgrade plan
+sudo kubeadm upgrade apply v1.37.1
+kubectl drain cp1 --ignore-daemonsets
+sudo apt-mark unhold kubelet kubectl && sudo apt-get install -y kubelet='1.37.1-*' kubectl='1.37.1-*' && sudo apt-mark hold kubelet kubectl
+sudo systemctl daemon-reload && sudo systemctl restart kubelet
+kubectl uncordon cp1
+kubectl get nodes`},
+{p:'**Predict:** will the probe fail while the API server restarts? Probably not at all: running Pods and Services do not depend on the API server. **Check:** the probe log shows `ok` throughout, even if `kubectl` itself paused for a moment.'},
+{h:'4. Workers, one at a time'},
+{code:`# for w1, then w2:
+kubectl drain w1 --ignore-daemonsets --delete-emptydir-data
+# on w1: repository, kubeadm package, "sudo kubeadm upgrade node", kubelet and kubectl packages, restart kubelet
+kubectl uncordon w1
+kubectl get pods -o wide                                   # web Pods rebalanced; PDB kept at least 2 up
+kubectl get pdb web-pdb                                    # ALLOWED DISRUPTIONS changes during the drain`},
+{p:'**Observe:** the drain waits when the PDB would be violated (`Cannot evict pod as it would violate the pod\'s disruption budget`) and continues as soon as a replacement is Ready. That waiting is the safety mechanism working.'},
 {h:'5. Verify'},
-{code:`kubectl get nodes                                  # all Ready, all on the new version
-kubectl get cm marker -o jsonpath='{.data.state}'  # still there
+{code:`kubectl get nodes                                          # all Ready, all on the new version
+kubectl get cm marker -o jsonpath='{.data.state}{"\\n"}'   # the object survived
 kubectl -n kube-system get pods
-sudo kubeadm certs check-expiration                # renewed by the upgrade`},
-{h:'6. Practise the restore (optional but valuable)'},
-{code:`kubectl delete cm marker                           # simulate a mistake
+sudo kubeadm certs check-expiration                        # leaf certificates renewed by the upgrade
+kubectl logs probe | grep -c FAIL                          # how many failed probes? ideally 0 to a few`},
+{h:'6. Optional: restore rehearsal'},
+{code:`kubectl delete cm marker                                   # simulate a mistake
 sudo etcdutl snapshot restore /root/pre-upgrade.db --data-dir /var/lib/etcd-restored
-# point the etcd manifest hostPath to /var/lib/etcd-restored, wait for etcd to restart
-kubectl get cm marker                              # the object is back`},
-{note:'Restoring a pre-upgrade snapshot into a cluster that was already upgraded is not a supported rollback of Kubernetes versions. In real incidents plan a restore to the **same** version the snapshot came from.'},
-{ul:['Which step would block the drain if `web` had only 1 replica and a PDB `minAvailable: 1`?','Why must workers be upgraded after the control plane?','What does `kubeadm upgrade node` do differently from `apply`?']}],
+# edit /etc/kubernetes/manifests/etcd.yaml: change the data hostPath to /var/lib/etcd-restored
+sudo crictl ps | grep etcd                                 # wait for the new etcd
+kubectl get cm marker                                      # the object is back (the cluster state returned to snapshot time)`},
+{note:'Restoring a snapshot taken **before** an upgrade into a cluster that has **already** been upgraded is not a supported way to roll back Kubernetes versions. In real incidents, restore to the **same** version the snapshot came from. Do this step on a throwaway cluster.'},
+{h:'Self-check questions'},
+{ul:['Which step would block the drain if `web` had one replica and a PDB with `minAvailable: 1`?','Why must workers be upgraded after the control plane?','What does `kubeadm upgrade node` do differently from `apply`?','What would you do if the API server did not return after `apply`? Where is the backup of the old manifest?','What is missing from an etcd snapshot that you would still need to rebuild a control plane?']},
+{h:'Clean up'},
+{code:`kubectl delete pod probe ; kubectl delete deployment web ; kubectl delete svc web ; kubectl delete pdb web-pdb ; kubectl delete cm marker --ignore-not-found`},
+{note:'Exam tip: upgrade tasks are about order and care. Write the steps on the exam scratch pad first (repo, kubeadm, plan, apply, drain, kubelet, restart, uncordon) and tick them off.'}],
 src:[['Upgrading kubeadm clusters',K.T+'administer-cluster/kubeadm/kubeadm-upgrade/'],['Operating etcd clusters for Kubernetes',K.T+'administer-cluster/configure-upgrade-etcd/']]};
+
 /* ---------- Additional content ---------- */
 /* 7: Velero */
 L['k8s:10:7']={blocks:[

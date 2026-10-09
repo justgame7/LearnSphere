@@ -27,179 +27,325 @@ const pki=K.dg(700,260,[
 
 /* ---------- 0: API server ---------- */
 L['k8s:2:0']={blocks:[
-{p:'The **kube-apiserver** is the only component that reads and writes etcd and the only one every other component talks to. Whatever happens in a cluster happens through an API call, which makes the API server the best place to understand security, auditing and failure.'},
-{svg:reqflow},
-{h:'The request pipeline'},
-{flow:['Authentication: who is making this request?','Authorization: is that identity allowed to do this verb on this resource?','Mutating admission: controllers may modify the object (defaults, sidecars)','Schema validation of the object','Validating admission: controllers may reject the object','Persist to etcd and return the result']},
-{ul:['**Authentication** accepts client certificates, bearer tokens (service account tokens, OIDC), and webhooks. Section 9 covers this.','**Authorization** modes are usually `Node,RBAC`. A request denied here returns `403 Forbidden`.','**Admission** plugins such as `NamespaceLifecycle`, `LimitRanger`, `ServiceAccount`, `ResourceQuota` and `PodSecurity`, plus webhooks you add.']},
-{h:'Watches make controllers efficient'},
-{p:'Components do not poll. They open a **watch** on a resource type and the API server streams changes. The scheduler watches for unscheduled Pods; the kubelet watches for Pods bound to its node. This is why control plane load rises with the number of objects and watchers.'},
-{h:'Look at it on a kubeadm cluster'},
-{code:`# The API server runs as a static Pod
-kubectl -n kube-system get pod -l component=kube-apiserver
-sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep -E "^\\s+- --"
+{p:'Every action in a Kubernetes cluster, from `kubectl get pods` to a kubelet reporting a container status, is an HTTPS request to the **kube-apiserver**. It is the **only** component that reads and writes etcd, and the only door into the cluster state. Understanding exactly what it does with a request explains authentication errors, admission rejections, API slowness and what breaks when it is down.'},
+{h:'It is just a REST API'},
+{p:'`kubectl` is a thin client. You can see the real HTTP calls it makes by raising the verbosity:'},
+{code:`$ kubectl get pods -n shop -v=6
+I1009 10:02:11.201 loader.go:395] Config loaded from file: /home/ops/.kube/config
+I1009 10:02:11.320 round_trippers.go:553] GET https://10.0.0.10:6443/api/v1/namespaces/shop/pods?limit=500 200 OK in 13 milliseconds
 
-# Health endpoints
-kubectl get --raw=/livez?verbose
-kubectl get --raw=/readyz?verbose
-kubectl get --raw=/version`},
-{h:'Important flags to recognise'},
-{t:[['Flag','Purpose'],
-['`--etcd-servers`','Where etcd lives'],
-['`--authorization-mode`','Authorizers in order, for example `Node,RBAC`'],
-['`--enable-admission-plugins`','Extra admission plugins turned on'],
-['`--service-cluster-ip-range`','CIDR from which Service ClusterIPs are allocated'],
-['`--client-ca-file`','CA that signs client certificates it will trust'],
-['`--audit-policy-file`, `--audit-log-path`','Audit logging, see Section 10']]},
-{h:'When the API server is down'},
-{ul:['`kubectl` fails with `connection refused` or timeouts.','Existing Pods keep running because the kubelet and runtime do not need the control plane to keep containers alive.','Nothing new is scheduled, scaled or healed until the API server returns.','Diagnose with `crictl ps -a`, the kubelet journal and the static Pod manifest. Section 13 walks through it.']},
-{note:'The API server is stateless: all state is in etcd. You can run several behind a load balancer for high availability.'}],
+$ kubectl get --raw /api/v1/namespaces/shop/pods | head -c 200      # the same call, raw JSON
+$ kubectl get --raw /apis                                           # every API group the server offers
+$ kubectl get --raw /version`},
+{t:[['HTTP','kubectl verb','Meaning'],
+['`GET /api/v1/namespaces/shop/pods`','`get`, `list`','Read a collection'],
+['`GET ...?watch=true`','`watch`, `get -w`','Stream changes as they happen'],
+['`POST`','`create`','Create an object'],
+['`PUT`, `PATCH`','`update`, `patch`, `apply`, `edit`','Replace or modify'],
+['`DELETE`','`delete`','Remove']]},
+{h:'The request pipeline'},
+{flow:['TLS connection on port 6443 (the server presents its certificate; clients may present one too)','Authentication: which user and groups is this?','Authorization: may that identity perform this verb on this resource?','Mutating admission: plugins and webhooks may change the object (defaults, injected sidecars)','Schema validation: is the object well formed for its API version?','Validating admission: policies and webhooks may reject it (quota, Pod Security, custom rules)','Write to etcd; return the stored object']},
+{svg:reqflow},
+{t:[['Stage','Typical failure','Message'],
+['Authentication','Expired or unknown credential','`401 Unauthorized`'],
+['Authorization','No RBAC rule','`403 Forbidden: ... cannot create resource "pods"`'],
+['Mutating admission','Webhook unreachable with `failurePolicy: Fail`','`failed calling webhook ...`'],
+['Validation','Unknown field or wrong type','`unknown field`, `Invalid value`'],
+['Validating admission','Policy violation or quota','`violates PodSecurity`, `exceeded quota`, `denied the request`']]},
+{h:'Watches: why controllers are cheap'},
+{p:'Components do not poll. A controller first **lists** a resource and remembers its `resourceVersion`, then opens a **watch** and receives each change as an event. The API server serves most of these reads from an **in-memory watch cache**, not from etcd. If a client falls too far behind, the server answers `410 Gone` and the client must list again. This design is why thousands of kubelets and controllers can follow the cluster, and why **object count and number of watchers** drive API server load.'},
+{h:'Where it runs and how it is configured'},
+{code:`$ kubectl -n kube-system get pod -l component=kube-apiserver -o wide
+$ sudo grep -E "^\\s+- --" /etc/kubernetes/manifests/kube-apiserver.yaml | head -n 25
+    - --advertise-address=10.0.0.10
+    - --authorization-mode=Node,RBAC                    # authorizers, in order
+    - --client-ca-file=/etc/kubernetes/pki/ca.crt        # CA that signs client certificates it trusts
+    - --enable-admission-plugins=NodeRestriction
+    - --etcd-servers=https://127.0.0.1:2379
+    - --service-cluster-ip-range=10.96.0.0/12
+    - --tls-cert-file=/etc/kubernetes/pki/apiserver.crt
+$ kubectl get --raw='/livez?verbose' | tail -n 5
+$ kubectl get --raw='/readyz?verbose' | grep -v ok`},
+{h:'What happens when it is down'},
+{t:[['Effect','Detail'],
+['kubectl and every controller fail','`connection refused` or timeouts'],
+['**Running containers keep running**','The kubelet and the runtime do not need the control plane to keep existing Pods alive'],
+['Nothing new happens','No scheduling, no scaling, no healing, no new Services or endpoints updates'],
+['Nodes may be marked NotReady later','If it stays down, kubelets cannot renew their Lease'],
+['Recovery','Check the static Pod manifest, `crictl logs`, etcd health and certificates (Section 13)']]},
+{h:'High availability'},
+{ul:['The API server is **stateless**: all state is in etcd, so you can run several instances behind a load balancer (active-active).','Clients (kubelets, kubectl, controllers) should use the **load balancer address**, which must be in the API server certificate SANs.','Version skew: during an upgrade the instances may differ by one minor version.']},
+{h:'Common mistakes'},
+{t:[['Mistake','Consequence','Better'],
+['Pointing kubeconfigs at one control plane node IP','Single point of failure despite HA','Use a stable endpoint (load balancer or DNS)'],
+['Heavy `list` calls from many clients (dashboards, scripts)','API memory and latency spikes','Use selectors, pagination, watches'],
+['Slow validating webhooks with `failurePolicy: Fail`','Every matching write slows or fails','Short timeouts, replicas, narrow rules'],
+['Treating 401 and 403 as the same','Wrong debugging path','401 = identity unknown, 403 = identity known but not allowed']]},
+{note:'Exam tip: when something about the API behaves oddly, `kubectl get --raw=/readyz?verbose` and `kubectl ... -v=6` tell you whether the problem is the server, the network or your request.'}],
 src:[['Controlling Access to the Kubernetes API',C+'security/controlling-access/'],['kube-apiserver reference',R+'command-line-tools-reference/kube-apiserver/'],['Admission Controllers',R+'access-authn-authz/admission-controllers/']]};
 
 /* ---------- 1: etcd ---------- */
 L['k8s:2:1']={blocks:[
-{p:'**etcd** is a distributed, consistent key-value store. It holds every Kubernetes object: Pods, Secrets, ConfigMaps, RBAC. If etcd is lost with no backup, the cluster definition is gone, although containers already running on nodes continue until they stop.'},
+{p:'**etcd** is the cluster database. Every Pod, Secret, ConfigMap, Role and Node you have ever created is a key and a value in etcd, and nothing else in Kubernetes stores cluster state durably. If etcd is lost without a backup, the cluster definition is gone, even though containers already running on nodes continue until they stop. Its health therefore decides the health of the whole cluster.'},
+{h:'What is inside'},
+{p:'etcd is a distributed, strongly consistent **key-value store**. Kubernetes stores each object under a path that reflects its type:'},
+{code:`$ sudo ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 \\
+    --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key \\
+    get /registry --prefix --keys-only | head -n 8
+/registry/apiregistration.k8s.io/apiservices/v1.
+/registry/clusterrolebindings/cluster-admin
+/registry/configmaps/kube-system/coredns
+/registry/deployments/shop/web
+/registry/minions/worker1                             # "minions" is the old name for Nodes
+/registry/namespaces/shop
+/registry/pods/shop/web-6d4f8b7c9-4xk2p
+/registry/secrets/shop/db-cred`},
+{p:'Only the API server talks to etcd. Values are stored in a binary (protobuf) encoding, and by default **Secrets are not encrypted**: anyone who can read etcd or a backup can read them.'},
+{h:'How etcd stays consistent: Raft'},
 {svg:etcd},
-{h:'Quorum'},
-{p:'etcd uses the **Raft** consensus algorithm. One member is the leader; writes commit when a **majority (quorum)** of members has recorded them. Quorum for n members is floor(n/2) + 1.'},
-{t:[['Members','Quorum','Failures tolerated'],['1','1','0'],['2','2','0 (worse than 1: either failure stops writes)'],['3','2','1'],['4','3','1'],['5','3','2'],['7','4','3']]},
-{ul:['Use an **odd** number of members: 3 for most clusters, 5 for large or critical ones.','More members do not make it faster. Every write must reach a majority, so large clusters write slower.','Place members in separate failure zones with low latency between them.']},
-{h:'What it needs to be healthy'},
-{ul:['**Fast disks**. etcd calls fsync on every commit. Slow or shared disks cause leader elections and API timeouts. Use SSD or NVMe, dedicated if possible.','**Low latency network** between members.','**Backups**. Take regular snapshots and test restores (Section 11).','A size limit (the default backend quota is about 2 GB, configurable). When exceeded, etcd goes read-only with a `NOSPACE` alarm.']},
-{h:'Inspect etcd on a kubeadm cluster'},
-{code:`# etcd runs as a static Pod; manifest and data directory
-sudo cat /etc/kubernetes/manifests/etcd.yaml | grep -E "data-dir|listen-client|cert-file|key-file|trusted-ca"
-sudo ls /var/lib/etcd/member
-
-# Health and members with etcdctl (v3 API)
-sudo ETCDCTL_API=3 etcdctl \\
-  --endpoints=https://127.0.0.1:2379 \\
-  --cacert=/etc/kubernetes/pki/etcd/ca.crt \\
-  --cert=/etc/kubernetes/pki/etcd/server.crt \\
-  --key=/etc/kubernetes/pki/etcd/server.key \\
-  endpoint health --write-out=table
-
-sudo ETCDCTL_API=3 etcdctl ... member list --write-out=table`},
-{note:'Secrets are stored in etcd base64 encoded, not encrypted, unless you enable encryption at rest. Anyone who can read etcd or its backups can read every Secret. Section 10 covers encryption at rest.'},
-{p:'On managed services (EKS, AKS, GKE) you never see etcd; the provider runs and backs it up. That is one of the main reasons teams choose managed control planes.'}],
+{flow:['The members elect one leader; the others are followers','A write request goes to the leader (followers forward it)','The leader appends it to its log and sends it to the followers','When a majority (quorum) has stored it, the entry is committed','The leader applies it and answers the client; followers apply it too']},
+{p:'Because every write needs a **majority**, etcd tolerates the loss of a minority of members and never serves conflicting answers. If the leader fails, the followers hold a new election after a timeout (a few hundred milliseconds to seconds).'},
+{t:[['Members','Quorum','Failures tolerated','Comment'],
+['1','1','0','Labs only'],
+['2','2','0','**Worse than 1**: two things to fail, no tolerance'],
+['3','2','1','Typical for production'],
+['4','3','1','No gain over 3'],
+['5','3','2','Large or critical clusters'],
+['7','4','3','Rarely needed; every write is slower']]},
+{ul:['Use an **odd** number of members, in separate failure zones with low latency between them.','More members do **not** make etcd faster; writes wait for a majority, so large clusters are slower.','Losing quorum makes the cluster **read-only in practice**: the API server cannot create or update anything.']},
+{h:'What etcd needs to be healthy'},
+{t:[['Requirement','Why','Sign of trouble'],
+['**Fast disks** (SSD or NVMe)','Every commit is flushed to disk (fsync)','`etcdserver: request timed out`, slow API, leader changes'],
+['Low network latency between members','Raft heartbeats and replication','Frequent leader elections'],
+['Enough memory and CPU','Working set is kept in memory','Slowdown, restarts'],
+['Space within the quota','The database file has a size limit (default about 2 GB)','`mvcc: database space exceeded`, `NOSPACE` alarm, read-only'],
+['Regular **backups**','Disaster recovery','No way back after data loss']]},
+{h:'Inspecting etcd on a kubeadm cluster'},
+{code:`$ kubectl -n kube-system get pod -l component=etcd
+$ sudo grep -E "data-dir|listen-client-urls|cert-file|key-file|trusted-ca" /etc/kubernetes/manifests/etcd.yaml
+$ E="--endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key"
+$ sudo ETCDCTL_API=3 etcdctl $E endpoint health --write-out=table
+$ sudo ETCDCTL_API=3 etcdctl $E endpoint status --write-out=table
++------------------------+------------------+---------+---------+-----------+------------+
+|        ENDPOINT        |        ID        | VERSION | DB SIZE | IS LEADER | RAFT TERM  |
++------------------------+------------------+---------+---------+-----------+------------+
+| https://127.0.0.1:2379 | 8e9e05c52164694d |  3.5.x  |   25 MB |      true |          4 |
+$ sudo ETCDCTL_API=3 etcdctl $E member list --write-out=table
+$ sudo ETCDCTL_API=3 etcdctl $E alarm list`},
+{h:'Common mistakes'},
+{t:[['Mistake','Consequence','Better'],
+['Running two etcd members','No fault tolerance','1, 3 or 5'],
+['Putting etcd on slow shared disks','Latency, leader flapping, API timeouts','Dedicated SSD or NVMe'],
+['No backups, or never restored','Total loss after corruption','Scheduled snapshots, tested restores'],
+['Storing huge objects or many events','Database growth, NOSPACE alarm','Clean up, tune quotas, fix the producer'],
+['Assuming Secrets are encrypted','Plain data in etcd and in backups','Enable encryption at rest (Section 10)']]},
+{p:'On managed services (EKS, AKS, GKE) you never see etcd: the provider runs, scales and backs it up. That is one of the main reasons teams choose managed control planes.'},
+{note:'Exam tip: for backup and restore tasks you need three things at hand: the endpoint, and the three certificate paths (`--cacert`, `--cert`, `--key`). They are in the etcd static Pod manifest.'}],
 src:[['Operating etcd clusters for Kubernetes',T+'administer-cluster/configure-upgrade-etcd/'],['etcd documentation','https://etcd.io/docs/'],['Options for Highly Available Topology',K.S+'production-environment/tools/kubeadm/ha-topology/']]};
 
 /* ---------- 2: Scheduler and controller manager ---------- */
 L['k8s:2:2']={blocks:[
-{p:'Two control plane components turn declared intent into running Pods: the scheduler decides **where**, and the controller manager decides **what must exist**.'},
-{h:'kube-scheduler'},
-{p:'The scheduler watches for Pods with an empty `spec.nodeName`. For each one it runs a scheduling cycle and then binds the Pod to a node by writing `nodeName`.'},
-{flow:['Pod appears unscheduled','Filter: remove nodes that cannot run it (resources, taints, selectors, volumes)','Score: rank remaining nodes by preferences','Pick the highest score','Bind: write the chosen node into the Pod','Kubelet on that node takes over']},
-{ul:['It decides placement **only**. It never starts containers.','If no node fits, the Pod stays **Pending** with an event such as `0/3 nodes are available: 3 Insufficient cpu`.','Section 6 covers affinity, taints, topology spread and priority in detail.']},
-{h:'kube-controller-manager'},
-{p:'A single binary running many controllers, each a loop for one kind of object. Examples:'},
+{p:'Two control plane components turn the objects you store into reality. The **kube-scheduler** decides **where** Pods run. The **kube-controller-manager** decides **what must exist** and creates it. Between them, and the kubelets, they implement the central idea of Kubernetes: **desired state, reconciled continuously**.'},
+{h:'The controller pattern'},
+{flow:['A controller watches the objects it cares about (through the API server)','It compares desired state (spec) with observed state (status and related objects)','If they differ, it acts: creates, updates or deletes other objects','It writes the result back (status, events) and goes back to watching']},
+{p:'Controllers do not run commands on machines; they **change API objects**, and other components react to those changes. A Deployment controller does not start containers: it creates a ReplicaSet, whose controller creates Pod objects, which the scheduler and a kubelet then act on. That chain of small loops is why Kubernetes is robust, and why any loop can be the broken one.'},
+{h:'kube-controller-manager: many controllers in one process'},
 {t:[['Controller','Watches','Acts by'],
-['Deployment','Deployments','Creating and scaling ReplicaSets, running rollouts'],
-['ReplicaSet','ReplicaSets and Pods','Creating or deleting Pods to match the replica count'],
-['Node','Nodes','Marking nodes NotReady, tainting, evicting Pods from dead nodes'],
-['Job / CronJob','Jobs','Creating Pods to completion; creating Jobs on schedule'],
-['EndpointSlice','Services and Pods','Maintaining the list of ready Pod IPs behind a Service'],
-['ServiceAccount, Namespace, PV','respective objects','Creating default accounts, cleaning up deleted namespaces, binding volumes'],
-['Garbage collector','ownerReferences','Deleting dependents when an owner is deleted']]},
-{h:'Owner references'},
-{p:'A Deployment owns ReplicaSets, which own Pods. Each child has an `ownerReferences` entry. Delete the Deployment and the garbage collector removes the rest. Delete a Pod owned by a ReplicaSet and the ReplicaSet creates a new one.'},
-{code:`kubectl get pod web-7d9f -o jsonpath='{.metadata.ownerReferences[*].name}'
-
-# Component health on a kubeadm cluster
-kubectl -n kube-system get pods -l component=kube-scheduler
+['**Deployment**','Deployments','Creating ReplicaSets, scaling them during rollouts'],
+['**ReplicaSet**','ReplicaSets and Pods','Creating or deleting Pods to match the replica count'],
+['**StatefulSet**, **DaemonSet**','Their objects, Nodes','Ordered Pod creation; one Pod per node'],
+['**Job**, **CronJob**','Jobs','Running Pods to completion; creating Jobs on schedule'],
+['**Node**','Nodes and their Leases','Marking nodes NotReady, adding taints, evicting Pods from dead nodes'],
+['**EndpointSlice**','Services and Pods','Keeping the list of ready Pod IPs behind each Service'],
+['**ServiceAccount**, **Namespace**, **PersistentVolume**','Respective objects','Default accounts, cleanup of deleted namespaces, binding volumes to claims'],
+['**Garbage collector**','`ownerReferences`','Deleting dependents when an owner is deleted'],
+['**HPA**','HorizontalPodAutoscalers and metrics','Changing replica counts']]},
+{h:'Owner references: the chain you can follow'},
+{code:`$ kubectl get pod web-6d4f8b7c9-4xk2p -n shop -o jsonpath='{.metadata.ownerReferences[*].kind}/{.metadata.ownerReferences[*].name}{"\\n"}'
+ReplicaSet/web-6d4f8b7c9
+$ kubectl get rs web-6d4f8b7c9 -n shop -o jsonpath='{.metadata.ownerReferences[*].kind}/{.metadata.ownerReferences[*].name}{"\\n"}'
+Deployment/web
+$ kubectl delete pod web-6d4f8b7c9-4xk2p -n shop      # the ReplicaSet controller creates a replacement within seconds
+$ kubectl delete deployment web -n shop               # the garbage collector removes the ReplicaSets and Pods`},
+{h:'kube-scheduler: choosing nodes'},
+{p:'The scheduler watches for Pods with an empty `spec.nodeName`. For each it filters nodes that cannot run the Pod, scores the rest and **binds** the Pod by writing the chosen node name. It never starts a container. (The scheduler is covered in depth in Section 6.)'},
+{code:`$ kubectl get events --field-selector reason=Scheduled -n shop | tail -n 2
+Normal  Scheduled  pod/web-6d4f8b7c9-4xk2p  Successfully assigned shop/web-6d4f8b7c9-4xk2p to worker2
+$ kubectl describe pod stuck | grep -A2 FailedScheduling
+  0/3 nodes are available: 3 Insufficient memory.`},
+{h:'Leader election: one active copy'},
+{p:'In a high-availability control plane several scheduler and controller-manager processes run, but **only one is active**, or they would create duplicates and fight. They coordinate through a **Lease** object: the holder renews it regularly, and if it stops, another instance takes over.'},
+{code:`$ kubectl -n kube-system get lease
+NAME                      HOLDER                                          AGE
+kube-controller-manager   cp2_8c1f3d6e-...                                40d
+kube-scheduler            cp1_2b7a91cd-...                                40d`},
+{h:'What stops when each is down'},
+{t:[['Component down','Visible effect','Still works'],
+['**kube-scheduler**','New Pods stay **Pending with no scheduling events**','Running Pods, existing Services, kubectl'],
+['**kube-controller-manager**','No healing or rollouts: deleted Pods not replaced, Deployment changes ignored, dead nodes not detected, Jobs not created','Running Pods and traffic'],
+['**API server**','Everything management-related','Running containers']]},
+{h:'How to check them'},
+{code:`kubectl -n kube-system get pods -l component=kube-scheduler
 kubectl -n kube-system get pods -l component=kube-controller-manager
-kubectl -n kube-system logs kube-scheduler-cp1 | tail`},
-{note:'If the controller manager is down, existing Pods run but nothing self-heals: a deleted Pod is not replaced, a Deployment change does nothing and failed nodes are not detected. If the scheduler is down, new Pods stay Pending.'}],
+kubectl -n kube-system logs -l component=kube-controller-manager --tail=20
+sudo crictl ps | grep -E "scheduler|controller"                  # when kubectl is unavailable
+kubectl get --raw='/readyz?verbose' | grep -E "scheduler|controller"`},
+{note:'Mental model for debugging: "nothing happens after I create an object" means a controller is not acting; "Pods exist but are Pending with no events" means the scheduler is not acting; "Pods are scheduled but not running" means the kubelet or runtime is the problem.'}],
 src:[['Kubernetes Scheduler',C+'scheduling-eviction/kube-scheduler/'],['Controllers',C+'architecture/controller/'],['kube-controller-manager reference',R+'command-line-tools-reference/kube-controller-manager/']]};
 
 /* ---------- 3: Node components and add-ons ---------- */
 L['k8s:2:3']={blocks:[
-{p:'Every worker node runs a small set of components that turn Pod objects into running containers and make them reachable. A working cluster also needs add-ons for networking and DNS.'},
-{h:'kubelet'},
-{ul:['Runs as a **systemd service**, not as a Pod, because it must start Pods.','Watches the API server for Pods assigned to its node, plus static Pod manifests on disk.','Tells the container runtime to create containers, runs probes, mounts volumes and reports Pod and node status.','Registers the node, sends heartbeats (Lease objects) and reports capacity.']},
-{code:`systemctl status kubelet
-journalctl -u kubelet -f
-sudo cat /var/lib/kubelet/config.yaml          # KubeletConfiguration
-sudo cat /etc/kubernetes/kubelet.conf          # how kubelet reaches the API server`},
-{h:'Container runtime'},
-{p:'The kubelet talks to the runtime (containerd or CRI-O) through the **CRI**. Docker Engine itself is not a supported runtime; containers built with Docker run fine because images follow the OCI standard.'},
-{h:'kube-proxy'},
-{p:'Implements Services on each node. It watches Services and EndpointSlices and programs kernel rules (iptables by default, or IPVS, or nftables) so traffic to a Service IP is spread across Pod IPs. Some network plugins, such as Cilium, can replace it.'},
-{h:'Required add-ons'},
-{t:[['Add-on','Why it is needed','Without it'],
-['**CNI plugin** (Calico, Cilium, Flannel, ...)','Gives Pods IPs and routes between nodes','Nodes NotReady, Pods stuck ContainerCreating'],
-['**CoreDNS**','Resolves `my-svc.my-ns.svc.cluster.local`','Pods cannot find Services by name'],
-['**metrics-server** (optional but common)','Resource metrics for `kubectl top` and autoscaling','No `kubectl top`, no HPA']]},
-{h:'Check a healthy node'},
-{code:`kubectl get nodes -o wide
-kubectl describe node worker1 | sed -n '/Conditions:/,/Addresses:/p'
-kubectl -n kube-system get pods -o wide
-kubectl -n kube-system get ds                  # kube-proxy and CNI are usually DaemonSets`},
-{h:'Node conditions'},
-{ul:['**Ready** is True when the kubelet is healthy and the node can accept Pods.','`MemoryPressure`, `DiskPressure`, `PIDPressure` become True when thresholds are crossed and trigger Pod eviction.','`NetworkUnavailable` is set by the CNI or cloud controller.']},
-{note:'A node showing NotReady almost always means the kubelet, the runtime or the CNI is unhealthy. Start with `systemctl status kubelet` and `journalctl -u kubelet` on that node.'}],
+{p:'The control plane decides; **worker nodes do the work**. Each node runs a small set of components that turn Pod objects into running containers and make them reachable. A working cluster also needs a few **add-ons** (networking, DNS) that are not optional in practice. This lecture explains what each does, where it lives, and how to check it.'},
+{h:'What runs on a node'},
+{t:[['Component','Runs as','Role','Where its config lives'],
+['**kubelet**','systemd service (not a Pod)','Node agent: runs Pods, mounts volumes, runs probes, reports status','`/var/lib/kubelet/config.yaml`, `/etc/kubernetes/kubelet.conf`'],
+['**Container runtime**','systemd service (containerd or CRI-O)','Pulls images, creates and stops containers through the CRI','`/etc/containerd/config.toml`'],
+['**kube-proxy**','DaemonSet Pod','Programs rules that make Services work','ConfigMap `kube-proxy` in `kube-system`'],
+['**CNI plugin**','DaemonSet Pod + binaries on the node','Pod IPs and cross-node connectivity','`/etc/cni/net.d`, `/opt/cni/bin`'],
+['**CoreDNS**','Deployment (2 replicas)','Cluster DNS','ConfigMap `coredns`'],
+['**metrics-server** (common)','Deployment','Resource metrics for `kubectl top` and the HPA','Its own manifest']]},
+{h:'The kubelet: the most important one'},
+{p:'The kubelet runs on every node (including the control plane) and does the following continuously:'},
+{flow:['Registers the node with the API server and keeps a Lease alive (about every 10 seconds)','Watches for Pods assigned to its node and for static Pod manifests on disk','Asks the runtime (via CRI) to pull images and create containers; asks the CNI for networking and the volume plugins for mounts','Runs liveness, readiness and startup probes and restarts containers per policy','Reports Pod and node status back, and evicts Pods under resource pressure']},
+{code:`$ systemctl status kubelet
+$ sudo journalctl -u kubelet -f
+$ sudo cat /var/lib/kubelet/config.yaml | grep -E "cgroupDriver|clusterDNS|staticPodPath|rotateCertificates|authorization|anonymous"
+$ sudo cat /etc/kubernetes/kubelet.conf | grep -E "server:|client-certificate"      # how it reaches the API server
+$ kubectl get lease -n kube-node-lease worker1 -o jsonpath='{.spec.renewTime}{"\\n"}'   # the node heartbeat`},
+{h:'Runtime, CRI and crictl'},
+{p:'The kubelet speaks the **Container Runtime Interface** to the runtime. Docker Engine is not a CRI runtime itself; images built with Docker run unchanged because they follow the OCI format. `crictl` lets you inspect containers on a node even when `kubectl` is not available:'},
+{code:`$ sudo crictl ps                              # running containers
+$ sudo crictl pods                            # Pod sandboxes
+$ sudo crictl logs <container-id>
+$ sudo crictl info | head -n 20               # includes RuntimeReady and NetworkReady`},
+{h:'kube-proxy and the CNI'},
+{ul:['**kube-proxy** watches Services and EndpointSlices and programs iptables, nftables or IPVS rules so a Service IP reaches a ready Pod (Section 7). Some CNIs replace it completely.','The **CNI plugin** gives each Pod an IP and routes between nodes. Until it is installed, nodes stay `NotReady` and CoreDNS Pods stay `Pending`.','**CoreDNS** answers names such as `api.shop.svc.cluster.local`; Pods use it through the `kube-dns` Service.']},
+{h:'Is this node healthy? A checklist'},
+{code:`$ kubectl get nodes -o wide
+$ kubectl describe node worker1 | sed -n '/Conditions:/,/Addresses:/p'
+$ kubectl -n kube-system get pods -o wide --field-selector spec.nodeName=worker1     # kube-proxy, CNI, ... on this node
+$ kubectl get --raw "/api/v1/nodes/worker1/proxy/healthz"                              # kubelet health via the API (needs permission)`},
+{t:[['Node condition','Meaning','If False or True (bad)'],
+['`Ready`','Kubelet is healthy and the node accepts Pods','Check kubelet, runtime, CNI'],
+['`MemoryPressure`, `DiskPressure`, `PIDPressure`','Resource thresholds crossed; Pods may be evicted','Free resources (Section 13)'],
+['`NetworkUnavailable`','Network not yet configured (set by CNI or cloud)','CNI Pods and configuration']]},
+{h:'Common mistakes'},
+{t:[['Mistake','Consequence','Better'],
+['Expecting `docker ps` on a containerd node','Shows nothing','Use `crictl ps`'],
+['Forgetting the CNI after `kubeadm init`','Node NotReady, DNS Pending','Install a CNI plugin immediately'],
+['Kubelet and runtime with different cgroup drivers','Unstable nodes, failing Pods','Use `systemd` for both'],
+['Editing the kubelet config without restarting','Change not applied','`systemctl restart kubelet`'],
+['Treating kube-proxy as the network','Looking in the wrong place for Pod-to-Pod problems','kube-proxy does Services only; the CNI does Pod networking']]},
+{note:'On managed services you still have kubelets, runtimes and CNIs on your nodes; you just do not run the control plane. Node troubleshooting skills apply everywhere.'}],
 src:[['Node Components',C+'architecture/#node-components'],['kubelet reference',R+'command-line-tools-reference/kubelet/'],['Nodes',C+'architecture/nodes/'],['Addons',C+'cluster-administration/addons/']]};
 
 /* ---------- 4: Static pods ---------- */
 L['k8s:2:4']={blocks:[
-{p:'**Static Pods** are Pods managed directly by the kubelet on one node, defined by files on disk. They are how kubeadm runs the control plane: the kubelet starts the API server, scheduler, controller manager and etcd before any API server exists.'},
-{h:'How they work'},
-{ul:['The kubelet watches a directory, `staticPodPath` in its config, normally `/etc/kubernetes/manifests`.','Any Pod YAML placed there is started. Remove the file and the Pod stops. Edit the file and the Pod is recreated.','The kubelet creates a read-only **mirror Pod** in the API so you can see it with `kubectl get pods`. Deleting the mirror Pod does nothing; delete the file.','Static Pod names get the node name appended, for example `kube-apiserver-cp1`.']},
-{code:`grep staticPodPath /var/lib/kubelet/config.yaml
-ls /etc/kubernetes/manifests
-# etcd.yaml  kube-apiserver.yaml  kube-controller-manager.yaml  kube-scheduler.yaml
-
-# Create your own static Pod on this node
+{p:'There is a chicken-and-egg problem at the heart of a kubeadm cluster: the API server, scheduler, controller manager and etcd are themselves Pods, but Pods are created through the API server. **Static Pods** break the loop. A static Pod is defined by a **file on the node** and run directly by the **kubelet**, with no API server needed. kubeadm uses them to start the whole control plane.'},
+{h:'How static Pods work'},
+{flow:['The kubelet is configured with a staticPodPath (usually /etc/kubernetes/manifests)','It watches that directory continuously','A new or changed YAML file makes the kubelet create (or recreate) that Pod through the runtime','A removed file stops the Pod','When an API server exists, the kubelet publishes a read-only mirror Pod so you can see it with kubectl']},
+{code:`$ sudo grep staticPodPath /var/lib/kubelet/config.yaml
+staticPodPath: /etc/kubernetes/manifests
+$ ls -l /etc/kubernetes/manifests
+-rw------- 1 root root 2552 Oct  1 08:00 etcd.yaml
+-rw------- 1 root root 3891 Oct  1 08:00 kube-apiserver.yaml
+-rw------- 1 root root 3385 Oct  1 08:00 kube-controller-manager.yaml
+-rw------- 1 root root 1465 Oct  1 08:00 kube-scheduler.yaml
+$ kubectl get pods -n kube-system -o wide | grep cp1
+kube-apiserver-cp1            1/1   Running   0   40d   10.0.0.10   cp1      # the name has the node name appended`},
+{h:'Static Pod versus normal Pod'},
+{t:[['','Normal Pod','Static Pod'],
+['Defined by','An API object','A file on one node'],
+['Managed by','A controller (ReplicaSet, ...) and the scheduler','Only the **kubelet** on that node'],
+['Scheduled by','kube-scheduler','Never: it always runs on that node'],
+['Edit with','`kubectl edit`, apply','Edit the file'],
+['`kubectl delete pod`','Pod removed (controller recreates it)','Mirror Pod deleted; the kubelet **recreates it at once**; the real Pod is untouched'],
+['Needs the API server to start','Yes','**No**'],
+['Can reference ConfigMaps and Secrets','Yes','**No** in recent releases (it must run without the API)']]},
+{h:'Hands-on: create and remove a static Pod'},
+{code:`# on a node (control plane or worker); the directory is the staticPodPath above
 sudo tee /etc/kubernetes/manifests/static-web.yaml <<'EOF'
 apiVersion: v1
 kind: Pod
-metadata:
-  name: static-web
+metadata: {name: static-web}
 spec:
   containers:
   - name: web
     image: nginx:1.27
 EOF
-kubectl get pods -A | grep static-web`},
-{h:'Why this matters to an admin'},
-{ul:['**Changing a control plane flag**: edit the manifest. The kubelet restarts the component automatically. A typo can take the API server down, so keep a backup copy outside the manifests directory.','**Fixing a broken control plane** when kubectl does not work: go to the node and read container logs with `crictl`.','**Never** keep backup files in the manifests directory. The kubelet may try to start them.']},
-{code:`# Safe edit pattern
-sudo cp /etc/kubernetes/manifests/kube-apiserver.yaml /root/kube-apiserver.yaml.bak
+sleep 15
+kubectl get pods -A | grep static-web                  # static-web-cp1 (node name appended)
+kubectl delete pod static-web-cp1                      # it comes back at once
+sudo rm /etc/kubernetes/manifests/static-web.yaml      # NOW it is gone`},
+{h:'Changing a control plane component safely'},
+{p:'To change an API server flag you edit its manifest; the kubelet notices and **recreates the Pod** with the new arguments. That is powerful and dangerous: a typo means the API server does not start, and then `kubectl` cannot help you fix it.'},
+{code:`sudo cp /etc/kubernetes/manifests/kube-apiserver.yaml /root/kube-apiserver.yaml.bak     # backup OUTSIDE the manifests directory
 sudo vim /etc/kubernetes/manifests/kube-apiserver.yaml
-sudo crictl ps | grep kube-apiserver          # wait for the new container
+# watch it restart (use crictl: kubectl may be down for a moment)
+sudo crictl ps | grep kube-apiserver
+sudo crictl logs --tail 20 $(sudo crictl ps -a --name kube-apiserver -q | head -1)     # if it does not start
 kubectl get nodes`},
-{note:'Version note: in recent Kubernetes releases a static Pod may not reference other API objects such as Secrets and ConfigMaps (for example through volumes or environment references), because it must run without the API server. Embed values in the manifest or use host paths. Check the release notes for the exact version where your cluster enforces this.'}],
-src:[['Create static Pods',T+'configure-pod-container/static-pod/'],['kubeadm implementation details',K.R+'setup-tools/kubeadm/implementation-details/']]};
+{h:'Pitfalls'},
+{ul:['**Never keep backup files in the manifests directory** (for example `kube-apiserver.yaml.bak` is ignored, but `.yaml` copies are started). Keep backups elsewhere.','The kubelet restarts the Pod whenever the file **content** changes; saving with the same content does nothing.','To force a restart without changing anything, move the file out for a few seconds and back.','Static Pods run only on the node that holds the file: for control plane HA each control plane node needs its own set.','Resource requests, probes and volumes work as in any Pod, but there is no controller to reschedule it elsewhere.']},
+{t:[['Symptom','Cause'],
+['The Pod does not appear after you add a file','YAML error (kubelet journal: `can not process`), wrong directory, or the kubelet is not running'],
+['Control plane Pod loops restarting','Bad flag or path in the manifest: read `crictl logs`'],
+['Mirror Pod shows but is `Pending`','Usually normal for a few seconds; check the node and runtime'],
+['Deleted the Pod with kubectl and it returned','Expected: remove the file instead']]},
+{note:'Exam tip: tasks like "create a static Pod on node X" mean writing the manifest into that node `staticPodPath`. Find the path in `/var/lib/kubelet/config.yaml` (or in the kubelet process arguments) rather than assuming it.'}],
+src:[['Create static Pods',T+'configure-pod-container/static-pod/'],['kubeadm implementation details',R+'setup-tools/kubeadm/implementation-details/']]};
 
 /* ---------- 5: Certificates ---------- */
 L['k8s:2:5']={blocks:[
-{p:'Kubernetes components authenticate each other with **TLS certificates**. kubeadm creates a small PKI in `/etc/kubernetes/pki`. Expired or mismatched certificates are one of the most common reasons a self-managed cluster suddenly stops working.'},
+{p:'A kubeadm cluster is held together by **TLS certificates**. Components prove who they are to each other with them, and they encrypt traffic. When one expires or does not match, parts of the cluster stop talking, and the error messages (`x509: certificate ...`) are cryptic unless you know who trusts whom. This lecture is the map.'},
+{h:'Who trusts whom'},
 {svg:pki},
-{h:'What lives in /etc/kubernetes/pki'},
-{t:[['File','Purpose'],
-['`ca.crt`, `ca.key`','Cluster CA. Signs the API server, kubelet client and admin certs. The key is the crown jewel.'],
-['`apiserver.crt`','Serving certificate of the API server (SANs include its DNS names and IPs)'],
-['`apiserver-kubelet-client.crt`','Client cert the API server uses to call kubelets'],
-['`apiserver-etcd-client.crt`','Client cert the API server uses to call etcd'],
-['`etcd/ca.crt`, `etcd/server.crt`, `etcd/peer.crt`','Separate CA and certs for etcd'],
-['`front-proxy-ca.crt`, `front-proxy-client.crt`','Aggregation layer'],
-['`sa.key`, `sa.pub`','Key pair used to sign and verify service account tokens (not X.509)']]},
-{p:'Kubeconfig files in `/etc/kubernetes/` (`admin.conf`, `kubelet.conf`, `controller-manager.conf`, `scheduler.conf`) embed client certificates for those components.'},
-{h:'Lifetimes'},
-{ul:['Most kubeadm leaf certificates are valid for **1 year** and are renewed automatically when you run `kubeadm upgrade`.','CA certificates are valid for **10 years**.','Kubelet client and serving certificates can be rotated automatically when enabled.']},
-{h:'Check and renew'},
-{code:`sudo kubeadm certs check-expiration
-sudo kubeadm certs renew all              # then restart control plane static Pods
-sudo kubeadm certs renew apiserver
+{p:'There are several separate **trust domains**, each with its own certificate authority (CA): the cluster CA (clients and the API server), the **etcd CA** (etcd and its clients), the **front-proxy CA** (the aggregation layer) and a plain **key pair for ServiceAccount tokens**.'},
+{t:[['File in `/etc/kubernetes/pki`','Purpose','Signed by'],
+['`ca.crt`, `ca.key`','The cluster CA: signs the others; the key is the crown jewel','(self-signed)'],
+['`apiserver.crt`','Serving certificate of the API server; must include every name and IP clients use (SANs)','cluster CA'],
+['`apiserver-kubelet-client.crt`','Identity the API server uses to call kubelets (logs, exec)','cluster CA'],
+['`apiserver-etcd-client.crt`','Identity the API server uses to call etcd','etcd CA'],
+['`etcd/ca.crt`, `etcd/server.crt`, `etcd/peer.crt`, `etcd/healthcheck-client.crt`','etcd serving, member-to-member and health check certificates','etcd CA'],
+['`front-proxy-ca.crt`, `front-proxy-client.crt`','Aggregation layer to extension API servers','front-proxy CA'],
+['`sa.key`, `sa.pub`','Sign and verify ServiceAccount tokens (not X.509)','(key pair)']]},
+{p:'The files in `/etc/kubernetes/*.conf` (`admin.conf`, `kubelet.conf`, `controller-manager.conf`, `scheduler.conf`) are kubeconfigs that **embed client certificates** for those components.'},
+{h:'Reading a certificate'},
+{code:`$ sudo openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -subject -issuer -dates -ext subjectAltName
+subject=CN = kube-apiserver
+issuer=CN = kubernetes
+notBefore=Oct  1 08:00:00 2026 GMT
+notAfter=Oct  1 08:00:00 2027 GMT
+X509v3 Subject Alternative Name:
+    DNS:cp1, DNS:kubernetes, DNS:kubernetes.default.svc, DNS:k8s-api.example.com, IP Address:10.96.0.1, IP Address:10.0.0.10
 
-# Inspect any certificate
-openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -text | \\
-  grep -E "Subject:|Issuer:|Not After|DNS:|IP Address:"`},
-{p:'After renewing, the control plane components must reload them. Moving the manifests out of the directory and back, or restarting the kubelet, recreates the static Pods.'},
-{h:'Troubleshooting pointers'},
-{ul:['`x509: certificate has expired or is not yet valid`: renew, and check the system clock (NTP).','`x509: certificate is valid for ..., not ...`: the API server certificate lacks a SAN for the address you used. Add it with `kubeadm init phase certs apiserver` and `--apiserver-cert-extra-sans`.','`x509: certificate signed by unknown authority`: the kubeconfig has the wrong CA.']},
-{note:'On managed clusters the provider handles control plane certificates. You still manage the certificates of your own applications, typically with cert-manager.'}],
+$ sudo kubeadm certs check-expiration
+CERTIFICATE                EXPIRES                  RESIDUAL TIME   CERTIFICATE AUTHORITY
+admin.conf                 Oct 01, 2027 08:00 UTC   357d            ca
+apiserver                  Oct 01, 2027 08:00 UTC   357d            ca
+etcd-server                Oct 01, 2027 08:00 UTC   357d            etcd-ca
+CERTIFICATE AUTHORITY      EXPIRES                  RESIDUAL TIME
+ca                         Sep 28, 2036 08:00 UTC   9y`},
+{ul:['Leaf certificates last **one year** by default; CAs last **ten years**.','`kubeadm upgrade` renews leaf certificates, so regularly upgraded clusters rarely expire.','Kubelet client certificates can rotate themselves (`rotateCertificates: true`).','The **SANs** (Subject Alternative Names) of the API server certificate must contain every DNS name and IP clients connect to, including the load balancer.']},
+{h:'Common x509 errors'},
+{t:[['Error','Meaning','Fix'],
+['`x509: certificate has expired or is not yet valid`','Past `notAfter` or before `notBefore`, **or the system clock is wrong**','Renew the certificate; check `timedatectl`'],
+['`x509: certificate is valid for A, B, not C`','The name or IP used is not in the SANs','Regenerate the API server certificate with the extra SAN'],
+['`x509: certificate signed by unknown authority`','The client does not trust the CA that signed it','Fix the CA data in the kubeconfig'],
+['`tls: bad certificate` in the API server log','A client presented a certificate the server rejects (wrong CA, expired)','Find the client; renew or replace its certificate'],
+['Kubelet cannot register after a long downtime','Expired kubelet client certificate','Re-bootstrap the node']]},
+{h:'Renewing'},
+{code:`sudo kubeadm certs renew all                      # or one: apiserver, apiserver-kubelet-client, front-proxy-client ...
+sudo kubeadm certs check-expiration
+# control plane components must reload them: move the static manifests out, wait, move them back
+cd /etc/kubernetes/manifests && sudo mkdir -p /root/mh && sudo mv *.yaml /root/mh/ && sleep 30 && sudo mv /root/mh/*.yaml .
+sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config        # admin.conf was renewed too`},
+{p:'`kubeadm certs renew` works **locally on the control plane node, even when the API server is down**, which is exactly what you need when an expired certificate has locked you out.'},
+{h:'Common mistakes'},
+{ul:['Not tracking expiry: a cluster that is never upgraded stops working one year after installation.','Forgetting to add the load balancer name to the API server SANs when going HA.','Renewing certificates but not restarting the control plane Pods, so the old ones stay in memory.','Copying `admin.conf` widely: it is a **cluster-admin** credential.','Replacing the CA without a plan: every kubeconfig and kubelet must trust the new one.']},
+{note:'On managed clusters the provider rotates control plane certificates. You still own certificates of your own applications (Ingress TLS and service certificates), typically automated with cert-manager.'}],
 src:[['PKI certificates and requirements',K.S+'best-practices/certificates/'],['Certificate Management with kubeadm',T+'administer-cluster/kubeadm/kubeadm-certs/'],['Manage TLS Certificates',T+'tls/']]};
+
 /* ---------- Additional content ---------- */
 /* 6: API server internals */
 L['k8s:2:6']={blocks:[
