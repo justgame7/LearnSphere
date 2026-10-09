@@ -1,9 +1,9 @@
 /* LearnSphere service worker. Bump VERSION on every release so installed apps update. */
-const VERSION = 'v6';
+const VERSION = 'v7';
 const SHELL = `ls-shell-${VERSION}`;
 const RUNTIME = `ls-runtime-${VERSION}`;
 const ASSETS = [
-  './', './index.html', './pg-lesson.js', './rs-common.js', './rs-s01.js', './rs-s02.js',
+  './', './index.html', './pg-lesson.js', './pg-quiz.js', './rs-common.js', './rs-s01.js', './rs-s02.js', './rs-s03.js', './rs-s04.js', './rs-s05.js',
   './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png',
   './icons/maskable-512.png', './icons/apple-touch-icon.png'
 ];

@@ -132,6 +132,16 @@ h2{font-size:14px;font:600 12px var(--mono);letter-spacing:.8px;text-transform:u
 .addl-t{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0}.addl-t b{font-size:15px}.addl-t small{font:12px/1.4 var(--mono);color:var(--mut)}
 .addl-c{color:var(--mut);transition:transform .2s;flex:none}.addl.addl-open .addl-c{transform:rotate(180deg)}
 .addl-b{display:none;padding:4px 12px 6px}.addl.addl-open .addl-b{display:block}
+.lec.quiz.ready{cursor:pointer}.lec.quiz.ready .t{color:var(--tx)}.lec.quiz.ready .lh:hover{background:var(--panel2)}
+.qz h1{margin:6px 0 4px}.qtop{display:flex;justify-content:space-between;font:600 12px var(--mono);color:var(--mut);margin:6px 0 8px}.qq{font-size:18px;font-weight:600;margin:0 0 14px}
+.qopts{display:grid;gap:10px}.qo{display:flex;gap:12px;align-items:flex-start;text-align:left;width:100%;padding:13px 14px;border-radius:14px;background:var(--panel);border:1px solid var(--line);color:var(--tx)}
+.qo:hover:not(:disabled){border-color:var(--accent)}.qo.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--panel))}
+.qo.good{border-color:#4ADE80;background:color-mix(in srgb,#4ADE80 14%,var(--panel))}.qo.bad{border-color:#FB7185;background:color-mix(in srgb,#FB7185 14%,var(--panel))}.qo:disabled{cursor:default}
+.qk{flex:none;width:22px;height:22px;border-radius:50%;border:1.5px solid var(--mut);display:grid;place-items:center;font:700 12px var(--mono)}.qk.sq{border-radius:6px}
+.qx{display:flex;gap:12px;align-items:flex-start;margin:0 0 16px;padding:14px;border-radius:14px;background:var(--panel);border:1px solid var(--line);cursor:pointer}.qx input{margin-top:4px;accent-color:var(--accent);width:18px;height:18px}.qx small{display:block;color:var(--mut)}
+.qsr{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 6px}.qs{padding:10px 14px;border-radius:12px;background:var(--panel2);border:1px solid var(--line)}.qs b{font-size:20px;display:block}.qs span{font:12px var(--mono);color:var(--mut)}
+.qres{display:inline-flex;flex-direction:column;padding:14px 22px;border-radius:16px;margin:6px 0 14px;border:1px solid var(--line);background:var(--panel)}.qres b{font-size:34px}.qres.ok{border-color:#4ADE80}.qres.no{border-color:#FB7185}.qres span{color:var(--mut);font:12px var(--mono)}
+.qmiss{padding:12px 14px;margin:0 0 12px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}.qmiss p{margin:4px 0}.qmiss .why{color:var(--mut);font-size:14px}
 </style></head>
 <body>
 <header><div class="bar"><div class="logo" onclick="location.hash='#/'"><i>L</i>LearnSphere</div><div class="sp"></div>
@@ -139,6 +149,7 @@ h2{font-size:14px;font:600 12px var(--mono);letter-spacing:.8px;text-transform:u
 <button class="ib" id="th" title="Toggle theme" aria-label="Toggle theme">◐</button></div></header>
 <main class="wrap" id="app"></main>
 <script src="pg-lesson.js"></script>
+<script src="pg-quiz.js"></script>
 <script>
 /* ---------- DATA ---------- */
 // lecture: [title, mm:ss, description]; quiz: section quiz title
@@ -3151,7 +3162,7 @@ function vSub(c,si){
  <h1>${esc(s.t)}</h1><p class="sub">${ci.length} lectures · ${d} completed${xi.length?` · ${xi.length} additional`:''}</p><div class="bt" style="--c:${c.color};margin:-6px 0 22px"><b style="width:${p}%"></b></div>`;
  if(s.cka)h+=`<div class="meta" style="margin:-10px 0 18px"><span class="chip">${esc(s.cka)}</span></div>`;
  h+=ci.map(row).join('');
- h+=`<div class="lec quiz"><div class="lh"><span class="chk" style="color:var(--mut)">?</span><span class="t">${esc(s.q)}</span><small>QUIZ</small></div></div>`;
+ h+=qData(c,si)?(()=>{const b=qBest(c,si),p=b>=QPASS;return `<div class="lec quiz ready"><div class="lh" onclick="go('#/c/${c.id}/${si}/quiz')"><span class="chk" style="color:${p?'var(--accent)':'var(--mut)'}">${p?'✓':'?'}</span><span class="t">${esc(s.q)}</span><small>QUIZ${b>=0?' · '+b+'%':''}</small></div></div>`})():`<div class="lec quiz"><div class="lh"><span class="chk" style="color:var(--mut)">?</span><span class="t">${esc(s.q)}</span><small>QUIZ</small></div></div>`;
  if(xi.length){const op=!!ADDL_OPEN[si];
   h+=`<div class="addl ${op?'addl-open':''}" id="addl"><button class="addl-h" onclick="toggleAddl(${si})" aria-expanded="${op}"><span class="addl-i">+</span><span class="addl-t"><b>Additional content</b><small>Optional deep dives and reference material · ${xi.length} lectures · ${secDoneX(c,si)} read</small></span><span class="addl-c">▾</span></button><div class="addl-b">${xi.map(row).join('')}</div></div>`}
  h+=`<div class="pn">${si>0?`<button class="btn ghost" onclick="go('#/c/${c.id}/${si-1}')">◂ ${esc(c.sections[si-1].t)}</button>`:'<span></span>'}${si<c.sections.length-1?`<button class="btn" onclick="go('#/c/${c.id}/${si+1}')">${esc(c.sections[si+1].t)} ▸</button>`:`<button class="btn" onclick="go('#/c/${c.id}')">Back to topics</button>`}</div>`;
@@ -3195,11 +3206,79 @@ const _ld={},_rdy={};
 function ensure(id,si){const k=id+':'+si;if(_ld[k])return _ld[k];
  const one=f=>_ld[f]||(_ld[f]=new Promise(r=>{const s=document.createElement('script');s.src=f;s.onload=s.onerror=()=>r();document.head.appendChild(s)}));
  return _ld[k]=LAZY[id](si).reduce((p,f)=>p.then(()=>one(f)),Promise.resolve()).then(()=>{_rdy[k]=1})}
+/* ---------- QUIZZES (data in pg-quiz.js: window.QUIZZES['<course>:<section>']) ---------- */
+let QZ={};try{QZ=JSON.parse(localStorage.getItem('ls_quiz')||'{}')}catch(e){}
+const qSave=()=>{try{localStorage.setItem('ls_quiz',JSON.stringify(QZ))}catch(e){}};
+const QPASS=70;
+const qData=(c,si)=>(window.QUIZZES||{})[c.id+':'+si];
+const qRec=(c,si,m)=>((QZ[c.id]||{})[si]||{})[m]||null;
+const qBest=(c,si)=>Math.max(-1,...['core','all'].map(m=>{const r=qRec(c,si,m);return r?r.best:-1}));
+const qXWanted=()=>!!QZ.__x;
+/* The quiz is a POOL: each attempt draws nCore core questions (default 10) and, when additional content is included, nExt more (default 5). Questions not yet seen are drawn first, so a retake gives new questions until the pool is used up. */
+const qSets=(c,si)=>{const d=qData(c,si),all=d.qs.map((q,i)=>Object.assign({_i:i},q));
+ const core=all.filter(q=>!q.x),ext=all.filter(q=>q.x);return{core,ext,nCore:Math.min(core.length,d.nCore||10),nExt:Math.min(ext.length,d.nExt||5)}};
+const qDraw=(arr,n,seen)=>{const un=arr.filter(q=>!seen.includes(q._i));let out=shuf(un).slice(0,n);
+ if(out.length<n){const last=seen.slice(-n),more=f=>shuf(arr.filter(q=>!out.includes(q)&&f(q)));
+  out=out.concat(more(q=>!last.includes(q._i))).slice(0,n);if(out.length<n)out=out.concat(more(()=>true)).slice(0,n);
+  return{out,seen:out.map(q=>q._i)}}
+ return{out,seen:seen.concat(out.map(q=>q._i))}};
+const shuf=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+let QS=null;
+const qCourse=()=>COURSES.find(x=>x.id===QS.cid);
+function qStart(cid,si,withX){
+ const c=COURSES.find(x=>x.id===cid),{core,ext,nCore,nExt}=qSets(c,si),useX=withX&&ext.length>0;
+ QZ.__seen=QZ.__seen||{};const sk=cid+':'+si,dc=qDraw(core,nCore,QZ.__seen[sk+':c']||[]),dx=useX?qDraw(ext,nExt,QZ.__seen[sk+':x']||[]):null;
+ QZ.__seen[sk+':c']=dc.seen;if(dx)QZ.__seen[sk+':x']=dx.seen;qSave();
+ const qs=shuf(dc.out.concat(dx?dx.out:[])).map(q=>{const cor=[].concat(q.a),ord=shuf(q.o.map((_,i)=>i));
+  return{q:q.q,o:ord.map(i=>q.o[i]),a:ord.map((orig,pos)=>cor.includes(orig)?pos:-1).filter(p=>p>=0),multi:cor.length>1,why:q.why,lec:q.lec}});
+ QS={cid,si,mode:useX?'all':'core',qs,i:0,sel:[],checked:false,res:[],end:false};qRefresh()}
+function qRefresh(){app.innerHTML=vQuiz(qCourse(),QS.si);window.scrollTo(0,0)}
+function qToggleX(on){QZ.__x=on?1:0;qSave();QS=null;render(true)}
+function qPick(i){if(!QS||QS.checked)return;const q=QS.qs[QS.i];
+ if(q.multi){const k=QS.sel.indexOf(i);if(k>-1)QS.sel.splice(k,1);else QS.sel.push(i)}else QS.sel=[i];
+ app.innerHTML=vQuiz(qCourse(),QS.si)}
+function qCheck(){if(!QS||QS.checked||!QS.sel.length)return;const q=QS.qs[QS.i];
+ const ok=QS.sel.length===q.a.length&&q.a.every(i=>QS.sel.includes(i));QS.res[QS.i]={ok,sel:QS.sel.slice()};QS.checked=true;
+ app.innerHTML=vQuiz(qCourse(),QS.si)}
+function qNext(){if(!QS||!QS.checked)return;
+ if(QS.i<QS.qs.length-1){QS.i++;QS.sel=[];QS.checked=false}
+ else{QS.end=true;const c=qCourse(),n=QS.res.filter(r=>r.ok).length,pct=Math.round(n/QS.qs.length*100);
+  QZ[c.id]=QZ[c.id]||{};const sc=QZ[c.id][QS.si]=QZ[c.id][QS.si]||{},r=sc[QS.mode]||{best:0,att:0};
+  sc[QS.mode]={best:Math.max(r.best,pct),att:r.att+1,last:pct};qSave()}
+ qRefresh()}
+const qLink=(c,si,li)=>`<a onclick="go('#/c/${c.id}/${si}/${li}')" style="cursor:pointer;text-decoration:underline">${esc(c.sections[si].l[li][0])}</a>`;
+function vQuiz(c,si){
+ const s=c.sections[si],d=qData(c,si);
+ const crumbs=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›${par(c)}<a onclick="go('#/c/${c.id}')">${c.name}</a>›<a onclick="go('#/c/${c.id}/${si}')">Section ${si+1}</a>›<span>Quiz</span></div>`;
+ if(!d)return crumbs+`<h1>${esc(s.q)}</h1><p class="sub">This quiz is not available yet.</p><div class="pn"><button class="btn ghost" onclick="go('#/c/${c.id}/${si}')">◂ Back to section</button></div>`;
+ if(!QS||QS.cid!==c.id||QS.si!==si){
+  const{core,ext,nCore,nExt}=qSets(c,si),x=qXWanted()&&ext.length>0,n=nCore+(x?nExt:0);
+  const rc=qRec(c,si,'core'),ra=qRec(c,si,'all');
+  const rr=(l,r)=>r?`<div class="qs"><b>${r.best}%</b><span>${l} best · ${r.att} attempt${r.att>1?'s':''}</span></div>`:'';
+  return crumbs+`<div class="qz"><h1>${esc(s.q)}</h1><p class="sub">Section ${si+1}: ${esc(s.t)}</p>
+  <div class="nt"><b>${n} questions</b> · pass mark ${QPASS}% · you see the answer and the reason after every question. Each attempt draws from a pool of ${core.length+(x?ext.length:0)} and shuffles the order, so a retake brings new questions first.</div>
+  ${ext.length?`<label class="qx"><input type="checkbox" ${x?'checked':''} onchange="qToggleX(this.checked)"><span><b>Include questions from additional content</b><small>${x?`On: ${nCore} core + ${nExt} additional = ${n} questions`:`Off: ${nCore} questions from the core lectures only. Turn on for ${nCore+nExt}.`}</small></span></label>`:''}
+  <div class="qsr">${rr('Core',rc)}${rr('With additional',ra)}</div>
+  <div class="pn"><button class="btn ghost" onclick="go('#/c/${c.id}/${si}')">◂ Back to section</button><button class="btn" onclick="qStart('${c.id}',${si},${x})">${rc||ra?'Retake quiz':'Start quiz'} ▸</button></div></div>`}
+ if(QS.end){
+  const n=QS.res.filter(r=>r.ok).length,t=QS.qs.length,pct=Math.round(n/t*100),pass=pct>=QPASS,miss=QS.qs.map((q,i)=>[q,QS.res[i]]).filter(([q,r])=>!r.ok);
+  return crumbs+`<div class="qz"><h1>${pass?'✓ Passed':'Not passed yet'}</h1><div class="qres ${pass?'ok':'no'}"><b>${pct}%</b><span>${n} of ${t} correct · pass mark ${QPASS}%</span></div>
+  ${miss.length?`<h4>Review the ${miss.length} you missed</h4>`+miss.map(([q,r])=>`<div class="qmiss"><p><b>${fx(q.q)}</b></p><p>Correct: ${q.a.map(i=>fx(q.o[i])).join(' · ')}</p><p class="why">${fx(q.why)}</p><p>Revisit: ${qLink(c,si,q.lec)}</p></div>`).join(''):'<p class="sub">No mistakes. Well done.</p>'}
+  <div class="pn"><button class="btn ghost" onclick="QS=null;render(true)">◂ Quiz home</button><button class="btn" onclick="qStart('${c.id}',${si},${QS.mode==='all'})">Retake ▸</button></div></div>`}
+ const q=QS.qs[QS.i],t=QS.qs.length,chk=QS.checked,r=QS.res[QS.i];
+ const opts=q.o.map((o,i)=>{const on=QS.sel.includes(i),good=q.a.includes(i);
+  const cls=chk?(good?'good':on?'bad':''):(on?'on':'');
+  const mark=chk?(good?'✓':on?'✗':''):(on?(q.multi?'■':'●'):'');
+  return `<button class="qo ${cls}" role="${q.multi?'checkbox':'radio'}" aria-checked="${on}" ${chk?'disabled':''} onclick="qPick(${i})"><span class="qk ${q.multi?'sq':''}">${mark}</span><span>${fx(o)}</span></button>`}).join('');
+ return crumbs+`<div class="qz"><div class="qtop"><span>Question ${QS.i+1} of ${t}</span><span>${QS.res.filter(x=>x&&x.ok).length} correct</span></div><div class="bt" style="--c:var(--accent);margin:0 0 18px"><b style="width:${Math.round((QS.i+(chk?1:0))/t*100)}%"></b></div>
+ <p class="qq">${fx(q.q)}</p>${q.multi?'<p class="sub" style="margin:-6px 0 10px">Select all that apply.</p>':''}<div class="qopts">${opts}</div>
+ ${chk?`<div class="nt" style="margin-top:14px"><b>${r.ok?'✓ Correct.':'✗ Not quite.'}</b> ${fx(q.why)}<br><small>Lecture: ${qLink(c,si,q.lec)}</small></div>`:''}
+ <div class="pn"><button class="btn ghost" onclick="QS=null;render(true)">Quit quiz</button>${chk?`<button class="btn" onclick="qNext()">${QS.i<t-1?'Next question ▸':'See results ▸'}</button>`:`<button class="btn" ${QS.sel.length?'':'disabled style="opacity:.5"'} onclick="qCheck()">Check answer</button>`}</div></div>`}
 function render(keep,noTrack){
  stopTrack();
  const[,r,id,si,li]=location.hash.split('/');let c=COURSES.find(x=>x.id===id&&(x.sections.length||x.subs));
  if(r==='c'&&c&&LAZY[c.id]&&si!==undefined&&!_rdy[c.id+':'+si]){app.innerHTML='<p class="sub">Loading lessons…</p>';ensure(c.id,+si).then(()=>{if(location.hash.split('/')[2]===id)render(keep,noTrack)});return}
- app.innerHTML=r==='c'&&c&&c.subs?vSubCourses(c):r==='c'&&c?(li!==undefined?vLesson(c,+si,+li):si!==undefined?vSub(c,+si):vTopics(c)):vCourses();
+ app.innerHTML=r==='c'&&c&&c.subs?vSubCourses(c):r==='c'&&c?(li==='quiz'?vQuiz(c,+si):li!==undefined?vLesson(c,+si,+li):si!==undefined?vSub(c,+si):vTopics(c)):vCourses();
  if(!keep)window.scrollTo(0,0);
  if(!noTrack&&r==='c'&&c&&!c.subs&&li!==undefined&&c.sections[+si]&&c.sections[+si].l[+li])startTrack(c,+si,+li)}
 addEventListener('hashchange',()=>render());
