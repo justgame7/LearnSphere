@@ -9290,3 +9290,420 @@ H.noteBefore('pg:1:13',null,'Column-level privileges, safe `SECURITY DEFINER` fu
  if(e)e[2]='How passwords are stored and verified (SCRAM-SHA-256 versus md5), how a SCRAM login works and how to protect passwords on the client. Migrating from md5, TLS, sslmode and client certificates are in Additional content.';
  else{try{console.warn('LS_ADDL: outline entry not found: Passwords, SCRAM and TLS')}catch(err){}}})();
 })();
+
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - Section 8 (Tablespaces & Storage)
+   Core lectures: 8.1 WAL Format (trimmed), 8.2 Tablespace Creation and Drop, 8.3 Online Moving, 8.4 Offline Moving (trimmed),
+                  8.6 Using Tablespaces (trimmed), 8.7 WAL Lifecycle (trimmed: what keeps WAL, a growing or full pg_wal, slots and monitoring stay).
+   8.1 WAL Format: page headers, record anatomy, resource managers, full-page images and timelines move to one new Additional lecture.
+                  Location, segments, LSN, file naming, the hands-on and the operating rules stay core.
+   8.4 Offline Moving: the table of copy tools and the Windows variant move. Standbys and backups stay core.
+   8.6 Using Tablespaces: the per-tablespace planner and I/O settings move.
+   8.7 WAL Lifecycle: archive_command configuration and sizing the pg_wal volume move (archiving is taught in Section 9).
+   Moves whole: 8.5 Storage Layout, 8.8 Inspecting WAL, 8.9 Tablespaces in Backup, Replication and Upgrade.
+   Load after the Section 7 part 2 block (uses window.LS_ADDL). Lecture indexes never change, so saved progress and lesson keys stay valid.
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL;
+if(!H){try{console.warn('LS_ADDL: helpers missing, Section 8 skipped')}catch(e){}return}
+const dedupe=a=>{const s=new Set();return (a||[]).filter(r=>!s.has(r[1])&&s.add(r[1]))};
+const tidy=k=>{if(L[k]&&L[k].src)L[k].src=dedupe(L[k].src)};
+const warn=(...a)=>{try{console.warn('LS_ADDL:',...a)}catch(e){}};
+const S=7;
+const T_WALI='WAL Internals: Page Headers, Record Anatomy, Resource Managers, Full-Page Images and Timelines';
+const T_STOR='Storage Layout: Pages, Forks, TOAST and Tablespace Files';
+const T_TREF='Tablespace Reference: Copy Tools for Offline Moves, the Windows Variant and Per-Tablespace Planner and I/O Settings';
+const T_ARCH='WAL Archiving Setup and Sizing the pg_wal Volume';
+const T_INSP='Inspecting WAL: pg_waldump, pg_walinspect and pg_controldata';
+const T_TBS='Tablespaces in Backup, Replication and Upgrade';
+
+/* 1) whole lectures that move to Additional content (their indexes stay the same) */
+H.flag(S,T_STOR,2);
+H.flag(S,T_INSP,5);
+H.flag(S,T_TBS,6);
+
+/* 2) pointer fixes first, so the changed wording travels with any block that moves later */
+H.rep('pg:0:2','Using Tablespaces (bonus), Storage Layout (bonus)','Using Tablespaces (bonus), Storage Layout (Section 8, Additional content)');
+H.rep('pg:0:2','Tablespaces in Backup, Replication and Upgrade (bonus)','Tablespaces in Backup, Replication and Upgrade (Section 8, Additional content)');
+H.rep('pg:0:2','Inspecting WAL (bonus)','Inspecting WAL (Section 8, Additional content)');
+H.rep('pg:3:4','Inspecting WAL (bonus)','Inspecting WAL (Section 8, Additional content)');
+H.rep('pg:3:11','(*Inspecting WAL*)','(*Inspecting WAL*, in the Additional content)');
+H.rep('pg:3:16','(the *Inspecting WAL* lecture of Section 08)','(the *Inspecting WAL* lecture in the Additional content of Section 08)');
+H.rep('pg:4:3','how pages, forks and TOAST tables appear in these files.','how pages, forks and TOAST tables appear in these files (the last part is in the Additional content of Section 08).');
+H.rep('pg:7:1','(see the Storage Layout bonus lecture)','(see the Storage Layout lecture in the Additional content of this section)');
+H.rep('pg:7:1','See *Tablespaces in Backup, Replication and Upgrade* for the details.','See *Tablespaces in Backup, Replication and Upgrade* (Additional content of this section) for the details.');
+H.rep('pg:7:1','Combine with per-tablespace planner costs (see Using Tablespaces)','Combine with per-tablespace planner costs (see the Additional content of this section)');
+H.rep('pg:7:3','(see the last lecture)','(see *Tablespaces in Backup, Replication and Upgrade* in the Additional content of this section)');
+H.rep('pg:8:9','Section 08 (Tablespaces in Backup, Replication and Upgrade) lists','Section 08 (Tablespaces in Backup, Replication and Upgrade, in the Additional content) lists');
+H.rep('pg:8:10','(Section 08, WAL Format)','(Section 08, WAL Format and the WAL Internals lecture in its Additional content)');
+H.rep('pg:8:11','on archived WAL (Section 08)','on archived WAL (Section 08, Additional content)');
+H.rep('pg:9:10','with `pg_waldump`, Section 08)','with `pg_waldump`, Section 08 Additional content)');
+
+/* 3) 8.1 WAL Format -> one new additional lecture */
+const sWal=H.srcFor('pg:7:0',/wal-internals|wal-reliability|pgwaldump/,true);
+H.add(S,{title:T_WALI,order:1,
+ desc:'The long and short WAL page headers, the anatomy of a WAL record, the resource managers that write and replay records, full-page images and why they enlarge WAL, and timelines with .history files.',
+ blocks:[{p:'This lesson goes inside the WAL file format taught in \"WAL Format\". The core lecture covers where WAL lives, how it is cut into segments, how an LSN maps to a file and offset, and how file names are built. Here you open a segment: the page headers, the structure of one record, the resource manager that owns each record, full-page images, and timelines. Read it when you use `pg_waldump`, investigate a surprising WAL volume, or work with promotion and point-in-time recovery.'}].concat(
+  H.take('pg:7:0',['Page headers','Anatomy of a WAL record','Resource managers','Full-page images (FPI)','Timelines'])),
+ src:sWal});
+H.noteBefore('pg:7:0','Hands-on: watch the WAL move','The first eight characters of a segment name are the **timeline ID**: `00000001` on a new cluster, and a higher number after a standby is promoted or archive recovery finishes. The page headers, the anatomy of a record, resource managers, full-page images and timelines (with `.history` files) are in the **Additional content** of this section: \"'+T_WALI+'\".');
+
+/* 4) 8.4 Offline Moving + 8.6 Using Tablespaces -> one new additional reference lecture */
+const lecOff=L['pg:7:3'];
+let winBlocks=[];
+(function(){const i=lecOff.blocks.findIndex(b=>b.h==='Standbys, backups and the Windows variant');
+ if(i<0||!lecOff.blocks[i+1]||!lecOff.blocks[i+1].ul){warn('8.4 standby block not found');return}
+ const ul=lecOff.blocks[i+1].ul,wi=ul.findIndex(s=>/^\*\*Windows\*\*/.test(s));
+ if(wi<0){warn('8.4 Windows bullet not found');return}
+ const win=ul.splice(wi,1)[0];
+ winBlocks=[{h:'The Windows variant'},{p:win}];
+ lecOff.blocks[i].h='Standbys and backups'})();
+const sOff=H.srcFor('pg:7:3',/manage-ag-tablespaces|app-pgbasebackup/,true);
+const sSet=H.srcFor('pg:7:5',/runtime-config-resource|runtime-config-query/,true);
+H.add(S,{title:T_TREF,order:3,
+ desc:'A table comparing mv, rsync, cp -a and storage snapshots for an offline tablespace move, the directory-junction procedure on Windows, and the four tablespace options (seq_page_cost, random_page_cost, effective_io_concurrency, maintenance_io_concurrency) that override the planner and I/O settings for one tablespace.',
+ blocks:[{p:'This lesson collects three reference topics from the core lectures \"Tablespace Offline Moving\" and \"Using Tablespaces\": the tools you can use to copy a tablespace directory, the Windows variant of the offline move, and the per-tablespace planner and I/O options for a fast or slow disk. Read it when the plain `rsync` procedure does not fit your platform, or when a cluster has tablespaces on different kinds of storage.'}].concat(
+  H.take('pg:7:3',['Copy tools compared']),
+  winBlocks,
+  H.take('pg:7:5',['Per-tablespace planner and I/O settings'])),
+ src:sOff.concat(sSet)});
+H.noteBefore('pg:7:3','If something goes wrong','A table that compares `mv`, `rsync`, `cp -a` and storage snapshots as copy tools, and the Windows variant of this procedure (directory junctions), are in the **Additional content** of this section: \"'+T_TREF+'\".');
+H.noteBefore('pg:7:5','Planning placement','The tablespace options `seq_page_cost`, `random_page_cost`, `effective_io_concurrency` and `maintenance_io_concurrency`, which tell the planner that one tablespace is faster or slower than another, are in the **Additional content** of this section: \"'+T_TREF+'\".');
+
+/* 5) 8.7 WAL Lifecycle -> one new additional lecture (archiving is taught in Section 9) */
+const lecLife=L['pg:7:6'];
+let archBlocks=[];
+(function(){const i=lecLife.blocks.findIndex(b=>b.h==='Archiving: configuration and checks');
+ const a=lecLife.blocks[i+1],b2=lecLife.blocks[i+2];
+ if(i<0||!a||!b2||!a.code||!/archive_command/.test(a.code)||!b2.ul){warn('8.7 archiving config blocks not found');return}
+ archBlocks=[{h:'Configuring archiving'}].concat(lecLife.blocks.splice(i+1,2));
+ lecLife.blocks[i].h='Checking the archiver and replication slots'})();
+const sArch=H.srcFor('pg:7:6',/continuous-archiving|runtime-config-wal|pgarchivecleanup/,true);
+H.add(S,{title:T_ARCH,order:4,
+ desc:'A working archive_mode and archive_command configuration with the rules for a safe command, and a table for sizing the pg_wal volume (max_wal_size, wal_keep_size, archive backlog, slot retention and a safety margin).',
+ blocks:[{p:'This lesson holds two topics from \"WAL Lifecycle\" that you need when you build a server rather than when you troubleshoot one: how to configure WAL archiving, and how large the disk under `pg_wal` should be. Archiving is taught in full in Section 9 (Continuous Archiving), so read this lesson alongside it.'}].concat(
+  archBlocks,
+  H.take('pg:7:6',['Sizing the pg_wal volume'])),
+ src:sArch});
+H.noteBefore('pg:7:6','Checking the archiver and replication slots','A working `archive_mode` and `archive_command` configuration with the rules for a safe command, and a table for **sizing the `pg_wal` volume**, are in the **Additional content** of this section: \"'+T_ARCH+'\". The checks below tell you whether archiving works and whether a slot is holding WAL.');
+['pg:7:0','pg:7:3','pg:7:5','pg:7:6','pg:0:2','pg:3:4','pg:3:11','pg:3:16','pg:4:3','pg:7:1','pg:8:9','pg:8:10','pg:8:11','pg:9:10'].forEach(tidy);
+
+/* 6) refresh outline descriptions of the trimmed lectures defined in EXTRA_LECTURES (8.1 and 8.4 are static entries in index.html) */
+(function(){const ex=window.EXTRA_LECTURES&&window.EXTRA_LECTURES[7]||[];
+ const d=(t,s)=>{const e=ex.find(x=>x[0]===t);if(e)e[2]=s;else warn('outline entry not found',t)};
+ d('Using Tablespaces: Defaults, Temporary Files, Privileges and Planning','default_tablespace, temp_tablespaces, the CREATE privilege, hot/warm/cold placement and monitoring tablespace usage. Per-tablespace planner and I/O settings are in Additional content.');
+ d('WAL Lifecycle: Archiving, Retention, Recycling and pg_wal Troubleshooting','What keeps WAL files on disk, how archiving and slots affect pg_wal, how to diagnose a growing or full pg_wal, and how to relocate it. Archiving setup and sizing the pg_wal volume are in Additional content.');
+})();
+})();
+
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - Section 9 (Backup & Recovery)
+   Core lectures: 9.1 Backup and Restore (trimmed), 9.2 Backup Formats, 9.3 Connection Options, 9.4 Restore (trimmed), 9.5 Backup Practicals,
+                  9.6 Restore Practicals (trimmed: scenarios A to D and I stay), 9.7 pg_dumpall, 9.8 Physical Backup (trimmed), 9.9 Backup Strategy (trimmed:
+                  recovery objectives, 3-2-1, layers, retention, monitoring and frequent mistakes stay).
+   9.1 Backup and Restore: the seven-step programme moves.
+   9.4 Restore: "Making a large restore fast" and the table of common restore errors move (the "practise a full restore" note stays).
+   9.6 Restore Practicals: scenarios E to H (two-step section restore, list file, script without a database, owner and privileges) move.
+   9.8 Physical Backup: the pg_basebackup option reference moves.
+   9.9 Backup Strategy: sizing the backup storage, automation (with the backup script) and backup security move.
+   Moves whole: 9.10 File System Level Backups, 9.11 Continuous Archiving, 9.12 Point-in-Time Recovery, 9.13 Incremental Backups, 9.14 Backup Tools and the DR Runbook.
+   9.11 and 9.12 are advanced for this course but are standard DBA knowledge, so their outline descriptions say "Recommended next".
+   Load after the Section 8 block (uses window.LS_ADDL). Lecture indexes never change, so saved progress and lesson keys stay valid.
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL;
+if(!H){try{console.warn('LS_ADDL: helpers missing, Section 9 skipped')}catch(e){}return}
+const dedupe=a=>{const s=new Set();return (a||[]).filter(r=>!s.has(r[1])&&s.add(r[1]))};
+const tidy=k=>{if(L[k]&&L[k].src)L[k].src=dedupe(L[k].src)};
+const warn=(...a)=>{try{console.warn('LS_ADDL:',...a)}catch(e){}};
+const S=8;
+const ex=(window.EXTRA_LECTURES&&window.EXTRA_LECTURES[8])||[];
+const ft=p=>{const e=ex.find(x=>x[0].indexOf(p)===0);if(!e){warn('lecture not found',p);return p}return e[0]};
+const T_FS=ft('File System Level Backups');
+const T_ARC=ft('Continuous Archiving');
+const T_PITR=ft('Point-in-Time Recovery');
+const T_INC=ft('Incremental Backups');
+const T_TOOLS=ft('Backup Tools, Troubleshooting');
+const T_PROG='Backup Programme in Practice: Seven Steps, Sizing Storage, Automation and Security';
+const T_RREF='Restore Reference: Large Restores, Common Errors and Scenarios E to H';
+const T_BBO='pg_basebackup Option Reference';
+
+/* 1) whole lectures that move to Additional content (their indexes stay the same) */
+H.flag(S,T_FS,4);
+H.flag(S,T_ARC,5);
+H.flag(S,T_PITR,6);
+H.flag(S,T_INC,7);
+H.flag(S,T_TOOLS,8);
+
+/* 2) pointer fixes first, so the changed wording travels with any block that moves later */
+H.rep('pg:0:2','Continuous Archiving (bonus), Point-in-Time Recovery (bonus)','Continuous Archiving (Section 9, Additional content), Point-in-Time Recovery (Section 9, Additional content)');
+H.rep('pg:0:2','Incremental Backups and Verification (bonus)','Incremental Backups and Verification (Section 9, Additional content)');
+H.rep('pg:0:2','Backup Tools, Troubleshooting and DR Runbook (bonus)','Backup Tools, Troubleshooting and DR Runbook (Section 9, Additional content)');
+H.rep('pg:2:2','(File System Level Backups)','(File System Level Backups, in the Additional content of Section 9)');
+H.rep('pg:3:4','Section 09 builds on this in Continuous Archiving and Point-in-Time Recovery.','Section 09 builds on this in Continuous Archiving and Point-in-Time Recovery (in its Additional content, recommended next).');
+H.rep('pg:3:11','(*Continuous Archiving* and *Point-in-Time Recovery and Timelines*)','(*Continuous Archiving* and *Point-in-Time Recovery and Timelines*, in its Additional content)');
+H.rep('pg:4:6','(Backup Strategy).','(Backup Strategy; the sizing details are in its Additional content).');
+H.rep('pg:7:6','Section 09 (Continuous Archiving) shows how to monitor','The *Continuous Archiving* lecture in the Additional content of Section 09 shows how to monitor');
+H.rep('pg:7:8','Point-in-Time Recovery','Point-in-Time Recovery (Section 09, Additional content)');
+H.rep('pg:7:8','Incremental Backups, Manifests and Backup Verification','Incremental Backups, Manifests and Backup Verification (Section 09, Additional content)');
+H.rep('pg:7:11','Archiving is taught in full in Section 9 (Continuous Archiving)','Archiving is taught in full in the Additional content of Section 9 (Continuous Archiving)');
+H.rep('pg:8:0','and the last bonus lecture turns that into a runbook.','and the disaster-recovery runbook lecture (in the Additional content of this section) turns that into a runbook.');
+H.rep('pg:8:5','(the PITR lecture)','(the PITR lecture in the Additional content of this section)');
+H.rep('pg:8:5','use a list file (Scenario F).','use a list file (Scenario F, in the Additional content of this section).');
+H.rep('pg:8:5','Use a list file, or restore `--section=post-data` afterwards','Use a list file (Additional content of this section), or restore `--section=post-data` afterwards');
+H.rep('pg:8:7','see the incremental lecture)','see the incremental lecture in the Additional content of this section)');
+H.rep('pg:8:7','covered in the PITR lecture.','covered in the PITR lecture (Additional content of this section).');
+H.rep('pg:8:7','(see the verification lecture)','(see the verification lecture in the Additional content of this section)');
+H.rep('pg:8:7','the bonus lectures on strategy, file-system-level backups, WAL archiving, point-in-time recovery, incremental backups and the disaster-recovery runbook','the bonus lecture on strategy and, in the Additional content of this section, file-system-level backups, WAL archiving, point-in-time recovery, incremental backups and the disaster-recovery runbook');
+H.rep('pg:8:8','with sizing arithmetic, an automation script, monitoring and the security measures that backups need as much as the database does.','with recovery objectives, the 3-2-1 rule, retention and monitoring. The sizing arithmetic, an automation script and the security measures that backups need as much as the database does are in the Additional content of this section.');
+H.rep('pg:8:8','Archiving and PITR lectures','Archiving and PITR lectures (Additional content of this section)');
+H.rep('pg:8:8','PITR lecture, Section 10','PITR lecture (Additional content of this section), Section 10');
+H.rep('pg:8:8','Runbook (last lecture) and drills','Runbook (last lecture of the Additional content) and drills');
+
+/* 3) 9.1 + 9.9 -> one new additional lecture about the backup programme */
+const sProg=H.srcFor('pg:8:8',/backup\.html|continuous-archiving|pgarchivecleanup|monitoring-stats|app-pgverifybackup/,true);
+H.add(S,{title:T_PROG,order:1,
+ desc:'The seven steps of a sound backup programme, how to size backup storage (databases, WAL per day, archive volume), a locked and verified backup script with retention, systemd timers, and backup security (permissions, encryption, minimum-rights roles, manifest protection).',
+ blocks:[{p:'This lesson collects the build-it material that goes with \"Backup and Restore\" and \"Backup Strategy\": the seven steps of a programme, how much storage the backups need, how to automate them safely, and how to protect the backups themselves. Read it when you move from taking backups by hand to running them as a scheduled job.'}].concat(
+  H.take('pg:8:0',['A sound backup programme in seven steps']),
+  H.take('pg:8:8',['Sizing the backup storage','Automation','Backup security'])),
+ src:sProg});
+H.noteBefore('pg:8:0','Before you design anything: inspect the cluster','A backup programme has seven steps: define RPO and RTO, choose methods, automate, store a copy off the server, verify with real restores, monitor and alert, and document the runbook. The steps, with storage sizing, a backup script and backup security, are in the **Additional content** of this section: \"'+T_PROG+'\".');
+H.noteBefore('pg:8:8','Monitor the backups, not just the database','The sizing arithmetic for backup storage, the automation script with a lock, verification and retention, and the backup security measures are in the **Additional content** of this section: \"'+T_PROG+'\".');
+
+/* 4) 9.4 Restore + 9.6 Restore Practicals -> one new additional lecture */
+(function(){const lec=L['pg:8:3'];
+ const i=lec.blocks.findIndex(b=>b.h==='Common restore errors');
+ if(i<0){warn('9.4 errors heading not found');return}
+ let j=i+1;while(j<lec.blocks.length&&!lec.blocks[j].h)j++;
+ const k=lec.blocks.findIndex((b,n)=>n>i&&n<j&&b.note&&/^Practise a full restore/.test(b.note));
+ if(k<0){warn('9.4 practise note not found');return}
+ const nb=lec.blocks.splice(k,1)[0];            /* keep the RTO note in the core lecture, at the end of the verification section */
+ lec.blocks.splice(i,0,nb)})();
+const sRes=H.srcFor('pg:8:3',/populate|app-pgrestore/,true).concat(H.srcFor('pg:8:5',/app-pgrestore/,true));
+H.add(S,{title:T_RREF,order:2,
+ desc:'Levers for a fast bulk restore (-j, maintenance_work_mem, WAL settings, --transaction-size), a table of common restore errors with causes and fixes, and four more pg_restore scenarios: section-by-section restore, a list file, a script without a database, and a different owner or no privileges.',
+ blocks:[{p:'This lesson holds the reference and the extra scenarios from \"Restore\" and \"Restore Practicals\". The core lectures teach the right tool for each format, the restore steps and the common real-world cases (a whole database, one table, and rescuing a damaged table). Read this one when a restore is too slow, when it fails with an error message, or when you need to pick objects out of an archive.'}].concat(
+  H.take('pg:8:3',['Making a large restore fast','Common restore errors']),
+  H.take('pg:8:5',['Scenario E: schema only, then data, in two steps','Scenario F: choose items with a list file','Scenario G: produce a script without any database','Scenario H: restore with a different owner or without privileges'])),
+ src:sRes});
+H.noteBefore('pg:8:3','Verification after a restore','The levers for a fast restore of a large database (`-j`, `maintenance_work_mem`, WAL settings, `--transaction-size`) and a table of common restore errors with their fixes are in the **Additional content** of this section: \"'+T_RREF+'\".');
+H.noteBefore('pg:8:5','Scenario I: rescue one damaged table (the common real case)','Four more `pg_restore` scenarios are in the **Additional content** of this section: \"'+T_RREF+'\". They cover restoring in sections (pre-data, data, post-data), choosing objects with a list file (`-l` and `-L`), writing the SQL to a file instead of a database, and restoring with a different owner or without privileges.');
+
+/* 5) 9.8 Physical Backup -> one new additional lecture (option reference) */
+const sBb=H.srcFor('pg:8:7',/app-pgbasebackup/,true);
+H.add(S,{title:T_BBO,order:3,
+ desc:'A table of the pg_basebackup options: target directory, format, WAL method, compression, checkpoint speed, slots, tablespace mapping, manifest, throttling, progress and incremental backups.',
+ blocks:[{p:'This lesson is the option table for `pg_basebackup`. The core lecture \"Physical Backup\" teaches how a base backup runs, the formats, the WAL method and complete command examples. Keep this table open when you write a backup script or read someone else\'s command line.'}].concat(
+  H.take('pg:8:7',['Option reference'])),
+ src:sBb});
+H.noteBefore('pg:8:7','Taking backups','The full table of `pg_basebackup` options (target directory, format, WAL method, compression, checkpoint speed, slots, tablespace mapping, manifest checksums, throttling and progress) is in the **Additional content** of this section: \"'+T_BBO+'\". The examples below use the options you need first: `-D`, `-F`, `-X`, `-P` and `-c fast`.');
+['pg:0:2','pg:2:2','pg:3:4','pg:3:11','pg:4:6','pg:7:6','pg:7:8','pg:7:11','pg:8:0','pg:8:3','pg:8:5','pg:8:7','pg:8:8'].forEach(tidy);
+
+/* 6) refresh outline descriptions (the trimmed 9.9 and the two "recommended next" lectures are in EXTRA_LECTURES; 9.1, 9.4, 9.6 and 9.8 are static entries in index.html) */
+(function(){
+ const d=(t,s)=>{const e=ex.find(x=>x[0]===t);if(e)e[2]=s;else warn('outline entry not found',t)};
+ d(ft('Backup Strategy'),'Turn tools into a strategy: recovery objectives, the 3-2-1 rule, backup layers, retention and monitoring. Storage sizing, automation with a backup script and backup security are in Additional content.');
+ const e1=ex.find(x=>x[0]===T_ARC),e2=ex.find(x=>x[0]===T_PITR);
+ if(e1)e1[2]='Recommended next: '+e1[2];
+ if(e2)e2[2]='Recommended next: '+e2[2];
+})();
+})();
+
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - Section 10 (Upgrade & Replication), PART 1 of 4: lectures 10.1 to 10.4
+   Core: 10.1 Upgrade from 17 to 18, 10.2 Replication Theory, 10.3 Streaming Replication Setup (all unchanged).
+   10.4 Upgrade Strategy keeps: version numbers and release calendar, minor upgrades, major upgrades, the methods in detail and how to choose.
+        Moves to one new Additional lecture: what changes between major versions, the pre-upgrade inventory, the planning timeline,
+        testing the upgrade, the rollback plan for each method and the frequent mistakes.
+   Planned for the next parts: part 2 = 10.5 pg_upgrade Reference, 10.6 Upgrading Replicated Clusters, 10.7 Logical Replication (all moved whole);
+        part 3 = 10.8 Slots (trimmed), 10.9 Hot Standby, 10.10 Synchronous Replication (moved whole);
+        part 4 = 10.11 Failover (trimmed), 10.12 HA Architecture, 10.13 Replication Utilities (moved whole).
+   Load after the Section 9 block (uses window.LS_ADDL). Lecture indexes never change, so saved progress and lesson keys stay valid.
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL;
+if(!H){try{console.warn('LS_ADDL: helpers missing, Section 10 part 1 skipped')}catch(e){}return}
+const dedupe=a=>{const s=new Set();return (a||[]).filter(r=>!s.has(r[1])&&s.add(r[1]))};
+const tidy=k=>{if(L[k]&&L[k].src)L[k].src=dedupe(L[k].src)};
+const S=9;
+const T_UPL='Upgrade Planning: What Changes Between Versions, Inventory, Timeline, Rehearsal, Rollback and Common Mistakes';
+
+/* 1) pointer fixes first, so the changed wording travels with any block that moves later */
+H.rep('pg:9:3','what to check, how to rehearse and how to go back.','and how to choose between them. Planning, what changes between major versions, rehearsal and rollback are in the Additional content of this section.');
+H.rep('pg:0:2','Upgrade Strategy; pg_upgrade Reference','Upgrade Strategy (planning detail in Additional content); pg_upgrade Reference');
+H.rep('pg:9:12','Upgrade Strategy; pg_upgrade Reference','Upgrade Strategy (planning detail in Additional content); pg_upgrade Reference');
+
+/* 2) 10.4 Upgrade Strategy -> one new additional lecture */
+const sUpl=H.srcFor('pg:9:3',/upgrading\.html|release-18|versioning/,true);
+H.add(S,{title:T_UPL,order:1,
+ desc:'The PostgreSQL 18 changes that affect an upgrade (checksums by default, MD5 deprecation and more), the pre-upgrade inventory queries, a week-by-week planning timeline, how to rehearse on a restored copy, a rollback plan for each method and a table of frequent mistakes.',
+ blocks:[{p:'This lesson holds the planning half of \"Upgrade Strategy\". The core lecture explains the difference between minor and major upgrades, the upgrade methods and how to choose between them. Here you plan a real upgrade project: what changed in the new version, what to record before you start, when to do what, how to rehearse, and how to go back. Read it when you have a date for a major upgrade.'}].concat(
+  H.take('pg:9:3',['What changes between major versions','Pre-upgrade inventory','Planning timeline','Testing the upgrade','Rollback plan for each method','Frequent mistakes'])),
+ src:sUpl});
+H.noteBefore('pg:9:3',null,'**Two rules before any major upgrade:** rehearse it on a restored copy of production, and test the way back as carefully as the upgrade itself. What changed in the new version (checksums by default, MD5 deprecation), the pre-upgrade inventory, a planning timeline, how to test, a rollback plan for each method and the frequent mistakes are in the **Additional content** of this section: \"'+T_UPL+'\".');
+['pg:9:3','pg:0:2','pg:9:12'].forEach(tidy);
+
+/* 3) refresh the outline description of the trimmed lecture 10.4 */
+(function(){const ex=window.EXTRA_LECTURES&&window.EXTRA_LECTURES[9]||[];
+ const e=ex.find(x=>x[0]==='Upgrade Strategy: Minor and Major Releases, Methods Compared and Planning');
+ if(e)e[2]='Minor versus major upgrades, dump/restore versus pg_upgrade (copy, link, clone, swap) versus logical replication, and how to choose between them. Planning, rehearsal and rollback are in Additional content.';
+ else{try{console.warn('LS_ADDL: outline entry not found: Upgrade Strategy')}catch(err){}}})();
+})();
+
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - Section 10 (Upgrade & Replication), PART 2 of 4: lectures 10.5 to 10.7
+   10.5 pg_upgrade Reference, 10.6 Upgrading Replicated Clusters and Rolling Minor Updates, 10.7 Logical Replication and Near-Zero-Downtime Upgrades
+   all move whole to Additional content. The core upgrade path stays: 10.1 (a complete 17 to 18 upgrade with pg_upgrade) and 10.4 (strategy and methods).
+   Pointers inside 10.11 to 10.13 (parts 3 and 4) to these lectures are updated with those parts.
+   Load after the Section 10 part 1 block (uses window.LS_ADDL). Lecture indexes never change, so saved progress and lesson keys stay valid.
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL;
+if(!H){try{console.warn('LS_ADDL: helpers missing, Section 10 part 2 skipped')}catch(e){}return}
+const dedupe=a=>{const s=new Set();return (a||[]).filter(r=>!s.has(r[1])&&s.add(r[1]))};
+const tidy=k=>{if(L[k]&&L[k].src)L[k].src=dedupe(L[k].src)};
+const warn=(...a)=>{try{console.warn('LS_ADDL:',...a)}catch(e){}};
+const S=9;
+const ex=(window.EXTRA_LECTURES&&window.EXTRA_LECTURES[9])||[];
+const ft=p=>{const e=ex.find(x=>x[0].indexOf(p)===0);if(!e){warn('lecture not found',p);return p}return e[0]};
+const T_UPG=ft('pg_upgrade Reference');
+const T_REP=ft('Upgrading Replicated Clusters');
+const T_LOG=ft('Logical Replication and Near-Zero-Downtime');
+
+/* 1) whole lectures that move to Additional content (their indexes stay the same) */
+H.flag(S,T_UPG,2);
+H.flag(S,T_REP,3);
+H.flag(S,T_LOG,4);
+
+/* 2) pointer fixes in the lectures that stay core or that moved earlier */
+H.rep('pg:9:3','The next lecture is the full `pg_upgrade` reference; the lectures after that cover replicated clusters and logical replication.','The full `pg_upgrade` reference, the upgrade of replicated clusters and logical replication are in the Additional content of this section.');
+H.rep('pg:9:3','read the lecture on logical replication','read the logical replication lecture in the Additional content of this section');
+H.rep('pg:9:13','Lecture: Upgrading Replicated Clusters','Lecture: Upgrading Replicated Clusters (Additional content)');
+H.rep('pg:9:0','the bonus lectures cover every option, the alternatives and replicated clusters.','the lectures in the Additional content of this section cover every option, the alternatives and replicated clusters.');
+H.rep('pg:9:1','Bonus lecture','Additional content of this section');
+H.rep('pg:9:1','Section 10 bonus lectures','the lectures in the Additional content of Section 10');
+H.rep('pg:1:3','Rolling Minor Updates* gives the full procedure','Rolling Minor Updates* (in the Additional content of Section 10) gives the full procedure');
+H.rep('pg:3:9','*pg_upgrade Reference* lecture in Section 10','*pg_upgrade Reference* lecture in the Additional content of Section 10');
+H.rep('pg:0:2','pg_upgrade Reference','pg_upgrade Reference (Section 10, Additional content)');
+H.rep('pg:0:2','Logical Replication and Near-Zero-Downtime Upgrades','Logical Replication and Near-Zero-Downtime Upgrades (Section 10, Additional content)');
+['pg:9:0','pg:9:1','pg:9:3','pg:9:13','pg:1:3','pg:3:9','pg:0:2'].forEach(tidy);
+})();
+
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - Section 10 (Upgrade & Replication), PART 3 of 4: lectures 10.8 to 10.10
+   10.8 Replication Slots, WAL Retention and Monitoring Lag keeps: three ways to keep WAL for standbys, kinds of slots, managing slots,
+        the pg_replication_slots view, the abandoned-slot incident, the three safety nets and measuring lag.
+        Moves to one new Additional lecture: slots and dead rows (hot_standby_feedback, catalog_xmin), failover slots for logical replication,
+        causes of lag, alert thresholds and the troubleshooting table.
+   10.9 Hot Standby and 10.10 Synchronous Replication move whole.
+   Pointers inside 10.11 to 10.13 (part 4) are updated with part 4, except the one to failover slots, which is fixed here.
+   Load after the Section 10 part 2 block (uses window.LS_ADDL). Lecture indexes never change, so saved progress and lesson keys stay valid.
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL;
+if(!H){try{console.warn('LS_ADDL: helpers missing, Section 10 part 3 skipped')}catch(e){}return}
+const dedupe=a=>{const s=new Set();return (a||[]).filter(r=>!s.has(r[1])&&s.add(r[1]))};
+const tidy=k=>{if(L[k]&&L[k].src)L[k].src=dedupe(L[k].src)};
+const warn=(...a)=>{try{console.warn('LS_ADDL:',...a)}catch(e){}};
+const S=9;
+const ex=(window.EXTRA_LECTURES&&window.EXTRA_LECTURES[9])||[];
+const ft=p=>{const e=ex.find(x=>x[0].indexOf(p)===0);if(!e){warn('lecture not found',p);return p}return e[0]};
+const T_HOT=ft('Hot Standby:');
+const T_SYNC=ft('Synchronous Replication and Durability');
+const T_SLX='Slot Reference: Dead Rows and Feedback, Failover Slots, Causes of Lag, Alert Thresholds and Troubleshooting';
+
+/* 1) whole lectures that move to Additional content (their indexes stay the same) */
+H.flag(S,T_HOT,6);
+H.flag(S,T_SYNC,7);
+
+/* 2) pointer fixes first, so the changed wording travels with any block that moves later */
+H.rep('pg:9:1','see the Hot Standby lecture','see the Hot Standby lecture in the Additional content of this section');
+H.rep('pg:9:1','Synchronous replication (bonus lecture)','Synchronous replication (a lecture in the Additional content of this section)');
+H.rep('pg:9:2','(see the table in the Hot Standby lecture)','(see the table in the Hot Standby lecture, in the Additional content of this section)');
+H.rep('pg:9:10','are already synchronised (Replication Slots lecture)','are already synchronised (see \"'+T_SLX+'\" in the Additional content of this section)');
+H.rep('pg:3:8','(trade-off in Section 10)','(trade-off in the Hot Standby lecture, Section 10 Additional content)');
+H.rep('pg:3:8','`hot_standby_feedback` (Section 10)','`hot_standby_feedback` (Section 10, Additional content)');
+H.rep('pg:0:2','Synchronous Replication and Durability Levels','Synchronous Replication and Durability Levels (Section 10, Additional content)');
+
+/* 3) 10.8 Replication Slots -> one new additional lecture */
+const sSlx=H.srcFor('pg:9:7',/LOGICALDECODING-REPLICATION-SLOTS-SYNCHRONIZATION|runtime-config-replication|MONITORING-PG-STAT-REPLICATION/,true);
+H.add(S,{title:T_SLX,order:5,
+ desc:'How a slot and hot_standby_feedback hold back dead rows (xmin, catalog_xmin), failover slots for logical replication (17 and later), the usual causes of replication lag and what to do, starting alert thresholds and a troubleshooting table.',
+ blocks:[{p:'This lesson holds the second half of \"Replication Slots, WAL Retention and Monitoring Lag\". The core lecture explains what a slot is, the kinds of slots, the `pg_replication_slots` view, the abandoned-slot incident and how to measure lag. Here you go further: how slots and standby feedback keep dead rows from being cleaned, how failover slots work, why lag appears, which alert thresholds to start with, and a troubleshooting table. Read it when you run standbys or logical subscribers in production.'}].concat(
+  H.take('pg:9:7',['Slots and dead rows: hot_standby_feedback and catalog_xmin','Failover slots for logical replication (17 and later)','Causes of lag and what to do','Alert thresholds (starting points)','Troubleshooting'])),
+ src:sSlx});
+H.noteBefore('pg:9:7',null,'How a slot and `hot_standby_feedback` hold back the cleaning of dead rows (`xmin`, `catalog_xmin`), failover slots for logical replication, the usual causes of lag, starting alert thresholds and a troubleshooting table are in the **Additional content** of this section: \"'+T_SLX+'\".');
+['pg:9:7','pg:9:1','pg:9:2','pg:9:10','pg:3:8','pg:0:2'].forEach(tidy);
+
+/* 4) refresh the outline description of the trimmed lecture 10.8 */
+(function(){
+ const e=ex.find(x=>x[0]==='Replication Slots, WAL Retention and Monitoring Lag');
+ if(e)e[2]='Physical and logical slots, the pg_replication_slots view, the abandoned-slot incident and its safety nets (wal_keep_size, max_slot_wal_keep_size), pg_stat_replication and measuring lag. Feedback and dead rows, failover slots, lag causes, alert thresholds and troubleshooting are in Additional content.';
+ else warn('outline entry not found: Replication Slots');
+})();
+})();
+
+/* ================================================================
+   RESTRUCTURE: "Additional content" - Section 10 (Upgrade & Replication), PART 4 of 4: lectures 10.11 to 10.13
+   10.11 Failover, Switchover, Promotion and pg_rewind keeps: vocabulary, what promotion does and the planned switchover step by step
+        (a learner who builds a standby will ask how to promote it).
+        Moves to one new Additional lecture: unplanned failover, split brain and fencing, pg_rewind, rewind or rebuild,
+        the after-failover checklist and the troubleshooting table.
+   10.12 High Availability Architecture, Operations and Troubleshooting and 10.13 Replication Utilities and Post-Upgrade Maintenance move whole.
+   Pointers from earlier sections to 10.12 and 10.13 are updated here. This closes the Section 10 restructure (parts 1 to 4).
+   Load after the Section 10 part 3 block (uses window.LS_ADDL). Lecture indexes never change, so saved progress and lesson keys stay valid.
+   ================================================================ */
+(function(){
+const L=window.LESSONS;
+const H=window.LS_ADDL;
+if(!H){try{console.warn('LS_ADDL: helpers missing, Section 10 part 4 skipped')}catch(e){}return}
+const dedupe=a=>{const s=new Set();return (a||[]).filter(r=>!s.has(r[1])&&s.add(r[1]))};
+const tidy=k=>{if(L[k]&&L[k].src)L[k].src=dedupe(L[k].src)};
+const warn=(...a)=>{try{console.warn('LS_ADDL:',...a)}catch(e){}};
+const S=9;
+const ex=(window.EXTRA_LECTURES&&window.EXTRA_LECTURES[9])||[];
+const ft=p=>{const e=ex.find(x=>x[0].indexOf(p)===0);if(!e){warn('lecture not found',p);return p}return e[0]};
+const T_HA=ft('High Availability Architecture');
+const T_UT=ft('Replication Utilities and Post-Upgrade');
+const T_FOX='Unplanned Failover, Split Brain and Fencing, pg_rewind, After-Failover Checklist and Troubleshooting';
+
+/* 1) whole lectures that move to Additional content (their indexes stay the same) */
+H.flag(S,T_HA,9);
+H.flag(S,T_UT,10);
+
+/* 2) pointer fixes first, so the changed wording travels with any block that moves later */
+H.rep('pg:9:10','This lecture covers the manual procedures and the mechanisms behind them, so that you can both perform them and judge what an automatic tool is doing.','This lecture covers promotion and the planned switchover. Unplanned failover, split brain and fencing, `pg_rewind` and the troubleshooting table are in the Additional content of this section.');
+H.rep('pg:0:2','High Availability Architecture, Operations and Troubleshooting','High Availability Architecture, Operations and Troubleshooting (Section 10, Additional content)');
+H.rep('pg:4:10','are in *High Availability Architecture, Operations and Troubleshooting*','are in *High Availability Architecture, Operations and Troubleshooting* (in the Additional content of Section 10)');
+H.rep('pg:8:10','*Replication Utilities and Post-Upgrade Maintenance* (Section 10)','*Replication Utilities and Post-Upgrade Maintenance* (Section 10, Additional content)');
+H.rep('pg:8:13','runbooks in *High Availability Architecture, Operations and Troubleshooting* and the failover lecture','runbooks in *High Availability Architecture, Operations and Troubleshooting* (Section 10, Additional content) and the failover lecture');
+H.rep('pg:4:11','in the lecture *Replication Utilities and Post-Upgrade Maintenance*','in the lecture *Replication Utilities and Post-Upgrade Maintenance* (Section 10, Additional content)');
+
+/* 3) 10.11 Failover -> one new additional lecture */
+const sFox=H.srcFor('pg:9:10',/app-pgrewind|warm-standby-failover|BACKUP-TIMELINES/,true);
+H.add(S,{title:T_FOX,order:8,
+ desc:'Deciding that a primary is dead and acting on it: the unplanned failover sequence, split brain and fencing mechanisms, bringing the old primary back with pg_rewind (or rebuilding it), the checklist to run after a failover and a table of symptoms, causes and actions.',
+ blocks:[{p:'This lesson holds the second half of \"Failover, Switchover, Promotion and pg_rewind\". The core lecture explains the vocabulary, what promotion does and a planned switchover. Here you handle the harder case: the primary is gone and you must decide, act and repair. It covers the unplanned failover sequence, how to prevent two primaries, how to bring the old primary back, what to check afterwards and how to read the usual errors. Read it when you design or run a replicated cluster in production.'}].concat(
+  H.take('pg:9:10',['Unplanned failover','Split brain and fencing','Bringing the old primary back: pg_rewind','Rewind or rebuild?','After a failover: the checklist','Troubleshooting'])),
+ src:sFox});
+H.noteBefore('pg:9:10',null,'**Planned or unplanned?** A planned switchover is a clean, reversible procedure, as shown above. An unplanned failover is a decision under uncertainty: confirm the primary is really down, fence it, choose the best standby and promote it. Unplanned failover, split brain and fencing, bringing the old primary back with `pg_rewind`, the checklist to run after a failover and the troubleshooting table are in the **Additional content** of this section: \"'+T_FOX+'\".');
+['pg:9:10','pg:0:2','pg:4:10','pg:8:10','pg:8:13','pg:4:11'].forEach(tidy);
+
+/* 4) refresh outline descriptions */
+(function(){
+ const e=ex.find(x=>x[0].indexOf('Failover, Switchover, Promotion and pg_rewind')===0);
+ if(e)e[2]='Vocabulary (switchover, failover, promotion, timeline), what promotion does and the planned switchover step by step. Unplanned failover, split brain and fencing, pg_rewind, the after-failover checklist and troubleshooting are in Additional content.';
+ else warn('outline entry not found: Failover');
+})();
+})();
