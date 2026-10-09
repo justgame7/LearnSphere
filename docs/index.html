@@ -3199,9 +3199,10 @@ function vLesson(c,si,li){
  return h}
 function tog(cid,si,li){stopTrack();const k=key(si,li);P[cid]=P[cid]||{};if(P[cid][k])delete P[cid][k];else P[cid][k]=1;save();
  const open=[...document.querySelectorAll('.lec.open')].map(e=>e.id);render(true,true);open.forEach(i=>{const e=document.getElementById(i);e&&e.classList.add('open')})}
-/* Lazy lesson files: a course listed here loads its helper + one file per section the first time that section is opened.
+/* Lazy lesson files: a course listed here loads its helper + one lesson file and one quiz file per section the first time that section is opened.
    Missing files (sections not written yet) are treated as loaded so the page still renders its overview text. */
-const LAZY={rs:si=>['rs-common.js','rs-s'+String(si+1).padStart(2,'0')+'.js']};
+const LAZY={rs:si=>{const n=String(si+1).padStart(2,'0');return['rs-common.js','rs-s'+n+'.js','rs-q'+n+'.js']},
+ k8s:si=>{const n=String(si+1).padStart(2,'0');return['k8s-common.js','k8s-s'+n+'.js','k8s-q'+n+'.js']}};
 const _ld={},_rdy={};
 function ensure(id,si){const k=id+':'+si;if(_ld[k])return _ld[k];
  const one=f=>_ld[f]||(_ld[f]=new Promise(r=>{const s=document.createElement('script');s.src=f;s.onload=s.onerror=()=>r();document.head.appendChild(s)}));

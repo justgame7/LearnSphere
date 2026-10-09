@@ -10,6 +10,7 @@ docs/                    <- GitHub Pages root
   pg-lesson.js           PostgreSQL lesson content (single file)
   rs-common.js           Redshift helpers (diagram builder, doc URLs), lazy-loaded
   rs-s01.js ... rs-s14.js  Redshift lessons, one file per section, lazy-loaded on first open
+  rs-q01.js ... rs-q14.js  Redshift quizzes (window.QUIZZES['rs:<section>']), one file per section, lazy-loaded with the lessons
                          (key = rs:<section>:<lecture>; add new files to ASSETS in sw.js)
   manifest.webmanifest   PWA manifest
   sw.js                  service worker (offline cache)
