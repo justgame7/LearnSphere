@@ -3182,9 +3182,17 @@ function vLesson(c,si,li){
  return h}
 function tog(cid,si,li){stopTrack();const k=key(si,li);P[cid]=P[cid]||{};if(P[cid][k])delete P[cid][k];else P[cid][k]=1;save();
  const open=[...document.querySelectorAll('.lec.open')].map(e=>e.id);render(true,true);open.forEach(i=>{const e=document.getElementById(i);e&&e.classList.add('open')})}
+/* Lazy lesson files: a course listed here loads its helper + one file per section the first time that section is opened.
+   Missing files (sections not written yet) are treated as loaded so the page still renders its overview text. */
+const LAZY={rs:si=>['rs-common.js','rs-s'+String(si+1).padStart(2,'0')+'.js']};
+const _ld={},_rdy={};
+function ensure(id,si){const k=id+':'+si;if(_ld[k])return _ld[k];
+ const one=f=>_ld[f]||(_ld[f]=new Promise(r=>{const s=document.createElement('script');s.src=f;s.onload=s.onerror=()=>r();document.head.appendChild(s)}));
+ return _ld[k]=LAZY[id](si).reduce((p,f)=>p.then(()=>one(f)),Promise.resolve()).then(()=>{_rdy[k]=1})}
 function render(keep,noTrack){
  stopTrack();
  const[,r,id,si,li]=location.hash.split('/');let c=COURSES.find(x=>x.id===id&&(x.sections.length||x.subs));
+ if(r==='c'&&c&&LAZY[c.id]&&si!==undefined&&!_rdy[c.id+':'+si]){app.innerHTML='<p class="sub">Loading lessons…</p>';ensure(c.id,+si).then(()=>{if(location.hash.split('/')[2]===id)render(keep,noTrack)});return}
  app.innerHTML=r==='c'&&c&&c.subs?vSubCourses(c):r==='c'&&c?(li!==undefined?vLesson(c,+si,+li):si!==undefined?vSub(c,+si):vTopics(c)):vCourses();
  if(!keep)window.scrollTo(0,0);
  if(!noTrack&&r==='c'&&c&&!c.subs&&li!==undefined&&c.sections[+si]&&c.sections[+si].l[+li])startTrack(c,+si,+li)}
