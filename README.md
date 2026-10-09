@@ -14,6 +14,8 @@ docs/                    <- GitHub Pages root
                          (key = rs:<section>:<lecture>; add new files to ASSETS in sw.js)
   docker-common.js, docker-s01.js ... docker-s12.js, docker-q01.js ... docker-q12.js  Docker lessons and quizzes (core lectures; additional topics later), lazy-loaded
                          (lesson key = docker:<section>:<lecture>, quiz key = docker:<section>)
+  tf-common.js, tf-s01.js ... tf-s15.js, tf-q01.js ... tf-q15.js  Terraform lessons and quizzes (core lectures; additional topics later), lazy-loaded
+                         (lesson key = tf:<section>:<lecture>, quiz key = tf:<section>)
   manifest.webmanifest   PWA manifest
   sw.js                  service worker (offline cache)
   icons/                 app icons (any + maskable)

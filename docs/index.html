@@ -3200,7 +3200,8 @@ function tog(cid,si,li){stopTrack();const k=key(si,li);P[cid]=P[cid]||{};if(P[ci
    Missing files (sections not written yet) are treated as loaded so the page still renders its overview text. */
 const LAZY={rs:si=>{const n=String(si+1).padStart(2,'0');return['rs-common.js','rs-s'+n+'.js','rs-q'+n+'.js']},
  k8s:si=>{const n=String(si+1).padStart(2,'0');return['k8s-common.js','k8s-s'+n+'.js','k8s-q'+n+'.js']},
- docker:si=>{const n=String(si+1).padStart(2,'0');return['docker-common.js','docker-s'+n+'.js','docker-q'+n+'.js']}};
+ docker:si=>{const n=String(si+1).padStart(2,'0');return['docker-common.js','docker-s'+n+'.js','docker-q'+n+'.js']},
+ tf:si=>{const n=String(si+1).padStart(2,'0');return['tf-common.js','tf-s'+n+'.js','tf-q'+n+'.js']}};
 const _ld={},_rdy={};
 function ensure(id,si){const k=id+':'+si;if(_ld[k])return _ld[k];
  const one=f=>_ld[f]||(_ld[f]=new Promise(r=>{const s=document.createElement('script');s.src=f;s.onload=s.onerror=()=>r();document.head.appendChild(s)}));
