@@ -255,4 +255,158 @@ kubectl get cm marker                              # the object is back`},
 {note:'Restoring a pre-upgrade snapshot into a cluster that was already upgraded is not a supported rollback of Kubernetes versions. In real incidents plan a restore to the **same** version the snapshot came from.'},
 {ul:['Which step would block the drain if `web` had only 1 replica and a PDB `minAvailable: 1`?','Why must workers be upgraded after the control plane?','What does `kubeadm upgrade node` do differently from `apply`?']}],
 src:[['Upgrading kubeadm clusters',K.T+'administer-cluster/kubeadm/kubeadm-upgrade/'],['Operating etcd clusters for Kubernetes',K.T+'administer-cluster/configure-upgrade-etcd/']]};
+/* ---------- Additional content ---------- */
+/* 7: Velero */
+L['k8s:10:7']={blocks:[
+{p:'An etcd snapshot restores the **whole** cluster state, which is blunt. **Velero** backs up and restores **Kubernetes resources and persistent volumes** at namespace or label level, to object storage, and works on managed clusters where you cannot reach etcd.'},
+{svg:K.dg(700,200,[
+[10,70,130,60,'Velero server|runs in the cluster',2],[190,20,150,50,'Kubernetes API|resources as JSON',0],[190,130,150,50,'Volumes|snapshots or file copies',0],[400,70,150,60,'Object storage|S3, GCS, Azure Blob',2],[590,70,100,60,'Restore|into same or other cluster',0]],
+[[140,90,190,50],[140,110,190,150],[340,45,400,90],[340,155,400,110],[550,100,590,100]])},
+{h:'What it backs up'},
+{ul:['**Resources**: Deployments, Services, ConfigMaps, Secrets, CRDs and more, selected by namespace, label or resource type.','**Volumes**: through **CSI snapshots** (with a data mover to copy snapshot data to object storage) or **file-system backup** of Pod volumes (Kopia).','**Hooks**: commands run before and after a backup in a Pod (for example flush or freeze a database).','**Schedules** and retention (TTL).']},
+{code:`velero install --provider aws --plugins velero/velero-plugin-for-aws:<version> \\
+  --bucket my-backups --backup-location-config region=eu-west-1 \\
+  --use-node-agent --features=EnableCSI
+velero backup create shop-1 --include-namespaces shop --snapshot-move-data
+velero backup get
+velero backup describe shop-1 --details
+velero schedule create nightly --schedule="0 2 * * *" --include-namespaces shop --ttl 720h`},
+{code:`# Restore, optionally into a different namespace or cluster
+velero restore create --from-backup shop-1
+velero restore create --from-backup shop-1 --namespace-mappings shop:shop-restored
+velero restore get ; velero restore logs <name>`},
+{h:'Velero vs etcd snapshot'},
+{t:[['','etcd snapshot','Velero'],
+['Granularity','Entire cluster state','Namespaces, labels, resource types'],
+['Includes volume data','No','Yes (snapshots or file copies)'],
+['Works on managed clusters','No (no etcd access)','Yes'],
+['Cross-cluster migration','No','Yes'],
+['Rebuild a broken control plane','Yes','Needs a working cluster to restore into']]},
+{ul:['Use both on self-managed clusters: etcd for control plane recovery, Velero for applications.','**Test restores** regularly into a scratch cluster and time them.','Back up the **backup configuration** (credentials, bucket policy) and enable bucket versioning and replication.','Cluster-scoped resources and CRDs need ordering: restore CRDs before custom resources (Velero handles most of it).']},
+{note:'Backups taken without application consistency (flush, quiesce) may restore into a state that needs recovery. Use hooks or application-native backups for databases.'}],
+src:[['Velero documentation','https://velero.io/docs/'],['Kubernetes backup concepts',K.T+'administer-cluster/configure-upgrade-etcd/']]};
+
+/* 8: Add and remove control plane nodes */
+L['k8s:10:8']={blocks:[
+{p:'Control plane membership changes happen when you scale from one node to three, replace a failed machine or retire hardware. With stacked etcd every control plane node is also an **etcd member**, so each change touches the etcd cluster too.'},
+{h:'Adding a control plane node'},
+{code:`# On an existing control plane node: new certificate key and join command
+sudo kubeadm init phase upload-certs --upload-certs
+kubeadm token create --print-join-command
+# On the new node (prepared like any other node)
+sudo kubeadm join k8s-api:6443 --token <t> --discovery-token-ca-cert-hash sha256:<h> \\
+  --control-plane --certificate-key <key>
+kubectl get nodes
+sudo ETCDCTL_API=3 etcdctl ... member list --write-out=table`},
+{ul:['Add **one at a time** and wait until the new etcd member is healthy and caught up before the next change.','Keep an **odd** number of members; going from 3 to 4 adds no fault tolerance.','Update load balancers and any firewall rules for the new node.']},
+{h:'Removing a control plane node'},
+{flow:['Check cluster and etcd health first (all members healthy)','Drain and delete the node: kubectl drain cp3 --ignore-daemonsets --delete-emptydir-data; kubectl delete node cp3','Remove the etcd member BEFORE shutting the node down, if kubeadm reset did not','Run kubeadm reset on the node and clean up','Remove it from the load balancer']},
+{code:`# Find the member ID of the departing node and remove it
+sudo ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 \\
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key \\
+  member list --write-out=table
+sudo ETCDCTL_API=3 etcdctl ... member remove <member-id>
+# on the retired node
+sudo kubeadm reset -f`},
+{h:'Replacing a failed node'},
+{ul:['**Failed but recoverable**: repair and bring it back; do not change membership unnecessarily.','**Permanently lost**: remove the dead member from etcd (`member remove`), delete the Node object, then add a **fresh** node with the same role. Never reuse old etcd data on a new node without clearing it.','If you lost **quorum** (2 of 3 gone), you cannot remove members normally: restore from a snapshot, or follow the etcd disaster-recovery procedure.']},
+{h:'Mistakes to avoid'},
+{ul:['Removing two members at once from a three-member cluster.','Leaving a dead member in the etcd member list: it counts toward quorum and every restart tries to reach it.','Forgetting the API server certificate SANs and the load balancer when the address list changes.']},
+{note:'Take an etcd snapshot before any membership change. It is cheap insurance for the one operation that can lose quorum.'}],
+src:[['Creating Highly Available Clusters with kubeadm',K.S+'production-environment/tools/kubeadm/high-availability/'],['Operating etcd clusters',K.T+'administer-cluster/configure-upgrade-etcd/'],['etcd runtime reconfiguration','https://etcd.io/docs/latest/op-guide/runtime-configuration/']]};
+
+/* 9: etcd monitoring */
+L['k8s:10:9']={blocks:[
+{p:'etcd problems begin as small latency changes long before an outage. Know the metrics that matter and the maintenance that keeps it fast.'},
+{h:'Key metrics (Prometheus)'},
+{t:[['Metric','Why it matters','Rough guide'],
+['`etcd_disk_wal_fsync_duration_seconds` (p99)','Disk latency on commit; the number one cause of slowness','Below about 10 ms'],
+['`etcd_disk_backend_commit_duration_seconds` (p99)','Time to commit batches to the database file','Below about 25 ms'],
+['`etcd_server_leader_changes_seen_total`','Leader elections; frequent changes signal instability','Near zero over hours'],
+['`etcd_server_has_leader`','Whether a member sees a leader','1 for every member'],
+['`etcd_mvcc_db_total_size_in_bytes` and `..._in_use_...`','Database size and how much is live data','Below the quota; large gap means defrag helps'],
+['`etcd_network_peer_round_trip_time_seconds`','Latency between members','Low and stable'],
+['`etcd_server_proposals_failed_total` and `..._pending`','Raft proposals failing or backing up','Zero or tiny']]},
+{p:'Treat these numbers as starting points, not rules. Compare to your own baseline and alert on **changes**.'},
+{h:'Check by hand'},
+{code:`E="--endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key"
+sudo ETCDCTL_API=3 etcdctl $E endpoint status --write-out=table      # DB SIZE, IN USE, IS LEADER, RAFT TERM
+sudo ETCDCTL_API=3 etcdctl $E endpoint health --write-out=table
+sudo ETCDCTL_API=3 etcdctl $E check perf                              # synthetic load test (use on a test cluster)
+curl -s --cacert ... --cert ... --key ... https://127.0.0.1:2379/metrics | grep -E "wal_fsync|backend_commit|leader_changes"`},
+{h:'Defragmentation'},
+{ul:['After many updates and compactions the file contains **free pages** that are not returned to the filesystem. `DB SIZE` is much larger than `IN USE`.','**Defrag** one member at a time, off peak; each member blocks reads and writes while it defragments.','Defragment the **leader last**, and only when needed (for example size above 80 percent of the quota, or a big gap between size and in-use).']},
+{code:`sudo ETCDCTL_API=3 etcdctl $E defrag --endpoints=https://10.0.0.22:2379       # a follower first
+sudo ETCDCTL_API=3 etcdctl $E endpoint status --write-out=table
+sudo ETCDCTL_API=3 etcdctl $E alarm list ; sudo ETCDCTL_API=3 etcdctl $E alarm disarm   # after NOSPACE`},
+{h:'Performance practices'},
+{ul:['Dedicated, **fast local SSD or NVMe** for the data directory, separate from noisy neighbours (for example container image storage).','Keep members in the **same region** with low latency; spreading across distant sites hurts every write.','Do not store large objects or huge numbers of objects: events, CRDs with big payloads and ConfigMaps near 1 MiB cause growth. Fix the source.','Set the **quota** (`--quota-backend-bytes`, default about 2 GB; recommended max about 8 GB) to match your needs and alert before it fills.','Use **separate etcd** for Events at very large scale (an API server option) to isolate churn.']},
+{note:'If fsync latency is high, no tuning helps. Move the data directory to faster disks before touching anything else.'}],
+src:[['Operating etcd clusters',K.T+'administer-cluster/configure-upgrade-etcd/'],['etcd metrics','https://etcd.io/docs/latest/metrics/'],['etcd tuning','https://etcd.io/docs/latest/tuning/']]};
+
+/* 10: OS upgrades and node rotation */
+L['k8s:10:10']={blocks:[
+{p:'Nodes need operating system patches, kernel updates and replacement images. Patching in place and rotating immutable images are two strategies with different risks.'},
+{h:'Strategy 1: patch in place'},
+{flow:['Cordon and drain the node','Apply OS updates and reboot if the kernel changed','Check kubelet, runtime and CNI come back','Uncordon and verify workloads return','Repeat, one node (or a small batch) at a time']},
+{code:`kubectl drain w2 --ignore-daemonsets --delete-emptydir-data --timeout=300s
+ssh w2 'sudo apt-get update && sudo apt-get -y upgrade && sudo systemctl reboot'
+kubectl get nodes -w                          # wait for Ready
+kubectl uncordon w2`},
+{ul:['**Kured** (Kubernetes Reboot Daemon) detects the reboot-required flag and reboots nodes one at a time, with drains and a lock, automatically.','Hold Kubernetes packages (`apt-mark hold kubelet kubeadm kubectl`) so OS updates do not upgrade Kubernetes by accident.','Containerd or kernel updates can restart containers: always drain first.']},
+{h:'Strategy 2: replace nodes with new images'},
+{p:'Build a **new node image** (OS patched, runtime and kubelet at the target version), launch new nodes, join them and **retire** the old ones. No patch drift, and rollback is "go back to the old image".'},
+{code:`# Typical flow with node pools or instance groups
+1. publish image v2 (golden image or immutable OS such as Talos, Flatcar, Bottlerocket)
+2. create a new node pool/group with image v2
+3. kubectl cordon <old nodes>; kubectl drain <old nodes> ...
+4. verify workloads on the new pool; delete the old pool`},
+{t:[['','Patch in place','Replace with new image'],
+['Drift between nodes','Possible over time','None: nodes are identical'],
+['Speed per node','Reboot time','New VM boot and join time'],
+['Rollback','Hard','Easy: previous image'],
+['Fits','Small, static clusters','Cloud, autoscaling, many nodes'],
+['Needs','Config management','Image pipeline']]},
+{h:'Safe rolling'},
+{ul:['Roll **one failure zone** or pool at a time, and keep capacity for the drained workloads (surge nodes).','PodDisruptionBudgets and topology spread are what make rotation safe.','Stateful workloads: wait for replicas to become healthy and caught up between nodes.','Set a **maximum node age** (for example 30 days) so every node is rotated regularly; managed services offer auto-upgrade and maintenance windows for this.','Automate with Karpenter drift or node expiry, Cluster API MachineDeployments, or provider auto-repair features.']},
+{code:`kubectl get nodes -o custom-columns=NAME:.metadata.name,OS:.status.nodeInfo.osImage,KERNEL:.status.nodeInfo.kernelVersion,KUBELET:.status.nodeInfo.kubeletVersion,AGE:.metadata.creationTimestamp`},
+{note:'A node that has not been rebooted or replaced for a year probably has unpatched vulnerabilities. Put node age and OS version on your dashboard.'}],
+src:[['Safely Drain a Node',K.T+'administer-cluster/safely-drain-node/'],['Kured','https://kured.dev/docs/'],['Upgrade Linux nodes',K.T+'administer-cluster/kubeadm/upgrading-linux-nodes/']]};
+
+/* 11: Cluster API and blue-green */
+L['k8s:10:11']={blocks:[
+{h:'Cluster API (CAPI): clusters as Kubernetes objects'},
+{p:'**Cluster API** uses a **management cluster** that runs controllers which create and operate other clusters (workload clusters) on infrastructure providers (AWS, Azure, vSphere, bare metal and more). A cluster, its control plane and its machines are all declarative objects.'},
+{t:[['Object','Role'],
+['`Cluster`','The workload cluster and its network references'],
+['`KubeadmControlPlane`','Manages control plane machines, including rolling upgrades'],
+['`MachineDeployment` / `MachinePool`','Worker machines, like a Deployment for nodes'],
+['`Machine` and `MachineHealthCheck`','A single node, and automatic replacement of unhealthy ones'],
+['Infrastructure objects (for example `AWSMachineTemplate`)','Provider-specific machine definitions']]},
+{code:`apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata: {name: prod-md-0, namespace: prod}
+spec:
+  clusterName: prod
+  replicas: 5
+  selector: {matchLabels: {cluster.x-k8s.io/cluster-name: prod}}
+  template:
+    spec:
+      clusterName: prod
+      version: v1.37.1                    # change this to upgrade workers
+      bootstrap: {configRef: {apiVersion: bootstrap.cluster.x-k8s.io/v1beta1, kind: KubeadmConfigTemplate, name: prod-md-0}}
+      infrastructureRef: {apiVersion: infrastructure.cluster.x-k8s.io/v1beta2, kind: AWSMachineTemplate, name: prod-md-0}`},
+{ul:['**Upgrades** become edits: change `version` on `KubeadmControlPlane` first, then on each `MachineDeployment`; CAPI replaces machines using rolling updates and honours drains and PDBs.','**clusterctl** installs providers, generates cluster templates and moves management to another cluster (`clusterctl move`).','Pairs well with GitOps: all clusters defined in Git.','API versions and provider kinds change between releases; follow the current CAPI book.']},
+{h:'Blue-green cluster upgrades'},
+{p:'Instead of upgrading in place, build a **new cluster** at the target version (green), move workloads and traffic, then retire the old one (blue). It trades cost and effort for a very safe rollback.'},
+{flow:['Build the green cluster from the same code (CAPI, Terraform, GitOps) at the new version','Deploy platform add-ons and applications through GitOps','Restore stateful data (Velero, database replication) and verify','Shift traffic gradually with DNS weights or a global load balancer','Watch SLOs; roll traffic back to blue if needed','Decommission blue after a safe period']},
+{t:[['','In-place upgrade','Blue-green cluster'],
+['Risk','Changes the live cluster','Live cluster untouched until cutover'],
+['Cost','Low','Double capacity during the move'],
+['Rollback','Hard (restore or reverse)','Switch traffic back'],
+['Stateful data','Stays in place','Needs migration or replication'],
+['Needs','kubeadm upgrade skills','Fully automated cluster and app builds']]},
+{ul:['Good fit: stateless services and teams with mature GitOps.','Harder for databases and for IP-address or DNS dependencies: plan data movement and external allowlists.','Skipping minor versions is possible this way, because you are not upgrading the control plane in place, as long as your workloads and APIs work on the new version.']},
+{note:'Blue-green cluster rollout turns "upgrade day" into a routine, rehearsed pipeline, which is the real prize: if you can recreate a cluster at any time, you also have disaster recovery.'}],
+src:[['Cluster API Book','https://cluster-api.sigs.k8s.io/'],['clusterctl','https://cluster-api.sigs.k8s.io/clusterctl/overview'],['Upgrade a kubeadm cluster',K.T+'administer-cluster/kubeadm/kubeadm-upgrade/']]};
 })();

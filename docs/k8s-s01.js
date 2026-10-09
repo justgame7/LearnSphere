@@ -181,4 +181,109 @@ kubectl get nodes               # VERSION column shows each kubelet
 kubeadm version -o short        # on a kubeadm cluster`},
 {note:'The CKA exam is aligned to a specific Kubernetes minor version. Practice on the version the CNCF lists, and read the release notes for features added since.'}],
 src:[['Releases','https://kubernetes.io/releases/'],['Version Skew Policy','https://kubernetes.io/releases/version-skew-policy/'],['Deprecation Policy',K.D+'reference/using-api/deprecation-policy/']]};
+/* ---------- Additional content ---------- */
+/* 5: Study plan */
+L['k8s:0:5']={blocks:[
+{p:'This lecture gives you a realistic **study plan**, describes the **capstone** and explains how to approach a performance-based exam such as the CKA. Adjust the pace to your own schedule: the order matters more than the speed.'},
+{h:'A ten-week plan (about 8 to 10 hours a week)'},
+{t:[['Week','Sections','Focus','Hands-on goal'],
+['1','1, 2','Containers, desired state, kubectl fluency','Build a kind cluster; do every task with `--dry-run=client -o yaml`'],
+['2','3, 4','Architecture and kubeadm install','Build a 3-node kubeadm cluster from scratch, twice'],
+['3','5','Workloads and probes','Deploy, update, break and roll back an app'],
+['4','6','Scheduling, drain, autoscaling','Taints, affinity, drain a node, HPA under load'],
+['5','7','Services, DNS, Ingress, NetworkPolicy','Expose an app and lock it down'],
+['6','8, 9','Storage and RBAC','PVC survives Pod deletion; least-privilege user'],
+['7','10, 12','Hardening, Helm, Kustomize, CRDs','PSA labels, encryption at rest, a Helm release'],
+['8','11','Upgrades, etcd backup and restore','Snapshot, restore, upgrade one minor'],
+['9','13','Troubleshooting','Timed break/fix scenarios daily'],
+['10','14','Capstone and exam rehearsal','Full mock exam under time limit']]},
+{h:'Capstone project'},
+{p:'In Section 14 you build a cluster with kubeadm, deploy and secure a small application, take an etcd backup, upgrade by one minor version, fix injected faults and restore. Start a **repository** now with your kubeadm config, manifests and notes, so the capstone reuses your own work.'},
+{h:'The CKA exam: how to approach it'},
+{ul:['It is **performance-based**: you work on live clusters in a terminal, not multiple-choice. The CNCF page states the current duration, domains and Kubernetes version; check it before booking.','Tasks have different weights. **Read the whole task**, note the points, and start with the cheap and certain ones.','Each task names a **context** to use. Run the provided command every time.','Allowed documentation is the official Kubernetes site. Practise finding pages quickly (see the docs lecture in Section 2).','Use `--dry-run=client -o yaml`, `kubectl explain` and `kubectl create` instead of typing YAML from scratch.','**Verify** each result with a read-only command before moving on.','If stuck for a few minutes, flag the task and return later.']},
+{h:'Terminal habits to build early'},
+{code:`alias k=kubectl
+source <(kubectl completion bash); complete -o default -F __start_kubectl k
+export do="--dry-run=client -o yaml"
+export now="--force --grace-period=0"
+# vim: set shiftwidth=2 tabstop=2 expandtab  (put in ~/.vimrc)`},
+{note:'Do not memorise a long list of facts. Practise the same ten workflows (create, expose, schedule, drain, back up, restore, upgrade, RBAC, PV, fix a node) until they are routine.'}],
+src:[['CNCF: Certified Kubernetes Administrator','https://www.cncf.io/training/certification/cka/'],['kubectl Quick Reference',K.R+'kubectl/quick-reference/'],['Kubernetes documentation',K.D]]};
+
+/* 6: Container runtimes */
+L['k8s:0:6']={blocks:[
+{p:'The kubelet does not start containers itself. It talks to a **container runtime** through the **Container Runtime Interface (CRI)**. The runtime pulls images, creates containers and reports their state.'},
+{flow:['kubelet receives a Pod to run','kubelet calls the CRI runtime service (gRPC over a Unix socket)','High-level runtime (containerd or CRI-O) pulls the image and manages the sandbox','Low-level runtime (runc) creates the container using namespaces and cgroups','CNI plugin gives the Pod sandbox its network']},
+{h:'The pieces'},
+{t:[['Component','Role'],
+['**OCI** (Open Container Initiative)','Specifications for the image format and the runtime, so tools are interchangeable'],
+['**runc**','Reference low-level runtime that actually creates containers'],
+['**containerd**','High-level runtime: images, snapshots, container lifecycle. Used by most clusters'],
+['**CRI-O**','A runtime built only for Kubernetes, popular on OpenShift and some distributions'],
+['**Docker Engine**','Not a CRI runtime itself; dockershim was removed from the kubelet. Images built with Docker still run everywhere because they follow the OCI format'],
+['**Sandboxed runtimes** (gVisor, Kata)','Alternative low-level runtimes with stronger isolation, selected per Pod with a RuntimeClass']]},
+{h:'crictl: the node-level tool'},
+{p:'`crictl` speaks CRI directly. It works when `kubectl` does not, which is why it is essential for control plane troubleshooting.'},
+{code:`# /etc/crictl.yaml
+runtime-endpoint: unix:///run/containerd/containerd.sock
+image-endpoint: unix:///run/containerd/containerd.sock
+
+sudo crictl ps                       # running containers
+sudo crictl ps -a                    # including exited
+sudo crictl pods                     # Pod sandboxes
+sudo crictl logs <container-id>
+sudo crictl inspect <container-id> | head
+sudo crictl images
+sudo crictl pull nginx:1.27
+sudo crictl exec -it <container-id> sh
+sudo crictl stats`},
+{ul:['`ctr` and `nerdctl` are containerd-specific CLIs. In the **k8s.io** containerd namespace you see Kubernetes containers: `sudo ctr -n k8s.io containers ls`.','`docker ps` will show nothing on a containerd node.','The runtime socket path differs by runtime (`/run/containerd/containerd.sock`, `/var/run/crio/crio.sock`).']},
+{note:'A kubelet reporting `container runtime is down` means it cannot reach the socket. Check `systemctl status containerd` and the socket path in the kubelet configuration.'}],
+src:[['Container Runtimes',K.S+'production-environment/container-runtimes/'],['Container Runtime Interface',K.C+'architecture/cri/'],['Debugging Kubernetes nodes with crictl',K.T+'debug/debug-cluster/crictl/']]};
+
+/* 7: Linux refresher */
+L['k8s:0:7']={blocks:[
+{p:'A self-managed cluster is Linux first and Kubernetes second. These skills solve many node-level problems in minutes.'},
+{h:'systemd and logs'},
+{code:`systemctl status kubelet
+sudo systemctl restart kubelet
+sudo systemctl enable --now containerd
+systemctl list-units --type=service --state=failed
+journalctl -u kubelet -n 100 --no-pager
+journalctl -u kubelet -f                         # follow
+journalctl -u kubelet --since "15 min ago" -p err
+sudo systemctl daemon-reload                     # after editing unit files`},
+{h:'Processes and resources'},
+{code:`ps aux --sort=-%mem | head
+top -o %CPU            # or htop
+free -h ; df -h ; df -i
+ss -tlnp | grep -E "6443|2379|10250"             # who listens on which port
+lsof -i :6443
+dmesg -T | tail                                  # kernel messages (OOM kills)`},
+{h:'Files, permissions and ownership'},
+{code:`ls -l /etc/kubernetes/pki
+sudo chmod 600 /etc/kubernetes/admin.conf
+sudo chown root:root /etc/kubernetes/manifests/*.yaml
+find /etc/kubernetes -name "*.conf"
+grep -rn "server:" /etc/kubernetes/*.conf
+sudo tail -f /var/log/pods/*/*/*.log`},
+{h:'Networking basics'},
+{code:`ip addr ; ip route                               # interfaces and routes
+ip link show type bridge
+ss -s ; nc -zv 192.168.56.10 6443                # test a TCP port
+curl -k https://127.0.0.1:6443/livez
+dig +short kubernetes.default.svc.cluster.local @10.96.0.10
+sudo iptables -t nat -L -n | head -30            # kube-proxy rules (iptables mode)
+sudo nft list ruleset | head -30                 # nftables mode
+cat /etc/resolv.conf`},
+{h:'Kernel settings used by Kubernetes'},
+{code:`lsmod | grep -E "overlay|br_netfilter"
+sysctl net.ipv4.ip_forward net.bridge.bridge-nf-call-iptables
+swapon --show
+stat -fc %T /sys/fs/cgroup                       # cgroup2fs = cgroup v2
+timedatectl                                      # clock sync matters for certificates`},
+{h:'Editing and text tools you will use constantly'},
+{ul:['`vim` basics: `i` insert, `Esc`, `:wq`, `:q!`, `/text` search, `dd` delete line, `yy` and `p` copy and paste, `:set paste` before pasting YAML.','`grep -E`, `awk`, `sed -i`, `cut`, `sort | uniq -c`, `jq` for JSON.','`tmux` or multiple terminals to keep logs open while you change things.']},
+{note:'Always make a backup before editing a system file: `sudo cp file file.bak` (outside the static Pod manifests directory for manifests).'}],
+src:[['Troubleshooting kubeadm',K.S+'production-environment/tools/kubeadm/troubleshooting-kubeadm/'],['Installing kubeadm: before you begin',K.S+'production-environment/tools/kubeadm/install-kubeadm/#before-you-begin']]};
 })();

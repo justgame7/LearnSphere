@@ -200,4 +200,98 @@ openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -text | \\
 {ul:['`x509: certificate has expired or is not yet valid`: renew, and check the system clock (NTP).','`x509: certificate is valid for ..., not ...`: the API server certificate lacks a SAN for the address you used. Add it with `kubeadm init phase certs apiserver` and `--apiserver-cert-extra-sans`.','`x509: certificate signed by unknown authority`: the kubeconfig has the wrong CA.']},
 {note:'On managed clusters the provider handles control plane certificates. You still manage the certificates of your own applications, typically with cert-manager.'}],
 src:[['PKI certificates and requirements',K.S+'best-practices/certificates/'],['Certificate Management with kubeadm',T+'administer-cluster/kubeadm/kubeadm-certs/'],['Manage TLS Certificates',T+'tls/']]};
+/* ---------- Additional content ---------- */
+/* 6: API server internals */
+L['k8s:2:6']={blocks:[
+{p:'Behind the simple REST API sits machinery that makes the API server scale and extend. Three parts matter to an administrator: the **aggregation layer**, the **watch cache** and **API Priority and Fairness**.'},
+{h:'Aggregation layer'},
+{p:'The API server can proxy part of its API tree to **another server** that registers itself with an `APIService` object. Clients see one API, but requests under that group go to the extension server. The metrics API (`metrics.k8s.io`) works this way.'},
+{code:`kubectl get apiservices | head
+kubectl get apiservice v1beta1.metrics.k8s.io -o yaml | sed -n '/spec:/,/status:/p'
+# AVAILABLE=False means the backing Service is not reachable (common after a broken metrics-server install)
+kubectl get apiservices | grep -v True`},
+{ul:['The proxy authenticates to the extension server using the **front-proxy** client certificate in `/etc/kubernetes/pki`.','An unhealthy extension API can slow or break discovery commands such as `kubectl api-resources` and namespace deletion.']},
+{h:'Watch cache'},
+{p:'Most reads (`list` and `watch`) are served from an **in-memory cache** inside the API server instead of hitting etcd every time. Controllers start with a `list`, remember the `resourceVersion`, and then `watch` for changes. If a client falls too far behind, the server answers `410 Gone` and the client must list again (a relist).'},
+{ul:['A `list` with `resourceVersion=0` may return cached, slightly stale data; a consistent read goes to etcd.','Large lists of big objects (for example all Pods in all namespaces from many clients) are the usual cause of API server memory spikes.','Use **pagination** (`--chunk-size`), label or field selectors and watches instead of repeated full lists.']},
+{h:'API Priority and Fairness (APF)'},
+{p:'APF protects the API server from being overloaded by one noisy client. Requests are classified into **priority levels** with their own concurrency shares and queues, and fair-queued per flow, so a runaway controller cannot starve everything else.'},
+{code:`kubectl get flowschemas
+kubectl get prioritylevelconfigurations
+kubectl get --raw /debug/api_priority_and_fairness/dump_priority_levels
+# Throttled clients receive 429 Too Many Requests with a Retry-After header`},
+{t:[['Object','Purpose'],
+['`FlowSchema`','Matches requests (by user, group, verb, resource) and assigns them to a priority level'],
+['`PriorityLevelConfiguration`','Defines concurrency shares, queues and whether requests are queued or rejected']]},
+{h:'Operational signs'},
+{ul:['Many `429` responses or high `apiserver_flowcontrol_*` rejection metrics: some client is flooding the API.','Slow `kubectl get` for large kinds: check list sizes and client behaviour.','Request latency histograms and in-flight requests are the first metrics to alert on.']},
+{note:'Defaults protect system components first (leader election and node heartbeats have high priority). Change FlowSchemas only after measuring, because a wrong rule can starve kubelets or controllers.'}],
+src:[['Kubernetes API Concepts',K.R+'using-api/api-concepts/'],['API Priority and Fairness',K.C+'cluster-administration/flow-control/'],['Extending the Kubernetes API with the aggregation layer',K.C+'extend-kubernetes/api-extension/apiserver-aggregation/']]};
+
+/* 7: etcd internals */
+L['k8s:2:7']={blocks:[
+{p:'etcd is a replicated, strongly consistent key-value store built on the **Raft** consensus algorithm. Understanding how it commits writes and grows explains most etcd health problems.'},
+{h:'Raft in four ideas'},
+{ul:['**Leader election**: members elect one leader per **term**. Followers who miss heartbeats become candidates and call an election.','**Log replication**: writes go to the leader, which appends them to its log and replicates them to followers.','**Commit by majority**: an entry is committed once a **quorum** has stored it, then applied to the state machine and acknowledged.','**Safety**: only a member with an up-to-date log can win an election, so committed data is never lost while a quorum survives.']},
+{h:'Quorum math'},
+{t:[['Members (n)','Quorum floor(n/2)+1','Failures tolerated'],['1','1','0'],['3','2','1'],['5','3','2'],['7','4','3']]},
+{p:'A cluster without quorum becomes **read-unavailable for writes**: the API server cannot create or update anything. Even-sized clusters add cost without adding fault tolerance (4 members still tolerate only 1 failure).'},
+{h:'Storage: revisions, compaction and defragmentation'},
+{ul:['Kubernetes uses etcd MVCC: each change creates a new **revision**; old revisions remain until **compaction**.','The API server asks etcd to compact periodically (default about every 5 minutes), but compaction only marks space as free.','**Defragmentation** rewrites the database file to return the free space to the filesystem. It blocks the member briefly, so do one member at a time and not on the leader at peak.','If the file exceeds the backend quota (default about 2 GB), etcd raises a `NOSPACE` alarm and goes **read-only**.']},
+{code:`E="--endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key"
+sudo ETCDCTL_API=3 etcdctl $E endpoint status --write-out=table      # DB size, leader, raft term
+sudo ETCDCTL_API=3 etcdctl $E member list --write-out=table
+sudo ETCDCTL_API=3 etcdctl $E alarm list
+sudo ETCDCTL_API=3 etcdctl $E defrag
+sudo ETCDCTL_API=3 etcdctl $E alarm disarm                            # after freeing space`},
+{h:'Signals of trouble'},
+{t:[['Symptom','Likely cause'],
+['`etcdserver: request timed out`, slow API','Slow disk (fsync), CPU starvation, network latency'],
+['Frequent leader changes','Heartbeat timeouts: disk or network problems'],
+['`mvcc: database space exceeded`','Quota reached: compact, defrag, disarm; find the object churn'],
+['One member cannot join','Wrong peer URLs or certificates, or data from an old cluster']]},
+{note:'A large number of objects (for example thousands of Events, Jobs or custom resources) is the common cause of etcd growth. Fix the producer rather than only defragmenting.'}],
+src:[['Operating etcd clusters for Kubernetes',K.T+'administer-cluster/configure-upgrade-etcd/'],['etcd documentation','https://etcd.io/docs/'],['The Raft consensus algorithm','https://raft.github.io/']]};
+
+/* 8: Cloud controller manager */
+L['k8s:2:8']={blocks:[
+{p:'Some cluster behaviour depends on the infrastructure beneath it: creating load balancers, learning which cloud instance a node is, setting up routes. The **cloud controller manager (CCM)** holds that provider-specific logic so the core of Kubernetes stays cloud-neutral.'},
+{h:'What it runs'},
+{t:[['Controller','What it does'],
+['**Node controller**','Initialises Node objects with cloud information (instance ID, zone, addresses) and removes nodes whose VMs no longer exist'],
+['**Route controller**','Configures cloud routes so Pod networks can communicate (when the CNI relies on them)'],
+['**Service controller**','Creates, updates and deletes **cloud load balancers** for `type: LoadBalancer` Services']]},
+{h:'How it fits together'},
+{flow:['You create a Service of type LoadBalancer','The service controller in the CCM calls the cloud API to create a load balancer','It writes the external IP or host name into the Service status','When the Service is deleted, it removes the load balancer']},
+{ul:['On managed services (EKS, AKS, GKE) the CCM runs as part of the managed control plane; you do not see it.','On kubeadm clusters in a cloud, you install the **provider CCM** yourself and start the kubelet with `--cloud-provider=external`.','Nodes start with a taint `node.cloudprovider.kubernetes.io/uninitialized` until the CCM initialises them.','In-tree cloud provider code has been removed from Kubernetes in favour of external CCMs and CSI drivers.']},
+{code:`kubectl -n kube-system get pods | grep -i cloud
+kubectl get nodes -o custom-columns=NAME:.metadata.name,PROVIDER:.spec.providerID,ZONE:.metadata.labels.topology\\.kubernetes\\.io/zone
+kubectl get svc -A | grep LoadBalancer
+kubectl describe svc web | sed -n '/Events:/,$p'      # load balancer creation errors appear here`},
+{h:'Troubleshooting'},
+{ul:['`EXTERNAL-IP` stays `<pending>`: no CCM or no load balancer implementation, missing cloud permissions or quota.','New nodes stay tainted `uninitialized`: the CCM is not running or lacks permissions.','Load balancers left behind after deleting a cluster: delete Services of type LoadBalancer **first**.']},
+{note:'On bare metal there is no cloud, so LoadBalancer Services stay pending unless you install something such as MetalLB (Section 7, additional content).'}],
+src:[['Cloud Controller Manager',K.C+'architecture/cloud-controller/']]};
+
+/* 9: Leader election and HA */
+L['k8s:2:9']={blocks:[
+{p:'In a highly available control plane several copies of each component run, but **only one active** scheduler and controller manager should act at a time, or they would create duplicates and conflicting decisions. They coordinate through **leader election**.'},
+{h:'How leader election works'},
+{p:'Instances compete to hold a **Lease** object in `kube-system`. The holder renews the lease regularly. If it stops renewing (crash, network loss), another instance acquires it after the lease duration and becomes the leader.'},
+{code:`kubectl -n kube-system get lease
+kubectl -n kube-system get lease kube-scheduler -o yaml | grep -E "holderIdentity|renewTime|leaseDurationSeconds"
+kubectl -n kube-system get lease kube-controller-manager -o jsonpath='{.spec.holderIdentity}{"\\n"}'
+kubectl get lease -n kube-node-lease | head      # node heartbeats are Leases too`},
+{ul:['**kube-apiserver** is stateless and **active-active**: all instances serve requests behind a load balancer.','**kube-scheduler** and **kube-controller-manager** are **active-standby**: one leader, others idle.','**etcd** has its own Raft leader, separate from these.','Default timings are roughly 15 s lease duration, 10 s renew deadline and 2 s retry period; flags `--leader-elect-*` tune them.']},
+{h:'What happens when a control plane node fails'},
+{t:[['Failed component','Effect','Recovery'],
+['An API server','Load balancer stops sending it traffic; no interruption if others are healthy','Automatic'],
+['The scheduler leader','New Pods stay Pending for up to the lease duration','Another instance takes over'],
+['The controller manager leader','Healing and rollouts pause briefly','Another instance takes over'],
+['An etcd member','Writes continue if quorum remains','Replace or repair the member'],
+['Quorum lost (2 of 3 down)','API server cannot write; cluster state is frozen','Restore quorum or restore from snapshot']]},
+{h:'Check HA is real'},
+{ul:['Verify there are at least **three** control plane nodes in separate failure zones for production.','Stop the kubelet on one control plane node in a lab and watch: `kubectl` through the load balancer keeps working and the Lease holder changes.','The load balancer must health-check `/livez` or `/readyz` on each API server and must itself be redundant.']},
+{note:'Nodes also use Leases (namespace `kube-node-lease`) as cheap heartbeats. A node whose Lease is not renewed for a while is marked NotReady by the node controller.'}],
+src:[['Leases',K.C+'architecture/leases/'],['Options for Highly Available Topology',K.S+'production-environment/tools/kubeadm/ha-topology/'],['kube-scheduler reference',K.R+'command-line-tools-reference/kube-scheduler/']]};
 })();

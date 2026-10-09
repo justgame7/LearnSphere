@@ -128,4 +128,117 @@ kubectl get nodes ; kubectl get pods -A`},
 {ul:['Practise with the **current CKA curriculum and Kubernetes version** from the CNCF; confirm the allowed documentation and exam rules.','Set up aliases and `$do` at the start of the exam; use `--dry-run=client -o yaml` and `kubectl explain`.','Always run the context-switch command given with each task.','Flag slow tasks and return. Verify each result before moving on.']},
 {note:'When the capstone feels routine, you are ready for real cluster work. Keep a lab cluster running on a schedule, upgrade it every release and keep breaking it on purpose.'}],
 src:[['Production environment',K.S+'production-environment/'],['CNCF: Certified Kubernetes Administrator','https://www.cncf.io/training/certification/cka/'],['Kubernetes documentation',K.D]]};
+/* ---------- Additional content ---------- */
+/* 4: Cost and capacity planning */
+L['k8s:13:4']={blocks:[
+{p:'Kubernetes makes it easy to start workloads and just as easy to waste money. Cost work is mostly **capacity work**: requests that match reality, nodes that are well used, and headroom that is deliberate.'},
+{h:'Where the money goes'},
+{t:[['Cost driver','What to look at'],
+['**Compute**','Node count and size; idle capacity from over-large requests'],
+['**Storage**','PVCs that are never deleted, over-provisioned size, snapshots'],
+['**Network**','Cross-zone and egress traffic, load balancers, NAT gateways'],
+['**Control plane and add-ons**','Managed control plane fee, monitoring and logging volume'],
+['**Licenses and support**','Per-node or per-core software']]},
+{h:'Requests drive the bill'},
+{p:'The scheduler reserves **requests**, so nodes fill up by requests, not by actual use. A cluster whose Pods request twice what they use needs about twice the nodes.'},
+{code:`kubectl top nodes
+kubectl top pods -A --sort-by=cpu | head
+kubectl describe node w1 | sed -n '/Allocated resources/,/Events/p'      # requests vs capacity
+# requests vs actual (Prometheus)
+sum(kube_pod_container_resource_requests{resource="cpu"}) by (namespace)
+sum(rate(container_cpu_usage_seconds_total[5m])) by (namespace)`},
+{h:'Right-sizing'},
+{ul:['Measure actual p95 or p99 usage over a representative period, then set **requests near typical use** and limits for protection.','Use the **VPA in Off mode** or tools such as Goldilocks and OpenCost reports for recommendations.','Memory request should cover the real working set; leave CPU limits off where throttling hurts.','Review **by namespace and team** so owners see their own numbers (showback or chargeback).']},
+{h:'Utilization and bin packing'},
+{ul:['Aim for healthy but not extreme utilization: for example 50 to 70 percent of allocatable CPU requested on average leaves room for spikes and node loss.','Use **node autoscaling** with consolidation (Karpenter or Cluster Autoscaler) and mixed instance types.','Use **spot or preemptible** nodes for fault-tolerant work, with PDBs, spread and graceful shutdown.','Separate pools for special hardware so expensive nodes are not wasted.']},
+{h:'Capacity planning'},
+{flow:['Measure current requests, usage and growth per team','Decide the failure budget: survive one node or one zone loss','Add headroom for rollouts and autoscaler delay','Project growth (traffic, new services) and review quarterly','Set quotas so teams cannot silently consume the buffer']},
+{t:[['Question','How to answer'],
+['Can we lose a node?','Sum of requests must fit on N-1 nodes'],
+['Can we lose a zone?','Requests must fit in the remaining zones, and storage must be recoverable'],
+['How fast can we grow?','Autoscaler speed, cloud quotas, node boot time']]},
+{h:'Cleanup that pays back'},
+{code:`kubectl get pvc -A --no-headers | grep -v Bound
+kubectl get pv | grep Released
+kubectl get svc -A | grep LoadBalancer                 # each one may cost money
+kubectl get deploy -A -o json | jq -r '.items[] | select(.spec.replicas==0) | .metadata.namespace+"/"+.metadata.name'   # scaled to zero but still defined
+kubectl get ns --show-labels`},
+{note:'Do not cut requests blindly: too-low requests cause noisy neighbours and OOM kills. Change in steps, watch error rates and restarts, and keep the previous values noted.'}],
+src:[['Resource Management for Pods and Containers',K.C+'configuration/manage-resources-containers/'],['OpenCost','https://www.opencost.io/docs/'],['Node Autoscaling',K.C+'cluster-administration/node-autoscaling/']]};
+
+/* 5: Multi-cluster */
+L['k8s:13:5']={blocks:[
+{p:'Most organisations end up with **several clusters**: per environment, per region, per team or per compliance boundary. Operating many clusters well needs consistency, automation and clear rules about what runs where.'},
+{h:'Why more than one cluster'},
+{t:[['Reason','Example'],
+['Environments','Dev, staging and production clusters (never share a cluster across risk levels)'],
+['Blast radius','A bad upgrade or an incident affects only one cluster'],
+['Geography and latency','Clusters per region; data residency rules'],
+['Compliance and tenancy','Hard isolation for regulated or untrusted workloads'],
+['Scale limits','Very large systems split into cells']]},
+{h:'The cost of many clusters'},
+{ul:['Every cluster needs upgrades, security patches, add-ons and monitoring.','Duplicated control plane and add-on resources.','Configuration drift unless everything is defined as code.','Cross-cluster networking, service discovery and identity are your problem.']},
+{h:'Fleet management building blocks'},
+{t:[['Concern','Common approach'],
+['**Cluster creation and upgrades**','Cluster API, Terraform and managed-service APIs, with the same versions and modules'],
+['**Configuration and apps**','GitOps with one repo structure: Argo CD ApplicationSets or Flux Kustomizations per cluster or per label'],
+['**Policy**','Policy engines and admission policies deployed to every cluster from one source'],
+['**Access**','Central identity (OIDC), same RBAC groups mapped everywhere'],
+['**Observability**','Metrics and logs shipped to a central system (Thanos, Mimir, hosted), with a cluster label'],
+['**Traffic**','Global load balancing or DNS across clusters; service mesh multi-cluster or Cilium Cluster Mesh when services must talk across clusters'],
+['**Inventory**','Which clusters exist, their versions, owners and cost']]},
+{code:`# Argo CD ApplicationSet: deploy one app to every cluster with a label
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata: {name: monitoring-agent, namespace: argocd}
+spec:
+  generators:
+  - clusters: {selector: {matchLabels: {env: prod}}}
+  template:
+    metadata: {name: 'agent-{{name}}'}
+    spec:
+      project: platform
+      source: {repoURL: https://git.example.com/platform/addons.git, targetRevision: main, path: monitoring-agent}
+      destination: {server: '{{server}}', namespace: monitoring}
+      syncPolicy: {automated: {prune: true, selfHeal: true}}`},
+{h:'Practical rules'},
+{ul:['**Version discipline**: define the supported versions and upgrade each cluster through a pipeline: dev, staging, canary production, then the rest.','Treat clusters as **cattle**: rebuildable from code, not hand-tuned.','Keep a **minimal number of cluster flavours**.','Use context names and prompts that make the target cluster obvious, and protect production with separate credentials.','Prefer **active-active across regions** only for stateless or well-replicated services; state is the hard part.']},
+{code:`kubectl config get-contexts
+for c in $(kubectl config get-contexts -o name); do echo "== $c"; kubectl --context "$c" get nodes -o custom-columns=NAME:.metadata.name,VER:.status.nodeInfo.kubeletVersion --no-headers | head -n 3; done`},
+{note:'Start with the smallest fleet that meets your isolation needs. Each extra cluster is permanent operational work, so add it only for a clear reason.'}],
+src:[['Multi-tenancy and cluster isolation',K.C+'security/multi-tenancy/'],['Argo CD ApplicationSet','https://argo-cd.readthedocs.io/en/stable/operator-manual/applicationset/'],['Cluster API','https://cluster-api.sigs.k8s.io/']]};
+
+/* 6: DR game day */
+L['k8s:13:6']={blocks:[
+{p:'A **game day** is a planned exercise where you cause a failure (or simulate one) and practise recovery with the real team, tools and runbooks. Plans that were never rehearsed fail when they are needed.'},
+{h:'Define the targets first'},
+{t:[['Term','Meaning','Example'],
+['**RPO** (recovery point objective)','How much data you can afford to lose','15 minutes: backups or replication at most 15 minutes old'],
+['**RTO** (recovery time objective)','How long you can be down','1 hour to serve traffic again'],
+['**Blast radius**','What the exercise may affect','One namespace in staging, then one zone in production']]},
+{h:'Scenarios to rehearse'},
+{t:[['Scenario','What it tests'],
+['Delete a namespace or critical Deployment by mistake','GitOps re-sync, Velero restore, who has permission'],
+['Lose one worker node, then a whole zone','Replicas, spread, PDBs, storage in other zones, autoscaling'],
+['Lose one control plane node (HA)','Quorum, load balancer, leader election'],
+['Lose the whole control plane or etcd data','etcd snapshot restore, rebuild from code, certificates'],
+['Expired certificates','Detection, renewal runbook'],
+['Bad upgrade','Rollback, blue-green cutback'],
+['Region or cloud outage','Cross-region failover, DNS, data replication'],
+['Registry or Git outage','Mirrors, cached images, break-glass deploys'],
+['Compromised credential or workload','Revocation, isolation, forensics']]},
+{h:'How to run one'},
+{flow:['Pick a scenario, objectives and a safe environment; announce it','Write the steps, success criteria and abort conditions','Inject the failure (delete, stop, block traffic) with a tool such as Chaos Mesh or Litmus, or manually','The team recovers using only the documented runbooks','Measure detection time, decision time, recovery time and data loss against RTO and RPO','Hold a blameless review and fix the gaps']},
+{code:`# Examples of safe, reversible failure injection in a test cluster
+kubectl drain w2 --ignore-daemonsets --delete-emptydir-data && kubectl get pods -A -o wide
+kubectl -n shop delete pod -l app=api --grace-period=0 --force         # kill without graceful shutdown
+sudo systemctl stop kubelet                                              # on one node
+# blocking a dependency with a NetworkPolicy, then removing it
+kubectl delete namespace shop-test                                       # then restore from GitOps and Velero`},
+{h:'Runbook essentials'},
+{ul:['Where are the **backups**, how old are they, and who can restore them?','Where are the **credentials and break-glass access** (kept offline and tested)?','Exact commands for: etcd restore, rebuilding a control plane, restoring a namespace, rotating certificates.','Contacts, escalation, and the **order** of recovery (identity, network, storage, platform add-ons, applications).','How to confirm success: smoke tests and SLO dashboards.']},
+{h:'After the exercise'},
+{ul:['Record timings and compare with RTO and RPO.','Turn every surprise into an action item with an owner and date.','Update runbooks and automate the slow manual steps.','Repeat on a schedule (for example twice a year) and after major changes.']},
+{note:'Start in staging with a narrow failure, then widen. Production game days need clear abort criteria, an observer who can stop the exercise and a communications plan.'}],
+src:[['Operating etcd clusters',K.T+'administer-cluster/configure-upgrade-etcd/'],['Velero','https://velero.io/docs/'],['Chaos Mesh','https://chaos-mesh.org/docs/'],['Litmus','https://docs.litmuschaos.io/']]};
 })();

@@ -340,4 +340,163 @@ kubectl drain w2 --ignore-daemonsets --delete-emptydir-data
 kubectl delete node w2`},
 {ul:['Reset does not remove CNI configuration or iptables rules; clean them manually as shown.','On a control plane node that is part of a stacked etcd cluster, remove the member from etcd cleanly; kubeadm reset tries to do this.','Keep your config file in Git. Rebuilding a lab then takes minutes.']}],
 src:[['Customizing components with the kubeadm API',KB+'control-plane-flags/'],['kubeadm configuration (v1beta4)',K.R+'config-api/kubeadm-config.v1beta4/'],['kubeadm reset',K.R+'setup-tools/kubeadm/kubeadm-reset/']]};
+/* ---------- Additional content ---------- */
+/* 8: HA control plane hands-on */
+L['k8s:3:8']={blocks:[
+{p:'A step-by-step build of a **three-node stacked-etcd control plane** behind a load balancer, plus workers. Use VMs; names and addresses below are examples.'},
+{t:[['Host','Address','Role'],['lb','192.168.56.5','Load balancer for the API (TCP 6443)'],['cp1, cp2, cp3','192.168.56.11 to .13','Control plane nodes'],['w1, w2','192.168.56.21, .22','Workers']]},
+{h:'1. Load balancer (HAProxy example)'},
+{code:`# /etc/haproxy/haproxy.cfg  (on lb)
+frontend k8s-api
+    bind *:6443
+    mode tcp
+    default_backend k8s-cp
+backend k8s-cp
+    mode tcp
+    balance roundrobin
+    option tcp-check
+    server cp1 192.168.56.11:6443 check
+    server cp2 192.168.56.12:6443 check
+    server cp3 192.168.56.13:6443 check
+
+# DNS or /etc/hosts on every node:  192.168.56.5  k8s-api`},
+{h:'2. First control plane node'},
+{code:`# on cp1, after preparing the node and installing containerd and kubeadm
+sudo kubeadm init \\
+  --control-plane-endpoint "k8s-api:6443" \\
+  --upload-certs \\
+  --pod-network-cidr=10.244.0.0/16
+# note the two join commands printed: one for control plane nodes (with --control-plane --certificate-key), one for workers
+mkdir -p $HOME/.kube && sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config && sudo chown $(id -u):$(id -g) $HOME/.kube/config
+kubectl apply -f <your-cni-manifest>`},
+{h:'3. Join the other control plane nodes'},
+{code:`# on cp2 and cp3
+sudo kubeadm join k8s-api:6443 --token <token> \\
+  --discovery-token-ca-cert-hash sha256:<hash> \\
+  --control-plane --certificate-key <key>
+# the certificate key expires after about two hours; create a new one with:
+#   sudo kubeadm init phase upload-certs --upload-certs
+kubectl get nodes
+kubectl -n kube-system get pods -l component=etcd -o wide`},
+{h:'4. Workers'},
+{code:`# on w1 and w2: the worker join command from step 2
+sudo kubeadm join k8s-api:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>`},
+{h:'5. Test failure tolerance'},
+{code:`# stop one control plane node
+sudo systemctl stop kubelet && sudo crictl stop $(sudo crictl ps -q)    # on cp2
+kubectl get nodes                          # through the load balancer: still works
+kubectl create deployment ha-test --image=nginx:1.27 --replicas=3
+sudo ETCDCTL_API=3 etcdctl ... endpoint status --cluster --write-out=table   # from cp1: 2 healthy members
+# bring cp2 back
+sudo systemctl start kubelet`},
+{ul:['Never stop two of three control plane nodes at once: quorum is lost.','The load balancer is a new single point of failure unless it is redundant (keepalived, a cloud LB, kube-vip).','Verify certificates include the load balancer name: `openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -text | grep -A1 "Alternative"`.']},
+{note:'Take an etcd snapshot after the build and keep the kubeadm configuration and join commands in your repository.'}],
+src:[['Creating Highly Available Clusters with kubeadm',K.S+'production-environment/tools/kubeadm/high-availability/'],['Options for Highly Available Topology',K.S+'production-environment/tools/kubeadm/ha-topology/']]};
+
+/* 9: External etcd */
+L['k8s:3:9']={blocks:[
+{p:'With an **external etcd** topology, etcd runs on its own hosts and the control plane nodes only run the API server, scheduler and controller manager. This separates failure domains and lets you size and secure etcd on its own.'},
+{h:'What changes compared to stacked etcd'},
+{ul:['Three or five **etcd hosts**, each running etcd (as a systemd service or as static Pods managed by a kubelet on that host).','The API servers connect to etcd over TLS using a **client certificate** signed by the etcd CA.','kubeadm needs the etcd CA and API-server-etcd client certificate and key copied to the first control plane node, and the endpoints listed in the configuration.']},
+{h:'kubeadm configuration'},
+{code:`# kubeadm-config.yaml on cp1
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+kubernetesVersion: v1.37.1
+controlPlaneEndpoint: "k8s-api:6443"
+etcd:
+  external:
+    endpoints:
+    - https://10.0.0.21:2379
+    - https://10.0.0.22:2379
+    - https://10.0.0.23:2379
+    caFile: /etc/kubernetes/pki/etcd/ca.crt
+    certFile: /etc/kubernetes/pki/apiserver-etcd-client.crt
+    keyFile: /etc/kubernetes/pki/apiserver-etcd-client.key`},
+{code:`# files copied from an etcd host to cp1 before init
+/etc/kubernetes/pki/etcd/ca.crt
+/etc/kubernetes/pki/apiserver-etcd-client.crt
+/etc/kubernetes/pki/apiserver-etcd-client.key
+
+sudo kubeadm init --config kubeadm-config.yaml --upload-certs`},
+{h:'Creating the etcd certificates'},
+{p:'Use `kubeadm init phase certs` on one etcd host to generate the etcd CA, server, peer and client certificates, with the right host names and IPs, and copy the needed files to each member. Each member needs its own server and peer certificate for its own address.'},
+{code:`# on an etcd host (example, using kubeadm to create certs from a config listing that host)
+sudo kubeadm init phase certs etcd-ca
+sudo kubeadm init phase certs etcd-server --config=etcd-config-host1.yaml
+sudo kubeadm init phase certs etcd-peer --config=etcd-config-host1.yaml
+sudo kubeadm init phase certs etcd-healthcheck-client --config=etcd-config-host1.yaml
+sudo kubeadm init phase certs apiserver-etcd-client --config=etcd-config-host1.yaml`},
+{h:'Operating it'},
+{ul:['**Backups**: snapshot etcd from an etcd host; certificates live under `/etc/kubernetes/pki/etcd` there.','**Upgrades**: etcd versions are upgraded separately from the Kubernetes components, following the compatibility notes for your Kubernetes version.','**Monitoring**: etcd now has its own hosts to watch (disk latency, DB size, leader changes).','**Certificate renewal** for etcd members is your job; `kubeadm certs renew` on the control plane does not renew external etcd certificates.']},
+{note:'External etcd costs more machines and more certificates to manage. Choose it when you need independent failure domains or dedicated storage for etcd, not by default.'}],
+src:[['Set up a High Availability etcd Cluster with kubeadm',K.S+'production-environment/tools/kubeadm/setup-ha-etcd-with-kubeadm/'],['Options for Highly Available Topology',K.S+'production-environment/tools/kubeadm/ha-topology/']]};
+
+/* 10: Other installers */
+L['k8s:3:10']={blocks:[
+{p:'kubeadm is the reference bootstrapper and the one tested by the exam, but there are other ways to build clusters. Each makes different trade-offs.'},
+{t:[['Tool','Idea','Good for','Trade-offs'],
+['**kubeadm**','Minimal bootstrapper; you prepare nodes, networking and add-ons','Learning, custom designs, the CKA','You automate everything around it'],
+['**kubespray**','Ansible playbooks that use kubeadm to build and upgrade production clusters','On-prem or cloud VMs with existing Ansible skills','Slower runs; Ansible inventory and version pinning to manage'],
+['**Cluster API (CAPI)**','Declarative cluster lifecycle: clusters, machines and machine pools are Kubernetes objects managed from a management cluster','Fleets, repeatable cluster creation and upgrades across providers','Needs a management cluster and provider knowledge'],
+['**k3s**','Single small binary, lightweight Kubernetes with SQLite or embedded etcd, simple install','Edge, IoT, labs, small clusters, CI','Some components replaced or bundled; not the kubeadm layout'],
+['**Talos Linux**','Immutable OS purpose-built for Kubernetes, managed only through an API (no SSH)','Hardened, repeatable bare-metal and cloud clusters','Different operations model: you use `talosctl`, not a shell'],
+['**Managed services**','Provider runs the control plane','Most teams that do not need to own the control plane','Less control; provider limits']]},
+{h:'How to choose'},
+{ul:['**Exam or learning the internals**: kubeadm.','**Many clusters, same shape**: Cluster API or infrastructure-as-code with a distribution.','**Edge or tiny footprint**: k3s.','**Security-hardened, minimal OS**: Talos.','**No wish to run a control plane**: a managed service.']},
+{h:'Taste test: a k3s lab'},
+{code:`# server
+curl -sfL https://get.k3s.io | sh -
+sudo k3s kubectl get nodes
+# agent
+curl -sfL https://get.k3s.io | K3S_URL=https://<server>:6443 K3S_TOKEN=<token> sh -`},
+{note:'Whatever the installer, the same Kubernetes objects and kubectl skills apply. Differences are in install, upgrade, file locations and the default add-ons (CNI, ingress, storage).'}],
+src:[['Installing Kubernetes',K.S+'production-environment/'],['kubespray','https://kubespray.io/'],['Cluster API','https://cluster-api.sigs.k8s.io/'],['k3s','https://docs.k3s.io/'],['Talos Linux','https://www.talos.dev/']]};
+
+/* 11: Air-gapped */
+L['k8s:3:11']={blocks:[
+{p:'In an **air-gapped** environment nodes cannot reach the internet. Everything a cluster needs must come from internal mirrors: operating system packages, Kubernetes binaries, container images and Helm charts.'},
+{h:'What you must mirror'},
+{t:[['Item','How'],
+['OS packages and the Kubernetes package repository','Internal apt or yum mirror, or downloaded packages in a local repository'],
+['Container images for control plane, CNI, CoreDNS, add-ons','Internal registry (Harbor, Nexus, Artifactory, registry:2) filled from a connected host'],
+['Helm charts and manifests','Internal chart repository or OCI registry; manifests in Git'],
+['Time and DNS','Internal NTP and DNS']]},
+{h:'Get the list of images'},
+{code:`kubeadm config images list --kubernetes-version v1.37.1
+# registry.k8s.io/kube-apiserver:v1.37.1
+# registry.k8s.io/kube-controller-manager:v1.37.1
+# registry.k8s.io/kube-scheduler:v1.37.1
+# registry.k8s.io/kube-proxy:v1.37.1
+# registry.k8s.io/coredns/coredns:v1.xx
+# registry.k8s.io/pause:3.x
+# registry.k8s.io/etcd:3.x.x-0`},
+{h:'Copy images into your registry'},
+{code:`# on a connected host
+for i in $(kubeadm config images list --kubernetes-version v1.37.1); do
+  n=\${i#registry.k8s.io/}
+  skopeo copy docker://$i docker://registry.internal.example/k8s/$n
+done
+# or: docker pull / tag / push, or ctr/crane tools; also export to a tarball for offline transfer:
+#   crane pull --format=oci <image> image.tar`},
+{h:'Point kubeadm and the runtime at the mirror'},
+{code:`# kubeadm-config.yaml
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+imageRepository: registry.internal.example/k8s
+kubernetesVersion: v1.37.1
+
+# containerd: use the registry (and optionally mirror docker.io and others)
+# /etc/containerd/certs.d/registry.internal.example/hosts.toml  (config_path must be enabled)
+server = "https://registry.internal.example"
+[host."https://registry.internal.example"]
+  capabilities = ["pull", "resolve"]
+  ca = "/etc/containerd/certs.d/registry.internal.example/ca.crt"`},
+{ul:['Align the **pause (sandbox) image** setting in containerd with the mirrored image.','Use image tags that match the Kubernetes version you install, and mirror every **add-on** image: CNI, CoreDNS, metrics-server, ingress, CSI, cert-manager.','Rewrite image references in Helm values and manifests to the internal registry (`image.registry`, Kustomize `images:`).','Plan **updates**: a repeatable process to bring new images and packages across the gap, with checksums and scanning.']},
+{h:'Testing'},
+{code:`sudo crictl pull registry.internal.example/k8s/pause:3.10
+sudo kubeadm init --config kubeadm-config.yaml --dry-run
+kubectl get pods -A -o jsonpath='{range .items[*]}{.spec.containers[*].image}{"\\n"}{end}' | sort -u | grep -v internal.example   # anything still external?`},
+{note:'The first sign of a missed image is `ImagePullBackOff` or a `kubeadm init` timeout during preflight. Check which image failed, mirror it, and add it to your list.'}],
+src:[['kubeadm config images',K.R+'setup-tools/kubeadm/kubeadm-config/'],['Container Runtimes',K.S+'production-environment/container-runtimes/'],['Images',K.C+'containers/images/']]};
 })();

@@ -290,4 +290,244 @@ sudo crictl --runtime-endpoint unix:///run/containerd/containerd.sock info | hea
 {ul:['Replacing a CNI plugin is a disruptive change: plan a maintenance window and expect Pod restarts.','Storage drivers need permissions and sometimes node-level packages (NFS client, iSCSI tools). Missing ones appear as mount errors.','Always match the runtime and its cgroup driver to the kubelet (Section 4).']},
 {note:'Exam hint: when a Pod is stuck in `ContainerCreating`, ask which interface failed. A sandbox or IP error points at CNI, an image or container error at CRI, and a volume attach or mount error at CSI.'}],
 src:[['Container Runtime Interface',C+'architecture/cri/'],['Network Plugins',EX+'compute-storage-net/network-plugins/'],['Device Plugins',EX+'compute-storage-net/device-plugins/']]};
+/* ---------- Additional content ---------- */
+/* 6: Writing Helm charts */
+L['k8s:11:6']={blocks:[
+{p:'Writing your own chart turns a set of manifests into a reusable, configurable package. Start small: template only what really varies between installs.'},
+{h:'Scaffold and structure'},
+{code:`helm create shop                    # generates a working example chart
+tree shop
+# shop/Chart.yaml  values.yaml  .helmignore  charts/  templates/{deployment,service,ingress,hpa,serviceaccount}.yaml  _helpers.tpl  NOTES.txt  tests/`},
+{code:`# Chart.yaml
+apiVersion: v2
+name: shop
+description: The shop application
+type: application
+version: 0.3.0            # the CHART version (bump on any chart change)
+appVersion: "1.4.2"       # the APPLICATION version, informational
+dependencies:
+- name: postgresql
+  version: 15.x.x
+  repository: oci://registry-1.docker.io/bitnamicharts
+  condition: postgresql.enabled`},
+{h:'Templates, values and helpers'},
+{code:`# values.yaml
+replicaCount: 2
+image: {repository: registry.example.com/shop/web, tag: "", pullPolicy: IfNotPresent}
+resources: {requests: {cpu: 100m, memory: 128Mi}}
+ingress: {enabled: false, host: shop.example.com}
+
+# templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "shop.fullname" . }}
+  labels: {{- include "shop.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels: {{- include "shop.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "shop.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      containers:
+      - name: web
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        resources: {{- toYaml .Values.resources | nindent 10 }}
+
+# templates/ingress.yaml
+{{- if .Values.ingress.enabled }}
+...
+{{- end }}`},
+{ul:['`{{ .Values.x }}` reads values; `{{ .Release.Name }}`, `{{ .Chart.Name }}` and `{{ .Release.Namespace }}` are built-in objects.','`include` + `nindent` + `toYaml` handle indentation; wrong indentation is the most common template bug.','`default`, `required`, `quote`, `tpl` and conditionals (`if`, `with`, `range`) are the everyday functions.','**Helpers** in `_helpers.tpl` define names and labels once.','The `checksum/config` annotation forces a rollout when a ConfigMap changes.']},
+{h:'Validate values with a schema'},
+{code:`# values.schema.json
+{"$schema":"http://json-schema.org/draft-07/schema#","type":"object",
+ "required":["image"],
+ "properties":{"replicaCount":{"type":"integer","minimum":1},
+               "image":{"type":"object","required":["repository"]}}}`},
+{h:'Test and lint'},
+{code:`helm lint shop
+helm template shop ./shop -f values-prod.yaml | kubectl apply --dry-run=server -f -
+helm install shop ./shop --dry-run --debug
+helm unittest shop                              # unit tests (plugin)
+helm install shop ./shop && helm test shop      # runs Pods under templates/tests with the helm.sh/hook: test annotation
+helm package shop && helm dependency update shop`},
+{note:'Keep charts boring: few options, sensible defaults, no logic that hides Kubernetes objects. Every extra value is something you must test and support.'}],
+src:[['Chart Template Guide','https://helm.sh/docs/chart_template_guide/'],['Chart best practices','https://helm.sh/docs/chart_best_practices/'],['Helm chart tests','https://helm.sh/docs/topics/chart_tests/']]};
+
+/* 7: Helm with OCI and provenance */
+L['k8s:11:7']={blocks:[
+{p:'Charts can be stored in an **OCI registry** (the same kind that stores container images), which means one place, one set of access controls and one signing story for everything you deploy.'},
+{h:'Push and pull'},
+{code:`helm package shop                                         # shop-0.3.0.tgz
+helm registry login registry.example.com -u ci --password-stdin < token.txt
+helm push shop-0.3.0.tgz oci://registry.example.com/charts
+helm show chart oci://registry.example.com/charts/shop --version 0.3.0
+helm install shop oci://registry.example.com/charts/shop --version 0.3.0 -n shop --create-namespace
+helm pull oci://registry.example.com/charts/shop --version 0.3.0 --untar`},
+{ul:['No \`helm repo add\` and no index file: charts are referenced by full OCI URL and **version**.','Registries use the same authentication, replication, retention and scanning as images.','Pin the **version** (or a digest) in automation.']},
+{h:'Provenance: proving who built a chart'},
+{p:'Helm supports **provenance files** (`.prov`) signed with a PGP key. Consumers verify the signature and the chart hash before installing.'},
+{code:`helm package --sign --key "release@example.com" --keyring ~/.gnupg/secring.gpg shop
+# creates shop-0.3.0.tgz and shop-0.3.0.tgz.prov
+helm verify shop-0.3.0.tgz --keyring ~/.gnupg/pubring.gpg
+helm install shop shop-0.3.0.tgz --verify --keyring ~/.gnupg/pubring.gpg`},
+{h:'Sigstore and Cosign for OCI charts'},
+{p:'Because a chart in an OCI registry is just another OCI artifact, you can sign it with **Cosign** and verify it in CI or an admission policy, exactly as for images.'},
+{code:`cosign sign registry.example.com/charts/shop@sha256:<digest>
+cosign verify --key cosign.pub registry.example.com/charts/shop@sha256:<digest>`},
+{h:'Supply chain checklist for charts'},
+{ul:['Review third-party charts and their **dependencies** before use; mirror them into your own registry.','Pin versions, scan rendered manifests (`helm template | trivy config -`).','Sign what you publish and verify what you consume.','Use short-lived registry credentials in CI.','Remember that images referenced by the chart need their own scanning and signing.']},
+{note:'Version numbers are part of the contract: increment the chart `version` for every change, and use SemVer meaningfully so consumers know what an upgrade may break.'}],
+src:[['Registries (OCI)','https://helm.sh/docs/topics/registries/'],['Helm Provenance and Integrity','https://helm.sh/docs/topics/provenance/'],['Sigstore Cosign','https://docs.sigstore.dev/']]};
+
+/* 8: GitOps */
+L['k8s:11:8']={blocks:[
+{p:'**GitOps** makes Git the **single source of truth** for cluster state. An in-cluster controller continuously compares what Git says with what is running, applies the difference and corrects **drift**.'},
+{flow:['A change is proposed as a pull request to the config repository','Review, tests and policy checks run in CI','The merge updates the desired state in Git','The cluster controller pulls the change and applies it','It keeps reconciling: manual changes are reverted or flagged']},
+{h:'Principles'},
+{ul:['Declarative desired state, stored in Git (versioned, auditable).','Changes are **pulled** by an agent inside the cluster, so CI needs no cluster credentials.','Continuous reconciliation, with drift detection and optional self-heal.','Rollback is `git revert`.']},
+{h:'Argo CD'},
+{code:`apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: shop, namespace: argocd}
+spec:
+  project: default
+  source:
+    repoURL: https://git.example.com/platform/config.git
+    targetRevision: main
+    path: apps/shop/overlays/prod          # plain YAML, Kustomize or a Helm chart
+  destination: {server: https://kubernetes.default.svc, namespace: shop}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true]`},
+{h:'Flux'},
+{code:`apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata: {name: config, namespace: flux-system}
+spec: {interval: 1m, url: https://git.example.com/platform/config.git, ref: {branch: main}}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: shop, namespace: flux-system}
+spec:
+  interval: 5m
+  path: ./apps/shop/overlays/prod
+  prune: true
+  sourceRef: {kind: GitRepository, name: config}
+  targetNamespace: shop`},
+{t:[['','Argo CD','Flux'],
+['Style','Application-centric with a rich web UI','Toolkit of controllers, CLI and Git-first (less UI)'],
+['Config','`Application` and `ApplicationSet` objects','`GitRepository`, `Kustomization`, `HelmRelease`'],
+['Multi-cluster','One Argo CD manages many clusters','Typically one Flux per cluster, or fleet patterns'],
+['Helm','Renders charts into manifests','Native `HelmRelease` controller']]},
+{h:'Practical advice'},
+{ul:['**Separate repositories** (or paths) for application code and environment configuration.','One folder per environment with **overlays** (Kustomize) or per-environment values.','Handle **secrets** with SOPS, Sealed Secrets or External Secrets; never plain Secrets in Git.','Use `prune` carefully: removing a file deletes the resource. Protect critical resources with annotations or sync options.','Order dependencies (CRDs and operators before the objects that use them) with sync waves or dependsOn.','Alert on **out-of-sync** and **failed sync** states.']},
+{note:'GitOps does not remove the need to understand Kubernetes: when a sync fails you debug with kubectl, events and logs exactly as before, and then fix Git.'}],
+src:[['Argo CD','https://argo-cd.readthedocs.io/'],['Flux','https://fluxcd.io/flux/'],['OpenGitOps principles','https://opengitops.dev/']]};
+
+/* 9: kubebuilder */
+L['k8s:11:9']={blocks:[
+{p:'**kubebuilder** is a framework (built on controller-runtime) that scaffolds a Go project for a **CRD and its controller**: the standard way to write an operator. You do not need it for the CKA, but seeing how a controller is built makes every operator easier to reason about.'},
+{h:'Scaffold'},
+{code:`kubebuilder init --domain example.com --repo github.com/example/backup-operator
+kubebuilder create api --group ops --version v1 --kind Backup --resource --controller
+# generated: api/v1/backup_types.go, internal/controller/backup_controller.go, config/ (CRD, RBAC, manager), Makefile`},
+{h:'Define the API'},
+{code:`// api/v1/backup_types.go
+type BackupSpec struct {
+    // +kubebuilder:validation:MinLength=1
+    Schedule string \`json:"schedule"\`
+    Target   string \`json:"target"\`
+    // +kubebuilder:default=7
+    Keep     int32  \`json:"keep,omitempty"\`
+}
+type BackupStatus struct {
+    LastRun metav1.Time \`json:"lastRun,omitempty"\`
+    Phase   string      \`json:"phase,omitempty"\`
+}
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+type Backup struct { ... }`},
+{h:'The reconcile loop'},
+{code:`func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+    var backup opsv1.Backup
+    if err := r.Get(ctx, req.NamespacedName, &backup); err != nil {
+        return ctrl.Result{}, client.IgnoreNotFound(err)       // deleted: nothing to do
+    }
+    // 1. observe the actual state (does the CronJob exist?)
+    // 2. compare with the desired state (backup.Spec)
+    // 3. create or update owned objects, set owner references
+    // 4. update backup.Status
+    return ctrl.Result{RequeueAfter: time.Hour}, nil
+}`},
+{ul:['A reconciler must be **idempotent**: running it twice with the same input gives the same result.','It reacts to events for the custom resource and for **owned** objects (`Owns(&batchv1.CronJob{})`).','Return errors to retry with backoff; use finalizers when external cleanup is needed on delete.','Status conditions report progress to users.']},
+{h:'Build and run'},
+{code:`make manifests generate          # regenerate CRD YAML and deepcopy code from the markers
+make install                     # install the CRD into the current cluster
+make run                         # run the controller locally against the cluster (development)
+make docker-build docker-push IMG=registry.example.com/backup-operator:0.1.0
+make deploy IMG=registry.example.com/backup-operator:0.1.0
+kubectl apply -f config/samples/ops_v1_backup.yaml
+kubectl get backups`},
+{ul:['RBAC rules are generated from `+kubebuilder:rbac` markers; review them.','Add **webhooks** (defaulting and validation) with `kubebuilder create webhook`.','Test with envtest (a local API server and etcd) before using a real cluster.','Alternatives: Operator SDK (builds on kubebuilder), Kopf (Python), kube-rs (Rust), Metacontroller.']},
+{note:'Many problems that look like they need an operator are solved by a Helm chart, a CronJob or GitOps. Write a controller when you must continuously react to changing state.'}],
+src:[['The Kubebuilder Book','https://book.kubebuilder.io/'],['Operator pattern',K.C+'extend-kubernetes/operator/'],['Custom Resources',K.C+'extend-kubernetes/api-extension/custom-resources/']]};
+
+/* 10: Webhooks and aggregated APIs */
+L['k8s:11:10']={blocks:[
+{p:'Two advanced ways to extend the API server itself: **admission webhooks** that inspect or change requests, and **aggregated API servers** that add whole new API groups.'},
+{h:'Admission webhooks'},
+{p:'When a request reaches the admission stage, the API server calls HTTPS endpoints you register. **Mutating** webhooks may change the object; **validating** webhooks accept or reject it.'},
+{code:`apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata: {name: pod-policy}
+webhooks:
+- name: pods.policy.example.com
+  admissionReviewVersions: ["v1"]
+  sideEffects: None
+  failurePolicy: Fail                    # Fail or Ignore when the webhook is unreachable
+  timeoutSeconds: 5
+  matchPolicy: Equivalent
+  rules:
+  - {apiGroups: [""], apiVersions: ["v1"], operations: ["CREATE","UPDATE"], resources: ["pods"]}
+  namespaceSelector:
+    matchExpressions:
+    - {key: kubernetes.io/metadata.name, operator: NotIn, values: [kube-system, policy-system]}
+  clientConfig:
+    service: {name: policy-webhook, namespace: policy-system, path: /validate}
+    caBundle: <base64 CA that signed the webhook server certificate>`},
+{p:'The API server sends an `AdmissionReview` request and the webhook answers `allowed: true/false` (plus a JSON patch for mutating webhooks).'},
+{h:'Operating webhooks safely'},
+{t:[['Risk','Mitigation'],
+['Webhook down with `failurePolicy: Fail` blocks all matching requests','Run several replicas, exclude system namespaces and the webhook own namespace, use `Ignore` for non-critical checks'],
+['Slow webhook slows every API call','Short `timeoutSeconds`, efficient code, narrow `rules`'],
+['Certificate expiry breaks it silently','Automate with cert-manager and watch expiry'],
+['Order and loops between mutating webhooks','Keep mutations idempotent; `reinvocationPolicy: IfNeeded`'],
+['Side effects','Declare `sideEffects: None` and support dry-run']]},
+{h:'Aggregated API servers'},
+{p:'An extension server runs in the cluster, serves a new API group (for example `metrics.k8s.io`), and is **registered** with an `APIService`. The main API server proxies matching requests to it (aggregation layer).'},
+{code:`apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata: {name: v1beta1.metrics.k8s.io}
+spec:
+  group: metrics.k8s.io
+  version: v1beta1
+  service: {name: metrics-server, namespace: kube-system}
+  groupPriorityMinimum: 100
+  versionPriority: 100
+  insecureSkipTLSVerify: false
+  caBundle: <CA bundle>`},
+{t:[['Choose','When'],
+['**CRD**','Most cases: you want new resource types stored in etcd with schema validation'],
+['**Aggregated API**','You need custom storage, subresources and behaviour that CRDs cannot offer (metrics, virtual resources)'],
+['**Webhook**','Policy or defaults on existing objects'],
+['**ValidatingAdmissionPolicy**','Simple field rules without running a service']]},
+{ul:['Aggregated servers must handle authentication delegation, authorization and TLS correctly; use the API server libraries (`k8s.io/apiserver`).','An unavailable aggregated API makes `kubectl api-resources` and namespace deletion noisy or slow.','Check status with `kubectl get apiservices` and keep their Services healthy.']},
+{note:'Default to the simplest extension that works: ValidatingAdmissionPolicy, then CRD plus controller, then webhooks, and only then an aggregated API server.'}],
+src:[['Dynamic Admission Control',K.R+'access-authn-authz/extensible-admission-controllers/'],['Extending the Kubernetes API with the aggregation layer',K.C+'extend-kubernetes/api-extension/apiserver-aggregation/'],['Admission Webhook Good Practices',K.C+'cluster-administration/admission-webhooks-good-practices/']]};
 })();

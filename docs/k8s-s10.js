@@ -260,4 +260,280 @@ kubectl logs job/kube-bench | grep -E "\\[FAIL\\]|== Summary"`},
 ['`5.x` policies (network policies, namespaces, default SA)','Cluster configuration work']]},
 {note:'Treat a scan as a starting point, not a pass mark. Some findings do not apply to managed clusters (you cannot edit the control plane), and some need a business decision. Record each exception and re-run the scan after upgrades.'}],
 src:[['Auditing',C+'cluster-administration/audit/'],['Securing a Cluster',T+'administer-cluster/securing-a-cluster/'],['kube-bench','https://github.com/aquasecurity/kube-bench'],['CIS Kubernetes Benchmark','https://www.cisecurity.org/benchmark/kubernetes']]};
+/* ---------- Additional content ---------- */
+/* 6: Mutating admission policies */
+L['k8s:9:6']={blocks:[
+{p:'Section 10 showed **ValidatingAdmissionPolicy** (accept or reject). **MutatingAdmissionPolicy** is its counterpart: it **changes** objects as they are admitted, using CEL, with no webhook service to run.'},
+{h:'Why it matters'},
+{ul:['Typical mutations (defaults, labels, security settings, sidecar injection) used to need a **mutating webhook** that you had to deploy, secure and keep available.','A declarative policy runs **inside the API server**: no network hop, no extra failure mode, versioned as ordinary YAML.','Version note: the course tracks this feature as stable from Kubernetes v1.36. On older clusters it is beta or alpha and may need a feature gate and a different API version; check `kubectl api-resources | grep mutatingadmissionpolicy`.']},
+{h:'Example: default a security setting'},
+{code:`apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicy
+metadata: {name: default-no-priv-escalation}
+spec:
+  matchConstraints:
+    resourceRules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      operations: ["CREATE"]
+      resources: ["pods"]
+  failurePolicy: Fail
+  reinvocationPolicy: IfNeeded
+  mutations:
+  - patchType: ApplyConfiguration
+    applyConfiguration:
+      expression: >
+        Object{
+          spec: Object.spec{
+            containers: object.spec.containers.map(c, Object.spec.containers{
+              name: c.name,
+              securityContext: Object.spec.containers.securityContext{
+                allowPrivilegeEscalation: false
+              }
+            })
+          }
+        }
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicyBinding
+metadata: {name: default-no-priv-escalation-binding}
+spec:
+  policyName: default-no-priv-escalation
+  matchResources:
+    namespaceSelector: {matchLabels: {environment: prod}}`},
+{h:'Mutation types'},
+{t:[['patchType','How it works'],
+['`ApplyConfiguration`','CEL builds a partial object that is merged like a server-side apply (readable, good for adding fields)'],
+['`JSONPatch`','CEL builds an RFC 6902 list of operations (precise add, replace, remove)']]},
+{h:'Design notes'},
+{ul:['Mutations run **before** validation, so pair a mutating policy with a validating one that checks the final result.','`reinvocationPolicy: IfNeeded` re-runs mutations if later plugins change the object.','Use the **binding** to scope by namespace or labels and to keep changes out of system namespaces.','Be cautious: mutated defaults surprise users. Document them and keep them minimal.','When logic needs external calls or data, you still need a webhook or a policy engine.']},
+{note:'Test mutations with `kubectl apply --dry-run=server -o yaml` and inspect the returned object to see exactly what the policy changed.'}],
+src:[['Mutating Admission Policy',K.R+'access-authn-authz/mutating-admission-policy/'],['Validating Admission Policy',K.R+'access-authn-authz/validating-admission-policy/'],['Admission Controllers',K.R+'access-authn-authz/admission-controllers/']]};
+
+/* 7: Kyverno and Gatekeeper */
+L['k8s:9:7']={blocks:[
+{p:'Built-in admission policies cover simple rules. **Policy engines** add richer validation, mutation, generation, reporting and exceptions, with policy written as Kubernetes resources.'},
+{t:[['','Kyverno','OPA Gatekeeper'],
+['Policy language','YAML with patterns, JMESPath and CEL; no new language to learn','Rego (a logic language) in `ConstraintTemplate` objects'],
+['Validate','Yes','Yes (core strength)'],
+['Mutate','Yes, built in','Yes (Assign and AssignMetadata, more limited)'],
+['Generate resources','Yes (for example a NetworkPolicy per new namespace)','No'],
+['Image verification','Yes (Cosign and Notary signatures, attestations)','Via external data or other tools'],
+['Reports and audit','Policy reports for existing resources','Audit of existing resources against constraints'],
+['Learning curve','Lower for Kubernetes admins','Higher: Rego, but very expressive and reusable']]},
+{h:'Kyverno example'},
+{code:`apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata: {name: require-requests-limits}
+spec:
+  validationFailureAction: Enforce          # or Audit
+  background: true
+  rules:
+  - name: check-resources
+    match:
+      any:
+      - resources: {kinds: [Pod]}
+    exclude:
+      any:
+      - resources: {namespaces: [kube-system]}
+    validate:
+      message: "CPU and memory requests and a memory limit are required."
+      pattern:
+        spec:
+          containers:
+          - resources:
+              requests: {cpu: "?*", memory: "?*"}
+              limits:   {memory: "?*"}`},
+{h:'Gatekeeper example'},
+{code:`apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata: {name: k8srequiredlabels}
+spec:
+  crd:
+    spec:
+      names: {kind: K8sRequiredLabels}
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties: {labels: {type: array, items: {type: string}}}
+  targets:
+  - target: admission.k8s.gatekeeper.sh
+    rego: |
+      package k8srequiredlabels
+      violation[{"msg": msg}] {
+        missing := {l | l := input.parameters.labels[_]} - {l | input.review.object.metadata.labels[l]}
+        count(missing) > 0
+        msg := sprintf("missing labels: %v", [missing])
+      }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLabels
+metadata: {name: ns-must-have-team}
+spec:
+  match: {kinds: [{apiGroups: [""], kinds: [Namespace]}]}
+  parameters: {labels: ["team"]}`},
+{h:'Running policy engines safely'},
+{ul:['Install in a **dedicated namespace**, exclude it and `kube-system` from policies, and set sensible `failurePolicy` (an unavailable fail-closed webhook can block the cluster).','Start in **Audit** mode, read the reports, fix or add exceptions, then switch to Enforce.','Run multiple replicas and set resource requests; the engine is now in the request path.','Keep policies in **Git** and test them in CI against sample manifests (`kyverno test`, `gator test`).','Prefer the **built-in** ValidatingAdmissionPolicy where it is enough; use an engine for mutation, generation, reporting or complex logic.']},
+{code:`kubectl get clusterpolicy
+kubectl get policyreport -A
+kubectl get constrainttemplates,constraints
+kubectl describe k8srequiredlabels ns-must-have-team       # shows violations found by audit`},
+{note:'A policy that blocks deployments on day one creates resistance. Roll out in audit mode with clear messages, and give teams a documented exception process.'}],
+src:[['Kyverno','https://kyverno.io/docs/'],['OPA Gatekeeper','https://open-policy-agent.github.io/gatekeeper/website/docs/'],['Admission Controllers',K.R+'access-authn-authz/admission-controllers/']]};
+
+/* 8: User namespaces */
+L['k8s:9:8']={blocks:[
+{p:'Normally root (UID 0) in a container is root on the node as far as the kernel is concerned, only restricted by capabilities and namespaces. **User namespaces** map UIDs inside the container to **unprivileged UIDs on the host**, so a container escape lands as a harmless user.'},
+{svg:K.dg(700,180,[
+[10,50,300,90,'Without user namespaces|container UID 0 (root)|= host UID 0 (root)',0],[390,50,300,90,'With user namespaces|container UID 0 (root)|= host UID 65536+ (unprivileged)',2]],[[310,95,390,95]])},
+{h:'Enabling it for a Pod'},
+{code:`apiVersion: v1
+kind: Pod
+metadata: {name: isolated}
+spec:
+  hostUsers: false                      # use a user namespace for this Pod
+  containers:
+  - name: app
+    image: myapp:2.1
+    securityContext:
+      runAsUser: 0                      # root inside: unprivileged outside`},
+{ul:['`hostUsers: false` asks the kubelet and runtime to create a **user namespace** for the Pod. Each Pod gets its own range of host UIDs, so Pods are isolated from each other as well.','Version note: the course tracks this feature as stable from Kubernetes v1.36 (it has been advancing through beta). Confirm in the release notes of your version.','Requirements: a **Linux kernel** with idmapped mount support for the volume types you use, a runtime that supports it (recent containerd or CRI-O with an OCI runtime that supports it), and the node configured with a UID range for the kubelet.']},
+{h:'What it helps with'},
+{t:[['Risk','Benefit'],
+['Container escape through a kernel or runtime bug','The attacker is an unprivileged host user, not root'],
+['Capabilities inside the container (for example `CAP_SYS_ADMIN`)','Apply only within the Pod user namespace, not to the host'],
+['Several Pods running as the same UID','Each Pod maps to a different host range, so they cannot touch each other files']]},
+{h:'Limits'},
+{ul:['Not a substitute for dropping capabilities, seccomp and read-only filesystems: combine them.','Some features are incompatible: `hostNetwork`, `hostPID`, `hostIPC` and host-path volumes cannot be used with `hostUsers: false`.','Volume ownership and `fsGroup` interact with idmapping; test storage drivers.','Pod Security Admission **restricted** may accept more privileged settings when user namespaces are on; check the profile details for your version.']},
+{code:`kubectl exec isolated -- id                          # uid=0(root)
+kubectl exec isolated -- cat /proc/self/uid_map      # 0  65536  65536   (container UID 0 maps to a high host UID)
+kubectl get pod isolated -o jsonpath='{.spec.hostUsers}{"\\n"}'`},
+{note:'Treat user namespaces as an added layer for workloads that must run as root inside the container, such as build tools and some legacy images.'}],
+src:[['User Namespaces',K.C+'workloads/pods/user-namespaces/'],['Use a User Namespace With a Pod',K.T+'configure-pod-container/user-namespaces/']]};
+
+/* 9: RuntimeClass */
+L['k8s:9:9']={blocks:[
+{p:'Containers share the host kernel, so a kernel bug can be an escape route. For **untrusted or multi-tenant workloads** you can run Pods under a **sandboxed runtime** that adds a stronger isolation boundary, selected per Pod with a **RuntimeClass**.'},
+{h:'Sandboxed runtimes'},
+{t:[['Runtime','Idea','Trade-offs'],
+['**gVisor** (runsc)','A user-space kernel intercepts system calls so the app talks to gVisor, not the host kernel','Some syscalls and performance paths are slower or unsupported'],
+['**Kata Containers**','Each Pod runs in a lightweight **VM** with its own kernel','Strong isolation; higher startup time and memory overhead, needs virtualization support'],
+['**Firecracker-based**, others','MicroVMs, used by some cloud platforms','Provider-specific']]},
+{h:'RuntimeClass'},
+{code:`apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata: {name: gvisor}
+handler: runsc                      # name of the runtime handler configured in containerd or CRI-O
+scheduling:
+  nodeSelector: {sandbox: gvisor}   # run only on nodes that have it installed
+  tolerations:
+  - {key: sandbox, operator: Equal, value: gvisor, effect: NoSchedule}
+overhead:
+  podFixed: {cpu: 100m, memory: 120Mi}   # extra cost counted by the scheduler
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: untrusted}
+spec:
+  runtimeClassName: gvisor
+  containers:
+  - name: app
+    image: customer/code:1.0`},
+{code:`# containerd: register the handler on the node (config.toml excerpt)
+#   [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
+#     runtime_type = "io.containerd.runsc.v1"
+sudo systemctl restart containerd
+
+kubectl get runtimeclass
+kubectl describe pod untrusted | grep -i "runtime class"
+kubectl get pod untrusted -o wide`},
+{ul:['The **handler** must exist in the runtime configuration on every node the class can run on; otherwise the Pod fails with `RuntimeHandlerNotFound`-style errors.','`scheduling` puts sandboxed Pods only on prepared nodes; `overhead` accounts for the extra resources of the sandbox.','Combine with **admission policy** so untrusted namespaces must use the sandbox class.','Managed offerings exist (for example GKE Sandbox, and Kata or confidential-computing node pools on other clouds).']},
+{h:'When to use it'},
+{ul:['Running **customer-provided code** or CI jobs.','**Multi-tenant** platforms where tenants share nodes.','Workloads handling untrusted input where defence in depth matters.','Not needed for ordinary trusted applications: first apply Pod Security, seccomp, non-root and network policy.']},
+{note:'Test your applications under the sandbox: unusual syscalls, file system features and performance-sensitive I/O can behave differently.'}],
+src:[['Runtime Class',K.C+'containers/runtime-class/'],['gVisor','https://gvisor.dev/docs/'],['Kata Containers','https://github.com/kata-containers/kata-containers']]};
+
+/* 10: KMS */
+L['k8s:9:10']={blocks:[
+{p:'Local-key encryption at rest (`aescbc`, `secretbox`) keeps the key in a file on the control plane. A **KMS provider** moves the key to an **external key management service** (cloud KMS, HSM, Vault) and uses **envelope encryption**.'},
+{h:'Envelope encryption'},
+{flow:['The API server generates a data encryption key (DEK) and encrypts the Secret with it','It asks the KMS plugin to encrypt (wrap) the DEK with a key encryption key (KEK) that never leaves the KMS','The ciphertext and the wrapped DEK are stored in etcd','On read, the KMS plugin unwraps the DEK and the API server decrypts the Secret']},
+{ul:['Only a small DEK goes to the KMS, so latency and cost stay low.','The **KEK stays in the KMS** (or HSM): a stolen etcd backup plus the control plane disk is not enough to decrypt data.','**KMS v2** (the current design) caches DEKs, supports key rotation without rewriting everything at once and reports health.']},
+{h:'Configuration'},
+{code:`apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+- resources: ["secrets"]
+  providers:
+  - kms:
+      apiVersion: v2
+      name: cloud-kms
+      endpoint: unix:///var/run/kmsplugin/socket.sock     # the plugin runs on the control plane node
+      timeout: 3s
+  - identity: {}                                          # readable fallback for old data during migration`},
+{ul:['The **KMS plugin** is a gRPC service (a static Pod or systemd service on every control plane node) that talks to the KMS.','If the plugin or the KMS is unreachable, **reads and writes of encrypted resources fail**: plan availability, caching and alerting for it.','Managed services expose this as a setting: "envelope encryption with a customer-managed key" on EKS, AKS and GKE.']},
+{h:'Key rotation'},
+{flow:['Create a new key version in the KMS (or rotate the KEK)','KMS v2 detects the new key ID and starts using it for new writes','Rewrite existing Secrets so they are re-wrapped: kubectl get secrets -A -o json | kubectl replace -f -','Retire the old key version after verification and backups']},
+{code:`kubectl get secrets -A -o json | kubectl replace -f -
+# Check that new objects are stored encrypted with the KMS provider (etcd value begins with k8s:enc:kms:v2:)
+sudo ETCDCTL_API=3 etcdctl ... get /registry/secrets/default/enc-test | hexdump -C | head
+kubectl get --raw /livez/kms-providers`},
+{h:'Choosing'},
+{t:[['Option','Use when'],
+['`aescbc` / `secretbox` with a local key','Labs, small clusters, protection against disk and backup theft only'],
+['KMS v2 with a cloud KMS or HSM','Production, compliance, key custody outside the cluster, audit of key use'],
+['External secret manager instead of Kubernetes Secrets','You want secrets to live outside etcd completely (External Secrets, CSI secrets store)']]},
+{note:'Back up the **KMS key access** (and policies), not just etcd: losing access to the KEK makes every encrypted Secret unreadable.'}],
+src:[['Using a KMS provider for data encryption',K.T+'administer-cluster/kms-provider/'],['Encrypting Confidential Data at Rest',K.T+'administer-cluster/encrypt-data/'],['Good practices for Kubernetes Secrets',K.C+'security/secrets-good-practices/']]};
+
+/* 11: Supply chain and Falco */
+L['k8s:9:11']={blocks:[
+{p:'Attacks increasingly arrive through **what you run** (images, dependencies, build systems) rather than through the cluster API. Supply chain security proves where software came from; runtime detection notices when something behaves wrongly after it starts.'},
+{h:'Supply chain controls'},
+{t:[['Control','What it gives you','Tools'],
+['**Image scanning**','Known vulnerabilities in OS packages and libraries, in CI and in the registry','Trivy, Grype, registry scanners'],
+['**SBOM** (software bill of materials)','A list of components inside an image, to search when a new CVE appears','Syft, Trivy, build tool integrations (SPDX, CycloneDX)'],
+['**Image signing**','Proof an image was built by your pipeline and not altered','Cosign (Sigstore), Notary'],
+['**Attestations and provenance**','Signed statements about how and where an image was built (SLSA)','in-toto, SLSA generators'],
+['**Admission verification**','The cluster refuses unsigned or unscanned images','Kyverno verifyImages, policy-controller, Ratify with Gatekeeper'],
+['**Pinned digests and trusted registries**','Reproducible deployments from known sources','Admission policy, `@sha256` references']]},
+{code:`# Sign and verify with Cosign
+cosign sign --key cosign.key registry.example.com/shop/web@sha256:3f1c...
+cosign verify --key cosign.pub registry.example.com/shop/web@sha256:3f1c...
+
+# SBOM and scan
+syft registry.example.com/shop/web:1.4.2 -o spdx-json > sbom.json
+trivy image --severity HIGH,CRITICAL registry.example.com/shop/web:1.4.2`},
+{code:`# Kyverno: require a valid signature
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata: {name: verify-signature}
+spec:
+  validationFailureAction: Enforce
+  rules:
+  - name: check-signature
+    match: {any: [{resources: {kinds: [Pod]}}]}
+    verifyImages:
+    - imageReferences: ["registry.example.com/shop/*"]
+      attestors:
+      - entries:
+        - keys: {publicKeys: "-----BEGIN PUBLIC KEY-----\\n...\\n-----END PUBLIC KEY-----"}`},
+{h:'Runtime detection with Falco'},
+{p:'**Falco** watches system calls (using eBPF or a kernel module) and Kubernetes audit events, and raises an alert when behaviour matches a **rule**: a shell started in a container, a sensitive file read, an unexpected outbound connection.'},
+{code:`helm repo add falcosecurity https://falcosecurity.github.io/charts
+helm install falco falcosecurity/falco -n falco --create-namespace --set tty=true
+kubectl -n falco logs -l app.kubernetes.io/name=falco -f
+# Example alert:
+# Warning A shell was spawned in a container with an attached terminal (user=root pod=web-7d9f container=app shell=sh ...)`},
+{code:`- rule: Unexpected outbound connection from db
+  desc: The database Pods should not connect to the internet
+  condition: >
+    evt.type=connect and container and k8s.pod.label.app = "db" and not fd.sip in (10.0.0.0/8)
+  output: "db connecting out (pod=%k8s.pod.name dest=%fd.rip:%fd.rport)"
+  priority: WARNING`},
+{ul:['Send alerts to a SIEM or chat through **Falcosidekick**, and tune rules to cut noise.','Detection is not prevention: combine with Pod Security, network policy and, where useful, enforcement tools (seccomp profiles, KubeArmor, Tetragon).','Runtime tools need privileged access to nodes: keep them updated and treat them as part of the trusted base.']},
+{h:'Putting it together'},
+{flow:['Build from minimal base images in CI','Scan, generate an SBOM and sign the image','Push to a controlled registry; pin by digest','Admission policy verifies signature and scan results','Runtime detection watches for unexpected behaviour','Rebuild and redeploy quickly when a CVE is announced']},
+{note:'Start small: scanning in CI and pinned digests give the best return. Add signing and admission verification when you have a stable build pipeline to sign from.'}],
+src:[['Sigstore Cosign','https://docs.sigstore.dev/'],['Falco','https://falco.org/docs/'],['SLSA','https://slsa.dev/'],['Securing a Cluster',K.T+'administer-cluster/securing-a-cluster/']]};
 })();

@@ -277,4 +277,122 @@ source <(kubectl completion zsh)`},
 {ul:['`kubectl get all` shows common workload kinds (not literally everything) in the namespace.','`kubectl api-resources` and `explain` instead of searching the docs.','`kubectl run tmp --rm -it --image=busybox -- sh` for a throwaway debug Pod.','`kubectl events --for pod/web` shows events for one object in recent versions.','`kubectl create ... --dry-run=client -o yaml | kubectl apply -f -` to pipe straight through.','Learn vim basics: `:set paste` before pasting YAML, `:set shiftwidth=2 expandtab`, and `.` to repeat.']},
 {note:'Do not rely on `kubectl get all` to prove something is gone. It omits ConfigMaps, Secrets, PVCs, Ingresses, RBAC objects and custom resources.'}],
 src:[['kubectl Quick Reference',R+'kubectl/quick-reference/'],['JSONPath Support',R+'kubectl/jsonpath/'],['kubectl Cheat Sheet',R+'kubectl/cheatsheet/']]};
+/* ---------- Additional content ---------- */
+/* 7: kubectl plugins and krew */
+L['k8s:1:7']={blocks:[
+{p:'`kubectl` is extensible. Any executable on your `PATH` named `kubectl-<name>` becomes the command `kubectl <name>`. **krew** is a plugin manager that finds, installs and updates such plugins.'},
+{h:'How plugin discovery works'},
+{code:`# A trivial plugin
+cat > kubectl-hello <<'EOF'
+#!/bin/sh
+echo "hello from $(kubectl config current-context)"
+EOF
+chmod +x kubectl-hello && sudo mv kubectl-hello /usr/local/bin/
+kubectl hello
+kubectl plugin list          # lists every discovered plugin (and warns about shadowing)`},
+{ul:['Dashes in the file name become spaces in the command: `kubectl-foo-bar` runs as `kubectl foo bar`.','Underscores in the file name become dashes in the command.','Plugins run with **your** credentials, so install only code you trust.']},
+{h:'Installing krew'},
+{p:'Follow the install instructions on the krew site for your OS, then add `$HOME/.krew/bin` to your `PATH`.'},
+{code:`kubectl krew version
+kubectl krew update
+kubectl krew search
+kubectl krew install ctx ns tree neat access-matrix
+kubectl krew list
+kubectl krew upgrade
+kubectl krew uninstall tree`},
+{h:'Plugins admins commonly use'},
+{t:[['Plugin','Purpose'],
+['`ctx`, `ns`','Switch context and namespace quickly'],
+['`tree`','Show owner relationships (Deployment to ReplicaSet to Pod)'],
+['`neat`','Clean up `-o yaml` output by removing managed noise'],
+['`access-matrix`','Show who can do what on which resources (RBAC overview)'],
+['`who-can`','Find subjects allowed to perform an action'],
+['`stern`-style log tailing, `df-pv`, `resource-capacity`','Multi-Pod logs, volume usage, node capacity summaries']]},
+{code:`kubectl tree deployment web
+kubectl neat get pod web -o yaml
+kubectl access-matrix -n shop
+kubectl resource-capacity --util`},
+{note:'Plugins are not available on the exam machine unless installed there. Use them to learn faster, but make sure you can do the same with plain kubectl, `jq` and `-o jsonpath`.'}],
+src:[['Extend kubectl with plugins',K.T+'extend-kubectl/kubectl-plugins/'],['krew','https://krew.sigs.k8s.io/'],['kubectl plugin list',K.R+'kubectl/generated/kubectl_plugin/']]};
+
+/* 8: Server-side apply */
+L['k8s:1:8']={blocks:[
+{p:'**Server-side apply (SSA)** moves the merge logic from kubectl to the API server and tracks **which manager owns each field**. It is designed for objects edited by several tools at once, such as a GitOps controller and an autoscaler.'},
+{h:'Client-side vs server-side apply'},
+{t:[['','Client-side apply (default)','Server-side apply'],
+['Where merging happens','kubectl, using the `last-applied-configuration` annotation','API server'],
+['Tracks ownership','No, one annotation per object','Yes, per field, in `metadata.managedFields`'],
+['Conflicts','Silently overwritten by the last writer','Detected; the apply fails unless you force it'],
+['Works with CRDs and strict schemas','Limited merge semantics','Uses schema-aware merge keys']]},
+{code:`kubectl apply --server-side -f deploy.yaml
+kubectl apply --server-side --field-manager=platform-team -f deploy.yaml
+kubectl apply --server-side --force-conflicts -f deploy.yaml    # take over fields owned by others
+
+kubectl get deployment web -o yaml --show-managed-fields | sed -n '/managedFields/,/^spec/p'`},
+{h:'Field ownership in action'},
+{p:'Suppose you apply a Deployment with `replicas: 3` as manager `platform`, and an HPA (a different manager) later scales it to 6. If you apply your file again, which still says `replicas: 3`, the server reports a **conflict** on `spec.replicas` instead of silently resetting it. You then decide:'},
+{ul:['**Remove the field** from your file, so you stop owning it and the HPA keeps control (the recommended fix).','**Force** the apply and take ownership, accepting that the HPA must re-scale.','Keep the file as is and let the apply fail, if you want a signal.']},
+{code:`# conflict output looks like
+Apply failed with 1 conflict: conflict with "kube-controller-manager" using apps/v1: .spec.replicas
+# Options: remove the field from the manifest, or use --force-conflicts`},
+{h:'Where you meet SSA'},
+{ul:['GitOps tools (Argo CD and Flux) can use SSA to avoid fighting other controllers.','Controllers written with client libraries use it for their own fields.','`kubectl apply --server-side` is **safe to try**: dry-run it first with `--dry-run=server`.','Switching an object between client-side and server-side apply is supported, but do it deliberately and test.']},
+{note:'`managedFields` makes `-o yaml` long. Use `kubectl get ... -o yaml` without `--show-managed-fields` (the default hides them) for readable output.'}],
+src:[['Server-Side Apply',K.R+'using-api/server-side-apply/'],['kubectl apply',K.R+'kubectl/generated/kubectl_apply/']]};
+
+/* 9: API versions and deprecations */
+L['k8s:1:9']={blocks:[
+{p:'Every API group is versioned, and versions have a **maturity level** and a lifetime. Knowing the rules helps you avoid manifests that stop working after an upgrade.'},
+{h:'Maturity levels'},
+{t:[['Version form','Stage','Promise'],
+['`v1alpha1`','Alpha','May change or vanish without notice; usually off by default'],
+['`v1beta1`','Beta','Better tested; the API may still change; beta APIs are not enabled by default for new features since recent releases'],
+['`v1`','Stable (GA)','Supported for a long time; removal requires a long deprecation process']]},
+{h:'Deprecation policy in practice'},
+{ul:['An API version is **deprecated** first (still works, warns), and **removed** in a later release after a minimum period depending on its stage.','Stable (GA) APIs must remain available for at least 12 months or three releases after deprecation.','The API server sends **warnings** when you use a deprecated API: kubectl prints `Warning: ... is deprecated in v1.xx+, unavailable in v1.yy+`.','Removed versions return errors: `no matches for kind "X" in version "...beta1"`.']},
+{h:'Find what you use'},
+{code:`kubectl api-versions | sort
+kubectl api-resources -o wide | head
+kubectl get --raw /metrics | grep apiserver_requested_deprecated_apis
+
+# What does the server store for a given object?
+kubectl get ingress shop -o jsonpath='{.apiVersion}{"\\n"}'
+kubectl explain ingress --api-version=networking.k8s.io/v1
+
+# Convert an old manifest (kubectl-convert plugin)
+kubectl convert -f old.yaml --output-version networking.k8s.io/v1`},
+{h:'Before an upgrade'},
+{flow:['Read the release notes: removals are listed under Urgent upgrade notes','Scan live objects and the manifests in Git for old apiVersions','Update charts, operators and CI templates to stable versions','Check the metric of deprecated APIs still being requested','Upgrade a test cluster first']},
+{ul:['**Stored objects** are automatically served in the new version; **manifests in Git** are what break.','Tools such as kubent and pluto scan clusters and repositories for deprecated APIs.','Third-party operators and CRDs have their own versions: check their release notes too.']},
+{note:'Warnings are easy to miss in CI. Make deprecation warnings visible, for example by failing a pipeline step when `kubectl apply --dry-run=server` prints one.'}],
+src:[['Kubernetes Deprecation Policy',K.R+'using-api/deprecation-policy/'],['Deprecated API Migration Guide',K.R+'using-api/deprecation-guide/'],['API Overview',K.R+'using-api/']]};
+
+/* 10: Docs under time pressure */
+L['k8s:1:10']={blocks:[
+{p:'On the exam you may use the official Kubernetes documentation (check the CNCF rules for the exact allowed sites). The skill is not reading docs, it is **finding the right page in seconds** and copying only what you need.'},
+{h:'Pages worth bookmarking mentally'},
+{t:[['Need','Where'],
+['kubectl commands and shortcuts','Reference > kubectl > **Quick Reference** (cheat sheet)'],
+['Pod, Deployment, Job, DaemonSet YAML','Concepts > Workloads (each page has copy-ready examples)'],
+['Probes, volumes, security context, config','Tasks > Configure Pods and Containers'],
+['PV, PVC, StorageClass','Concepts > Storage'],
+['NetworkPolicy, Ingress, Gateway','Concepts > Services, Load Balancing, and Networking'],
+['RBAC','Reference > API Access Control > **Using RBAC Authorization**'],
+['etcd backup and restore','Tasks > Administer a Cluster > Operating etcd clusters'],
+['kubeadm upgrade, certificates','Tasks > Administer a Cluster > kubeadm'],
+['Static Pods, taints, affinity','Tasks > Configure Pods and Containers; Concepts > Scheduling']]},
+{h:'Search habits'},
+{ul:['Use the site search with **specific words**: `networkpolicy example`, `etcd snapshot restore`, `pod affinity`.','Prefer **Concepts** for explanation and **Tasks** for step-by-step YAML.','Copy a minimal example, then edit with `vim`. Do not copy whole pages.','Open pages in tabs you will reuse (cheat sheet, RBAC, etcd, NetworkPolicy).']},
+{h:'Replace the browser with the terminal'},
+{code:`kubectl explain pod.spec.containers.securityContext --recursive | less
+kubectl create role --help | less
+kubectl run --help | grep -A3 Examples
+kubectl create deployment --help
+kubectl api-resources | grep -i netpol
+kubectl create clusterrolebinding --help`},
+{ul:['`--help` for imperative commands contains working examples and is faster than any web page.','`kubectl explain` shows field names and types.','`kubectl create <kind> --dry-run=client -o yaml` produces YAML for most kinds without any docs.']},
+{h:'Time budget'},
+{p:'If a task needs more than about a minute of searching, you probably searched for the wrong thing. Switch to `explain` or `--help`, or skip the task and return.'},
+{note:'Practise with a timer: pick a random task (for example, "create a NetworkPolicy allowing port 80 from namespace x"), find a starting YAML in the docs and apply it. Repeat until finding it is automatic.'}],
+src:[['kubectl Quick Reference',K.R+'kubectl/quick-reference/'],['Kubernetes documentation',K.D],['CNCF CKA exam resources','https://www.cncf.io/training/certification/cka/']]};
 })();
