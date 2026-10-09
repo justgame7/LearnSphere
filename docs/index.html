@@ -147,7 +147,7 @@ const COURSES=[
 outcomes:['Installation & configuration','Architecture & WAL','Backup & recovery','Replication & HA','Performance tuning','Security & roles'],
 sections:[
 {t:'Introduction',q:'Introduction Quiz',l:[
-['Introduction to PostgreSQL DBA','3:01','Course overview: who it is for, what you will be able to do, the ten sections at a glance and a prerequisites self-check. The study plan and capstone project are in Additional content.'],
+['Introduction to PostgreSQL DBA','3:01','Course overview: who it is for, what you will be able to do, the eleven sections at a glance and a prerequisites self-check. The study plan and capstone project are in Additional content.'],
 ['What is PostgreSQL','7:46','What PostgreSQL is and why it stays a reliable open-source relational database: ACID, MVCC, security, scalability and extensibility.'],
 ['DBA Role and Responsibilities','4:01','The DBA role and real-world tasks. Compares PostgreSQL with Oracle and SQL Server: open-source features, ACID, indexing and high availability.']]},
 {t:'Installation Methods',q:'Installation Methods Quiz',l:[
@@ -211,7 +211,13 @@ sections:[
 {t:'Upgrade & Replication',q:'Replication & Upgrade Tools Quiz',l:[
 ['Upgrade from 17 to 18','15:21','Major upgrade with pg_upgrade: dual binaries, port change 5432 → 5433, pre-upgrade validation, migration and post-upgrade object-count checks.'],
 ['Replication Theory','6:30','WAL-based streaming replication between primary and standby; hot standby and failover for high availability and recovery.'],
-['Streaming Replication Setup','12:16','Configure streaming replication on PostgreSQL 18 from a base backup, with a replication user, archiving and wal_level replica.']]}
+['Streaming Replication Setup','12:16','Configure streaming replication on PostgreSQL 18 from a base backup, with a replication user, archiving and wal_level replica.']]},
+{t:'Performance, Maintenance & Scaling',q:'Performance & Maintenance Quiz',l:[
+['Indexing: Types, Creation and Maintenance','0:00','Index types (btree, hash, GIN, GiST, BRIN), composite, partial, expression and covering indexes, CREATE INDEX CONCURRENTLY, REINDEX, and finding invalid, duplicate, unused and bloated indexes.'],
+['Autovacuum and VACUUM in Depth','0:00','How autovacuum decides when to run, per-table tuning, monitoring, what blocks dead-row cleanup, VACUUM FULL vs pg_repack, and transaction id wraparound with freeze settings and alerts.'],
+['Performance Tuning Workflow','0:00','Measure, find, fix, re-measure: pg_stat_statements, EXPLAIN and auto_explain, configuration starting points, operating system settings and pgbench benchmarking.'],
+['Connection Pooling with PgBouncer','0:00','Why connections are expensive, session vs transaction pooling, pgbouncer.ini, auth_query, the admin console, pool sizing, alternatives and troubleshooting.'],
+['Table Partitioning','0:00','Range, list and hash partitions, partition pruning, attaching and detaching partitions for retention, pg_partman, migrating an existing table and common pitfalls.']]}
 ]},
 {id:'rs',name:'Amazon Redshift',tag:'RS',color:'var(--rs)',level:'Beginner → Production',blurb:'Provision, design, load, secure, tune and protect Amazon Redshift like a production DBA.',
 outcomes:['Cluster & Serverless setup','Table design & loading','Workload management','Security & access control','Monitoring & tuning','Backup, DR & data sharing'],

@@ -5713,9 +5713,9 @@ const labSvg=dg(700,230,[
 X('pg:0:0',[
 {h:'Who this course is for'},
 {t:[['Learner','Starting point','Where to spend extra time'],['Developer moving towards operations','Strong SQL, little Linux or server knowledge','Installation, Architecture, Basic Configuration, Backup'],['Linux or systems administrator','Strong OS skills, little database knowledge','What is PostgreSQL, Database and Storage, Users and Security'],['Oracle or SQL Server DBA','Strong DBA concepts, new tools and vocabulary','Architecture (processes and WAL), Tablespaces, Replication'],['Student or career changer','No prior experience','Every lecture in order, plus the prerequisites refresher']]},
-{h:'The ten sections at a glance'},
+{h:'The eleven sections at a glance'},
 {svg:mapSvg},
-{t:[['Section','Theme','After it you can'],['1 Introduction','What PostgreSQL is, what a DBA does, how releases work','Explain the product, the role and the support calendar'],['2 Installation Methods','Source, yum, RPM, Windows GUI, uninstall, checklist','Install and verify a server by any method'],['3 Architecture','Postmaster, backends, background processes, memory, WAL, query path, PGDATA','Describe what happens from connect to commit'],['4 Basic Configuration','Remote access, multiple clusters, shutdown modes, config files, psql','Connect from anywhere and run several clusters safely'],['5 Database and Storage','Catalogs, templates, schemas, sizes, extensions, storage, statistics','Inspect and manage objects and space'],['6 Logging and Parameters','Server log, parameter types, reload and restart, memory, WAL, autovacuum','Tune and change settings with confidence'],['7 Users and Security','Roles, authentication, privileges, row-level security, SCRAM, TLS','Build a least-privilege model'],['8 Tablespaces and Storage','Tablespaces, WAL format and lifecycle','Place data and manage pg_wal'],['9 Backup and Recovery','pg_dump, pg_basebackup, archiving, PITR, verification','Design and test a recovery plan'],['10 Upgrade and Replication','pg_upgrade, streaming and logical replication, failover, HA','Upgrade and scale with minimal downtime']]},
+{t:[['Section','Theme','After it you can'],['1 Introduction','What PostgreSQL is, what a DBA does, how releases work','Explain the product, the role and the support calendar'],['2 Installation Methods','Source, yum, RPM, Windows GUI, uninstall, checklist','Install and verify a server by any method'],['3 Architecture','Postmaster, backends, background processes, memory, WAL, query path, PGDATA','Describe what happens from connect to commit'],['4 Basic Configuration','Remote access, multiple clusters, shutdown modes, config files, psql','Connect from anywhere and run several clusters safely'],['5 Database and Storage','Catalogs, templates, schemas, sizes, extensions, storage, statistics','Inspect and manage objects and space'],['6 Logging and Parameters','Server log, parameter types, reload and restart, memory, WAL, autovacuum','Tune and change settings with confidence'],['7 Users and Security','Roles, authentication, privileges, row-level security, SCRAM, TLS','Build a least-privilege model'],['8 Tablespaces and Storage','Tablespaces, WAL format and lifecycle','Place data and manage pg_wal'],['9 Backup and Recovery','pg_dump, pg_basebackup, archiving, PITR, verification','Design and test a recovery plan'],['10 Upgrade and Replication','pg_upgrade, streaming and logical replication, failover, HA','Upgrade and scale with minimal downtime'],['11 Performance, Maintenance and Scaling','Indexes, autovacuum, tuning workflow, PgBouncer, partitioning','Keep a busy database fast, lean and scalable']]},
 {h:'Prerequisites self-check'},
 {t:[['Skill','You should be able to','If not, read'],['Linux shell','Move around directories, edit a file with `vi` or `nano`, use `sudo`, read `ls -l` permissions','Lecture "Linux and SQL Prerequisites Refresher" in this section'],['Services','Start, stop and read the status of a service with `systemctl`','Same lecture'],['SQL basics','Write `SELECT` with `WHERE` and `JOIN`, `INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`','Same lecture'],['Networking basics','Explain an IP address, a port and a firewall rule','Same lecture'],['A virtual machine','Create a VM, give it a network and take a snapshot','Lecture "Lab Setup: Building Your Practice Environment"']]},
 {h:'How every lecture is built'},
@@ -9706,4 +9706,407 @@ H.noteBefore('pg:9:10',null,'**Planned or unplanned?** A planned switchover is a
  if(e)e[2]='Vocabulary (switchover, failover, promotion, timeline), what promotion does and the planned switchover step by step. Unplanned failover, split brain and fencing, pg_rewind, the after-failover checklist and troubleshooting are in Additional content.';
  else warn('outline entry not found: Failover');
 })();
+})();
+
+
+/* ================================================================
+   NEW SECTION 11: Performance, Maintenance & Scaling (5 core lectures)
+   11.1 Indexing, 11.2 Autovacuum and VACUUM in Depth, 11.3 Performance Tuning Workflow,
+   11.4 Connection Pooling with PgBouncer, 11.5 Table Partitioning.
+   Lesson keys pg:10:0 .. pg:10:4 (section index 10). The matching section entry is in index.html.
+   ================================================================ */
+(function(){
+const D='https://www.postgresql.org/docs/current/';
+const L=window.LESSONS=window.LESSONS||{};
+
+/* ---------------------------------------------------------------- 10:0 Indexing */
+L['pg:10:0']={blocks:[
+{p:'An **index** is a separate data structure that lets PostgreSQL find rows without reading the whole table. The right index turns a query that reads millions of pages into one that reads three or four. The wrong index costs disk space and slows every `INSERT`, `UPDATE` and `DELETE`. A DBA must know which index type fits which query, how to build one without blocking the application, and how to find indexes that are bloated, invalid, duplicated or never used.'},
+{h:'How an index helps (and what it costs)'},
+{flow:['Query has a WHERE, JOIN or ORDER BY','Planner compares an index scan with a sequential scan','Index lookup returns row locations (TIDs)','Heap pages are fetched (or skipped in an index-only scan)']},
+{ul:['**Read benefit:** selective filters, joins on the indexed column, sorted output, `min()`/`max()`, unique checks.','**Write cost:** every index is updated on `INSERT`, on `DELETE`, and on any `UPDATE` that changes an indexed column or cannot use a HOT update.','**Space cost:** an index is often 20 to 100 percent of the size of its table. It also has to be vacuumed and cached.']},
+{h:'Index types'},
+{t:[['Type','Good for','Operators / notes'],['`btree` (default)','Equality, ranges, sorting, `LIKE \'abc%\'` (with the right operator class), uniqueness','`=`, `<`, `<=`, `>`, `>=`, `BETWEEN`, `IN`. The only type that enforces `UNIQUE` and primary keys. Use it unless you have a reason not to.'],['`hash`','Equality only','Smaller than btree for long keys, but no ranges or sorting. WAL-logged and crash-safe since version 10.'],['`gin`','Values that contain many items: arrays, `jsonb`, full-text `tsvector`, `pg_trgm` trigrams','Fast to search, slower to update. Uses a pending list that is flushed by vacuum (`gin_pending_list_limit`).'],['`gist`','Geometry (PostGIS), ranges, nearest-neighbour (`<->`), exclusion constraints, trigram search','Lossy: results may be rechecked against the table.'],['`spgist`','Non-balanced data: phone prefixes, IP addresses, quad-trees','Partitioned search trees.'],['`brin`','Very large tables whose column values follow the physical order (timestamps, serial ids)','Stores only min/max per block range, so it is tiny (often under 1 MB for a 100 GB table). Useless if the data is not correlated with disk order.']]},
+{h:'Creating indexes'},
+{code:`-- plain btree
+CREATE INDEX idx_orders_customer ON orders (customer_id);
+
+-- unique index (a UNIQUE constraint creates one for you)
+CREATE UNIQUE INDEX idx_users_email ON users (lower(email));
+
+-- composite: the leading column matters most
+CREATE INDEX idx_orders_cust_date ON orders (customer_id, created_at DESC);
+
+-- partial: only the rows you actually query
+CREATE INDEX idx_orders_open ON orders (created_at) WHERE status = 'open';
+
+-- expression: index the result of a function
+CREATE INDEX idx_users_lower_email ON users (lower(email));
+
+-- covering: INCLUDE adds payload columns so more queries become index-only scans
+CREATE INDEX idx_orders_cust_inc ON orders (customer_id) INCLUDE (total, status);
+
+-- GIN for jsonb containment and for LIKE '%text%' with pg_trgm
+CREATE INDEX idx_docs_data ON docs USING gin (data jsonb_path_ops);
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX idx_cust_name_trgm ON customers USING gin (name gin_trgm_ops);
+
+-- BRIN for an append-only time series
+CREATE INDEX idx_events_ts_brin ON events USING brin (created_at) WITH (pages_per_range = 64);`},
+{ul:['**Column order in a composite index:** put columns used with `=` first, then the range or sort column. An index on `(a, b)` helps `WHERE a = 1` and `WHERE a = 1 AND b > 5`. Before version 18 it rarely helped `WHERE b = 5` alone; PostgreSQL 18 can use a **skip scan** in some such cases when `a` has few distinct values.','**Expression matches exactly:** `WHERE lower(email) = \'x\'` uses the `lower(email)` index. `WHERE email = \'x\'` does not.','**Foreign keys are not indexed automatically.** Index the referencing column, or deletes and updates on the parent table will scan the child table.','**`LIKE \'abc%\'`** needs `text_pattern_ops` (or a `C` collation) on a btree. For `LIKE \'%abc%\'` use `pg_trgm` with GIN.']},
+{h:'Building and rebuilding without blocking'},
+{p:'A plain `CREATE INDEX` takes a `SHARE` lock: reads continue but writes to the table wait until the build ends. On a busy table use `CONCURRENTLY`. It scans the table twice and waits for older transactions, so it takes longer, but it does not block writes.'},
+{code:`CREATE INDEX CONCURRENTLY idx_orders_customer ON orders (customer_id);
+
+-- rebuild a bloated or corrupted index, online (version 12+)
+REINDEX INDEX CONCURRENTLY idx_orders_customer;
+REINDEX TABLE CONCURRENTLY orders;
+
+-- drop without blocking
+DROP INDEX CONCURRENTLY idx_orders_old;`},
+{ul:['`CONCURRENTLY` cannot run inside a transaction block.','If it fails or is cancelled it leaves an **invalid** index behind. It still costs write time but is never used. Find and remove it.','You need free disk space for the new index while the old one still exists.']},
+{code:`-- invalid indexes left by a failed CONCURRENTLY build
+SELECT n.nspname, c.relname AS index_name, t.relname AS table_name
+FROM pg_index i
+JOIN pg_class c ON c.oid = i.indexrelid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE NOT i.indisvalid;
+
+DROP INDEX CONCURRENTLY schema_name.index_name;   -- then build it again`},
+{h:'Finding unused, duplicate and large indexes'},
+{code:`-- indexes never used since statistics were last reset (excluding unique/PK)
+SELECT s.schemaname, s.relname AS table_name, s.indexrelname AS index_name,
+       s.idx_scan, pg_size_pretty(pg_relation_size(s.indexrelid)) AS size
+FROM pg_stat_user_indexes s
+JOIN pg_index i ON i.indexrelid = s.indexrelid
+WHERE s.idx_scan = 0 AND NOT i.indisunique
+ORDER BY pg_relation_size(s.indexrelid) DESC;
+
+-- duplicate indexes: same table, same columns, same predicate
+SELECT indrelid::regclass AS table_name, array_agg(indexrelid::regclass) AS duplicates
+FROM pg_index
+GROUP BY indrelid, indkey, indclass, indpred::text, indexprs::text
+HAVING count(*) > 1;
+
+-- the biggest indexes
+SELECT indexrelid::regclass AS index_name, pg_size_pretty(pg_relation_size(indexrelid)) AS size
+FROM pg_index ORDER BY pg_relation_size(indexrelid) DESC LIMIT 10;`},
+{note:'Before dropping an "unused" index check three things: when statistics were last reset (`pg_stat_database.stats_reset`), whether the index is used only on a standby (statistics are per server), and whether it backs a constraint or a rare monthly report. Drop it in a quiet period, keep the `CREATE INDEX` statement, and be ready to recreate it.'},
+{h:'Measuring bloat and health'},
+{code:`CREATE EXTENSION IF NOT EXISTS pgstattuple;
+SELECT * FROM pgstatindex('idx_orders_customer');
+-- avg_leaf_density near 90 is healthy; below about 50 with a large leaf_fragmentation suggests a REINDEX
+
+CREATE EXTENSION IF NOT EXISTS amcheck;
+SELECT bt_index_check('idx_orders_customer'::regclass);   -- detects btree corruption`},
+{h:'Index-only scans and the visibility map'},
+{p:'An index-only scan answers a query from the index alone, but only for heap pages the **visibility map** marks as all-visible. Vacuum maintains that map. If `EXPLAIN` shows `Heap Fetches` close to the number of rows returned, run `VACUUM` on the table (next lecture) and check again.'},
+{h:'Indexing checklist'},
+{t:[['Symptom','Likely cause','Action'],['Sequential scan on a big table with a selective filter','No index, or a function wraps the column','Add an index; index the expression; rewrite the predicate'],['Index exists but is ignored','Low selectivity, stale statistics, wrong operator class or data type mismatch','`ANALYZE`; check `EXPLAIN`; match types'],['Slow bulk loads','Too many indexes','Drop and recreate indexes around a one-off load; remove unused ones'],['`DELETE` on a parent table is slow','Child foreign key column not indexed','Index the foreign key column'],['Index much larger than expected','Bloat from heavy updates and deletes','`REINDEX CONCURRENTLY`; review autovacuum'],['`CREATE INDEX CONCURRENTLY` failed','Deadlock, uniqueness violation or cancel','Drop the invalid index and retry']]},
+{note:'Practice: create a 5 million row table with `generate_series`, run a selective query with `EXPLAIN (ANALYZE, BUFFERS)`, add an index and compare. Then break it on purpose: cancel a `CREATE INDEX CONCURRENTLY` and find the invalid index with the query above.'}
+],src:[['Indexes',D+'indexes.html'],['Index types',D+'indexes-types.html'],['CREATE INDEX',D+'sql-createindex.html'],['REINDEX',D+'sql-reindex.html'],['Statistics views: pg_stat_user_indexes',D+'monitoring-stats.html'],['pgstattuple',D+'pgstattuple.html']]};
+
+/* ---------------------------------------------------------------- 10:1 Autovacuum */
+L['pg:10:1']={blocks:[
+{p:'PostgreSQL never overwrites a row. An `UPDATE` writes a new row version and a `DELETE` only marks the old one as dead (MVCC, see the architecture section). **Vacuum** is the process that later reclaims that space, updates the visibility map and the planner statistics, and freezes old transaction ids. **Autovacuum** runs vacuum and analyze automatically. When it is mis-tuned or blocked, tables bloat, queries slow down and in the worst case the database stops accepting writes to avoid transaction id wraparound. This lecture teaches you to tune it per table, watch it and fix the usual problems.'},
+{h:'What vacuum does'},
+{t:[['Task','Why it matters'],['Removes dead tuples and marks space reusable','Stops tables and indexes growing without limit'],['Updates the free space map and visibility map','Space is reused; index-only scans work'],['Freezes old row versions','Prevents transaction id wraparound'],['`ANALYZE` (separate step, often run together)','Refreshes planner statistics so plans stay good']]},
+{note:'Plain `VACUUM` does **not** return space to the operating system (except empty pages at the end of a table). It makes the space reusable inside the table. Only `VACUUM FULL` or an online rewrite tool shrinks the file.'},
+{h:'When autovacuum starts a vacuum'},
+{p:'The autovacuum launcher wakes every `autovacuum_naptime` (1 minute) and starts workers on tables that cross a threshold:'},
+{code:`vacuum threshold = autovacuum_vacuum_threshold + autovacuum_vacuum_scale_factor * reltuples
+                 =        50                  +          0.2                 * rows
+
+insert threshold = autovacuum_vacuum_insert_threshold + autovacuum_vacuum_insert_scale_factor * rows
+                 =            1000                    +                0.2
+
+analyze threshold = autovacuum_analyze_threshold + autovacuum_analyze_scale_factor * rows
+                 =            50                 +            0.1`},
+{p:'With the default scale factor of 0.2, a table of 100 million rows is vacuumed only after about **20 million** dead rows. That is far too late. This is the single most common autovacuum problem. PostgreSQL 18 adds `autovacuum_vacuum_max_threshold` (default 100 million) as a cap on that number, but large hot tables still benefit from their own lower settings.'},
+{h:'The main parameters'},
+{t:[['Parameter','Default','Meaning and tuning advice'],['`autovacuum`','on','Never turn it off globally. It also does the anti-wraparound work.'],['`autovacuum_max_workers`','3','Parallel workers across the cluster. Raise to 5 or 6 when you have many large tables. Needs a restart before version 18.'],['`autovacuum_naptime`','1min','How often the launcher checks each database.'],['`autovacuum_vacuum_scale_factor`','0.2','Lower it to 0.01 to 0.05 on large tables, per table.'],['`autovacuum_vacuum_cost_limit`','-1 (uses `vacuum_cost_limit` = 200)','Work budget before a worker sleeps. Shared by all workers. Raise to 1000 to 2000 on modern storage.'],['`autovacuum_vacuum_cost_delay`','2ms','Sleep after the budget is used. Lower values make vacuum faster and use more I/O.'],['`autovacuum_work_mem`','-1 (uses `maintenance_work_mem`)','Memory for the dead-tuple list. More memory means fewer index passes.'],['`log_autovacuum_min_duration`','10min in recent versions','Log autovacuum runs longer than this. Set to `0` while investigating.']]},
+{h:'Per-table tuning'},
+{code:`-- a big, busy table: vacuum after 1% dead rows, analyze after 0.5%
+ALTER TABLE orders SET (
+  autovacuum_vacuum_scale_factor  = 0.01,
+  autovacuum_vacuum_threshold     = 1000,
+  autovacuum_analyze_scale_factor = 0.005,
+  autovacuum_vacuum_cost_limit    = 2000
+);
+
+-- see per-table settings
+SELECT relname, reloptions FROM pg_class WHERE reloptions IS NOT NULL;
+
+-- go back to the defaults
+ALTER TABLE orders RESET (autovacuum_vacuum_scale_factor);`},
+{ul:['A **lower `fillfactor`** (for example 85) on update-heavy tables leaves room on each page so updates can stay on the same page (a HOT update) and create less index work.','Insert-only tables rely on the insert threshold (version 13+) so that the visibility map and freezing are kept current.','Cluster-wide changes to the cost settings go in `postgresql.conf` or `ALTER SYSTEM` and need only a reload.']},
+{h:'Monitoring vacuum'},
+{code:`-- tables with the most dead rows and when they were last vacuumed
+SELECT relname, n_live_tup, n_dead_tup,
+       round(100.0 * n_dead_tup / nullif(n_live_tup + n_dead_tup, 0), 1) AS dead_pct,
+       last_autovacuum, last_autoanalyze, autovacuum_count
+FROM pg_stat_user_tables
+ORDER BY n_dead_tup DESC LIMIT 15;
+
+-- vacuums running right now
+SELECT pid, relid::regclass AS table_name, phase, heap_blks_total, heap_blks_scanned,
+       heap_blks_vacuumed, index_vacuum_count
+FROM pg_stat_progress_vacuum;
+
+-- autovacuum workers in pg_stat_activity
+SELECT pid, now() - xact_start AS running_for, query
+FROM pg_stat_activity WHERE backend_type = 'autovacuum worker';`},
+{h:'Why vacuum cannot remove dead rows'},
+{p:'Vacuum can only remove a dead row version when **no transaction could still need it**. Anything that holds back the oldest snapshot ("xmin horizon") blocks cleanup in the whole cluster:'},
+{t:[['Blocker','How to find it','Fix'],['Long-running or idle-in-transaction session','`SELECT pid, state, now()-xact_start FROM pg_stat_activity WHERE xact_start IS NOT NULL ORDER BY xact_start;`','End the session; set `idle_in_transaction_session_timeout` and `transaction_timeout` (17+)'],['Abandoned replication slot','`SELECT slot_name, active, xmin, catalog_xmin, wal_status FROM pg_replication_slots;`','Drop the slot or fix the consumer; set `max_slot_wal_keep_size`'],['Prepared transaction left open','`SELECT * FROM pg_prepared_xacts;`','`COMMIT PREPARED` or `ROLLBACK PREPARED`'],['Standby query with `hot_standby_feedback = on`','`pg_stat_replication.backend_xmin`','Shorten standby queries or turn feedback off'],['Autovacuum cancelled by a lock','Autovacuum is cancelled when it blocks a conflicting `ALTER TABLE` or `LOCK`','Schedule DDL carefully; run a manual `VACUUM`']]},
+{h:'Manual vacuum commands'},
+{code:`VACUUM (VERBOSE, ANALYZE) orders;          -- reclaim space and refresh statistics, shows details
+VACUUM (PARALLEL 4) orders;                -- vacuum the indexes with up to 4 workers
+VACUUM (FREEZE) orders;                    -- freeze all eligible rows now
+VACUUM (INDEX_CLEANUP OFF, TRUNCATE OFF) orders;   -- emergency: skip the slow parts
+ANALYZE orders;                            -- statistics only
+VACUUM FULL orders;                        -- rewrite the table: ACCESS EXCLUSIVE lock, needs free disk`},
+{note:'`VACUUM FULL` blocks all reads and writes while it rewrites the table and needs room for a full copy. On production prefer an online tool such as `pg_repack` (an extension; it needs a primary key or unique index) or fix the cause and let normal vacuum reuse the space.'},
+{h:'Transaction id wraparound'},
+{p:'Transaction ids are 32-bit numbers. PostgreSQL compares them circularly, so a row older than about 2 billion transactions would suddenly look like it is from the future. **Freezing** marks old rows as visible to everyone and prevents this. If freezing falls behind, PostgreSQL first forces aggressive anti-wraparound autovacuum runs (these cannot be cancelled by locks), then at the very end refuses new transactions until a vacuum is done.'},
+{t:[['Setting','Default','Role'],['`vacuum_freeze_min_age`','50 million','Row versions older than this are frozen when a table is vacuumed'],['`vacuum_freeze_table_age`','150 million','A manual or auto vacuum scans the whole table (aggressive) when the table is older than this'],['`autovacuum_freeze_max_age`','200 million','Forces an anti-wraparound autovacuum even if autovacuum is off. Needs a restart to change.'],['`vacuum_failsafe_age`','1.6 billion','Vacuum switches to a fast emergency mode that skips index cleanup']]},
+{code:`-- how close is each database to the limit (about 2.1 billion is the hard stop)
+SELECT datname, age(datfrozenxid) AS xid_age,
+       round(100.0 * age(datfrozenxid) / 2147483647, 1) AS pct_used
+FROM pg_database ORDER BY xid_age DESC;
+
+-- the oldest tables in the current database
+SELECT c.oid::regclass AS table_name, age(c.relfrozenxid) AS xid_age,
+       pg_size_pretty(pg_total_relation_size(c.oid)) AS size
+FROM pg_class c WHERE c.relkind IN ('r','m','t')
+ORDER BY age(c.relfrozenxid) DESC LIMIT 10;`},
+{ul:['Alert when any database passes **500 million** to **1 billion**. Investigate the blockers in the table above immediately.','Multixact ids can wrap in the same way. Watch `mxid_age(datminmxid)` too.','PostgreSQL 18 also freezes pages more eagerly during normal vacuums, which spreads the freezing work out over time.']},
+{h:'Troubleshooting'},
+{t:[['Symptom','Cause','Fix'],['Table keeps growing, `n_dead_tup` high, autovacuum runs often but dead rows remain','Old transaction, slot or prepared transaction holds the horizon','Find and end the blocker (table above)'],['Autovacuum never reaches a big table','Scale factor too high, all workers busy, or cost limit too low','Per-table settings; more workers; raise cost limit'],['Autovacuum runs for hours','Slow I/O throttle or little `autovacuum_work_mem`','Raise the cost limit and `autovacuum_work_mem`'],['"database is not accepting commands to avoid wraparound data loss"','Wraparound reached','Stop the application, start in single-user mode if required, `VACUUM` the oldest tables'],['Queries slow after a bulk load','No fresh statistics','`ANALYZE` the table']]}
+],src:[['Routine Vacuuming',D+'routine-vacuuming.html'],['Automatic vacuuming parameters',D+'runtime-config-vacuum.html'],['VACUUM',D+'sql-vacuum.html'],['Progress reporting',D+'progress-reporting.html']]};
+
+/* ---------------------------------------------------------------- 10:2 Performance tuning workflow */
+L['pg:10:2']={blocks:[
+{p:'Tuning is a method, not a list of magic parameters. A DBA who changes `shared_buffers` without knowing which queries are slow is guessing. The reliable approach is to **measure, find the biggest cost, change one thing, measure again**. This lecture gives you that workflow and the tools for each step: `pg_stat_statements` to find the expensive queries, `EXPLAIN` and `auto_explain` to understand them, configuration and operating system settings for the server, and `pgbench` to test a change.'},
+{h:'The tuning loop'},
+{flow:['Define the problem and a number (latency, throughput)','Find the top queries and waits','Fix the query or index first','Then tune the configuration','Change one thing and re-measure']},
+{t:[['Layer','Typical gain','Examples'],['Query and schema','Largest (10x to 1000x)','Missing index, bad join, `SELECT *`, N+1 queries, row-by-row loops'],['Configuration','Moderate (1.5x to 3x)','`work_mem`, `shared_buffers`, checkpoints, `random_page_cost`'],['Operating system and hardware','Moderate','Huge pages, storage, swap, kernel settings'],['Architecture','Large, costly to change','Read replicas, pooling, partitioning, caching']]},
+{h:'Step 1: find the expensive queries with pg_stat_statements'},
+{code:`# postgresql.conf (restart required)
+shared_preload_libraries = 'pg_stat_statements'
+pg_stat_statements.track = all
+compute_query_id = auto
+
+-- once, in each database you want to query it from
+CREATE EXTENSION pg_stat_statements;
+
+-- top 10 by total time: the queries that cost the server the most
+SELECT calls,
+       round(total_exec_time::numeric, 0)  AS total_ms,
+       round(mean_exec_time::numeric, 2)   AS mean_ms,
+       rows,
+       round(100 * shared_blks_hit / nullif(shared_blks_hit + shared_blks_read, 0), 1) AS hit_pct,
+       left(query, 80) AS query
+FROM pg_stat_statements
+ORDER BY total_exec_time DESC LIMIT 10;`},
+{ul:['Sort by **total time** to find the biggest overall cost, by **mean time** for the slowest single calls, and by `shared_blks_read` for the I/O-heavy ones.','Parameters are replaced with `$1`, `$2`, so the same query shape is grouped together.','Reset after a change so that the next sample is clean: `SELECT pg_stat_statements_reset();`.']},
+{h:'Step 2: understand one query'},
+{code:`EXPLAIN (ANALYZE, BUFFERS, SETTINGS) SELECT ... ;`},
+{t:[['What to look at','What it tells you'],['Estimated rows vs `actual rows`','A big difference means stale or missing statistics: `ANALYZE`, or raise `default_statistics_target` for that column'],['`Seq Scan` on a large table with `Rows Removed by Filter` very high','Missing or unusable index'],['`Buffers: shared read` high','Data not in cache; I/O bound'],['`Sort Method: external merge  Disk`','`work_mem` too small for this sort'],['`Hash ... Batches: 8`','Hash join spilled to disk; `work_mem` too small'],['`loops=` large on the inner side of a nested loop','Planner expected few rows; check statistics and join conditions'],['`Planning Time` large','Too many partitions or joins']]},
+{p:'Remember that `EXPLAIN ANALYZE` actually runs the statement. Wrap an `INSERT`, `UPDATE` or `DELETE` in `BEGIN; ... ROLLBACK;`. The query planner lecture explains each plan node.'},
+{h:'Catch slow queries as they happen'},
+{code:`# log every statement slower than 500 ms
+log_min_duration_statement = 500
+
+# log the plan of slow statements automatically
+shared_preload_libraries = 'pg_stat_statements, auto_explain'
+auto_explain.log_min_duration = '1s'
+auto_explain.log_analyze = on
+auto_explain.log_buffers = on
+auto_explain.log_nested_statements = on
+auto_explain.sample_rate = 0.1      # only 10 percent of qualifying statements, to limit overhead`},
+{note:'`auto_explain.log_analyze = on` adds timing overhead to every statement. On a busy system use `sample_rate` or enable it for a single session first with `LOAD \'auto_explain\'`.'},
+{h:'Step 3: configuration starting points'},
+{t:[['Parameter','Starting point','Notes'],['`shared_buffers`','25 percent of RAM','Do not go above about 40 percent; the OS cache also helps'],['`effective_cache_size`','50 to 75 percent of RAM','A hint for the planner only; allocates nothing'],['`work_mem`','4 to 64 MB','Per sort or hash **node**, per query, per connection. 200 connections with 64 MB and several nodes can exhaust RAM. Set higher per role or per session for reporting'],['`maintenance_work_mem`','512 MB to 2 GB','Used by `VACUUM`, `CREATE INDEX`, restore'],['`random_page_cost`','1.1 on SSD/NVMe (default 4.0)','Makes the planner choose index scans on fast storage'],['`effective_io_concurrency`','200 on SSD/NVMe','Prefetch depth for bitmap scans'],['`max_wal_size`','Large enough that checkpoints are timed, not forced (for example 8 to 64 GB)','Check `pg_stat_checkpointer` for `num_requested` vs `num_timed`'],['`checkpoint_timeout`','15 to 30 min','Longer spreads writes; recovery after a crash takes longer'],['`checkpoint_completion_target`','0.9','Spreads checkpoint writes'],['`wal_compression`','lz4 or zstd','Less WAL volume for a little CPU'],['`huge_pages`','try','Large `shared_buffers` benefit; configure the OS pool first'],['`default_statistics_target`','100 (raise to 500 on skewed columns)','Per column: `ALTER TABLE t ALTER COLUMN c SET STATISTICS 500`'],['`io_method` (version 18)','`worker` (default)','Asynchronous I/O; `io_uring` is available on supported Linux kernels']]},
+{code:`-- per-role and per-database overrides keep the global setting safe
+ALTER ROLE reporting SET work_mem = '256MB';
+ALTER DATABASE warehouse SET random_page_cost = 1.1;
+
+-- cache hit ratio for the database (aim for 99 percent on OLTP)
+SELECT datname, round(100.0 * blks_hit / nullif(blks_hit + blks_read, 0), 2) AS hit_pct
+FROM pg_stat_database WHERE datname = current_database();
+
+-- are checkpoints forced by WAL volume? (version 17 and later)
+SELECT num_timed, num_requested, write_time, sync_time FROM pg_stat_checkpointer;`},
+{h:'Step 4: operating system'},
+{t:[['Setting','Recommendation'],['Swap','Keep it small and set `vm.swappiness = 1` to 10. Never let the database swap'],['Overcommit','`vm.overcommit_memory = 2` with a sensible `vm.overcommit_ratio` avoids the OOM killer picking the postmaster'],['Huge pages','Set `vm.nr_hugepages` to fit `shared_buffers`; disable *transparent* huge pages'],['File system','XFS or ext4, mount with `noatime`; separate volumes for data, WAL and logs where possible'],['I/O scheduler','`none` or `mq-deadline` for SSD/NVMe'],['Limits','Raise open files (`LimitNOFILE`) in the systemd unit']]},
+{h:'Step 5: prove it with pgbench'},
+{code:`# create a test database of scale 100 (about 1.5 GB)
+pgbench -i -s 100 bench
+
+# 60-second read/write test: 32 clients, 4 threads, progress every 10 s
+pgbench -c 32 -j 4 -T 60 -P 10 bench
+
+# select-only test
+pgbench -S -c 32 -j 4 -T 60 bench
+
+# test your own query
+pgbench -n -f myquery.sql -c 16 -T 60 bench`},
+{ul:['Run each test at least twice and ignore the first (cold cache).','Change **one** parameter at a time and write down the result (tps and latency average).','Test on a copy with realistic data volume. A 10 MB test database fits in memory and proves nothing.']},
+{h:'Quick diagnosis table'},
+{t:[['Symptom','First check','Likely cure'],['Everything slow, CPU high','`pg_stat_statements` by total time','Fix the top query or add an index'],['High I/O wait, low hit ratio','`blks_read`, `shared_buffers`, `effective_cache_size`','More RAM or cache; better indexes'],['Many connections, high load average','`SELECT count(*) FROM pg_stat_activity`','Connection pooling (next lecture)'],['Periodic latency spikes','Checkpoints, `pg_stat_checkpointer`','Larger `max_wal_size`, longer `checkpoint_timeout`'],['Queries waiting','`pg_stat_activity` with `wait_event_type = \'Lock\'`','Find blocker with `pg_blocking_pids()`; shorten transactions'],['Slow only after data growth','`EXPLAIN` row estimates','`ANALYZE`; indexes; partitioning'],['Temp files in the log','`log_temp_files = 0`','Raise `work_mem` for that role or query']]}
+],src:[['pg_stat_statements',D+'pgstatstatements.html'],['auto_explain',D+'auto-explain.html'],['Resource consumption',D+'runtime-config-resource.html'],['Query planning parameters',D+'runtime-config-query.html'],['pgbench',D+'pgbench.html'],['Performance tips',D+'performance-tips.html']]};
+
+/* ---------------------------------------------------------------- 10:3 PgBouncer */
+L['pg:10:3']={blocks:[
+{p:'PostgreSQL starts one operating system process for every client connection. Each process uses memory, takes part in locking and scheduling, and a few hundred active backends compete for a handful of CPU cores. Applications that open thousands of short connections (web servers, microservices, serverless functions) can overwhelm the server even when the real work is light. A **connection pooler** sits between the applications and PostgreSQL, accepts many client connections and reuses a small number of server connections. **PgBouncer** is the most widely used lightweight pooler.'},
+{h:'Without and with a pooler'},
+{flow:['1000 application connections','PgBouncer (port 6432)','20 server connections','PostgreSQL (port 5432)']},
+{ul:['Connection setup in PostgreSQL costs a process fork, authentication and often TLS. A pooler keeps server connections open and reuses them.','More active backends than CPU cores does not increase throughput. It increases context switching and lock contention.','`max_connections` is not a pool size. A good starting value is a few hundred, with the pooler absorbing the rest.']},
+{h:'Pool modes'},
+{t:[['Mode','Server connection is returned to the pool','Use when','Limits'],['`session`','When the client disconnects','Tools that need full session state; low connection counts','Little saving if clients stay connected'],['`transaction`','When the transaction ends','**Most applications.** Best reuse','No session state between transactions: `SET` (without `LOCAL`), advisory session locks, `LISTEN`/`NOTIFY`, temporary tables, `WITH HOLD` cursors'],['`statement`','After every statement','Rare; autocommit only','Multi-statement transactions are not allowed']]},
+{note:'Protocol-level prepared statements work in transaction mode in PgBouncer 1.21 and later when `max_prepared_statements` is set to a non-zero value. With older versions, disable server-side prepared statements in the driver.'},
+{h:'Installing and configuring'},
+{code:`# RHEL / Rocky (PGDG repository)
+sudo dnf install -y pgbouncer
+# Debian / Ubuntu
+sudo apt install -y pgbouncer
+
+# /etc/pgbouncer/pgbouncer.ini
+[databases]
+appdb = host=127.0.0.1 port=5432 dbname=appdb
+* = host=127.0.0.1 port=5432
+
+[pgbouncer]
+listen_addr = 0.0.0.0
+listen_port = 6432
+auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
+auth_user = pgbouncer_auth
+auth_query = SELECT usename, passwd FROM pgbouncer.user_lookup($1)
+pool_mode = transaction
+default_pool_size = 20
+min_pool_size = 5
+reserve_pool_size = 5
+reserve_pool_timeout = 3
+max_client_conn = 2000
+max_db_connections = 50
+server_idle_timeout = 600
+server_lifetime = 3600
+query_wait_timeout = 120
+max_prepared_statements = 100
+admin_users = dba_admin
+stats_users = monitor
+ignore_startup_parameters = extra_float_digits`},
+{ul:['`auth_file` holds `"username" "SCRAM-SHA-256$..."` lines (copy the verifier from `pg_authid`). For many users prefer `auth_user` with `auth_query`, which looks the password up in the database, so you do not maintain a file.','`default_pool_size` is the number of **server** connections **per database and user pair**. `max_db_connections` caps the total per database.','Protect the file: `chown pgbouncer:pgbouncer`, `chmod 600`.']},
+{code:`-- in PostgreSQL: a low-privilege helper role and lookup function for auth_query
+CREATE ROLE pgbouncer_auth LOGIN PASSWORD 'change-me';
+CREATE SCHEMA pgbouncer;
+CREATE FUNCTION pgbouncer.user_lookup(p_usename text) RETURNS TABLE(usename name, passwd text)
+LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog AS
+$$ SELECT usename, passwd FROM pg_shadow WHERE usename = p_usename $$;
+REVOKE ALL ON FUNCTION pgbouncer.user_lookup(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION pgbouncer.user_lookup(text) TO pgbouncer_auth;
+
+# start it and connect through the pooler
+sudo systemctl enable --now pgbouncer
+psql -h 127.0.0.1 -p 6432 -U app_user appdb`},
+{p:'Add a matching line to `pg_hba.conf` for the host running PgBouncer. From PostgreSQL\'s point of view all client connections now arrive from that one address, so per-client address rules apply to PgBouncer\'s own `auth` settings instead.'},
+{h:'The admin console'},
+{code:`psql -h 127.0.0.1 -p 6432 -U dba_admin pgbouncer
+
+SHOW POOLS;        -- cl_active, cl_waiting, sv_active, sv_idle per pool
+SHOW STATS;        -- requests, bytes, average query and wait time
+SHOW CLIENTS;
+SHOW SERVERS;
+SHOW CONFIG;
+RELOAD;            -- re-read pgbouncer.ini without dropping clients
+PAUSE appdb;       -- wait for server connections to become idle (maintenance, switchover)
+RESUME appdb;`},
+{ul:['`cl_waiting` above zero for long means the pool is too small or queries are too slow.','`maxwait` in `SHOW POOLS` is the number of seconds the oldest client has waited.','Export these numbers to monitoring with `pgbouncer_exporter`.']},
+{h:'Sizing the pool'},
+{p:'A server can only run about as many queries at once as it has cores and I/O capacity. Start with **2 to 4 times the number of CPU cores** as the total server connections, then adjust by measuring throughput and `cl_waiting`. Check the sum:'},
+{code:`(number of pools x default_pool_size) + superuser_reserved_connections + replication and monitoring connections  <=  max_connections
+
+# example: 3 databases x 20 = 60, plus 3 reserved, plus 10 others = 73, so max_connections = 100 is enough`},
+{h:'Alternatives and placement'},
+{t:[['Tool','Notes'],['PgBouncer','Pooling only. Small, fast, very widely used'],['Pgpool-II','Pooling plus read/write splitting, load balancing and failover. More complex; more moving parts'],['Odyssey, PgCat','Multi-threaded poolers for very high connection counts'],['Application pool (HikariCP, pgx pool, SQLAlchemy)','Always use one in the application; add PgBouncer when many app instances multiply the connections'],['Managed proxies (RDS Proxy and similar)','The cloud equivalent']]},
+{ul:['Run PgBouncer on the database host or on a dedicated pair of hosts behind a virtual IP or load balancer. It is single-threaded; run several instances with `so_reuseport` to use more cores.','Let the HA tool (Patroni, repmgr) update the PgBouncer target after a failover, or point PgBouncer at a virtual IP.','Terminate TLS from clients with `client_tls_sslmode` and `client_tls_key_file`; use `server_tls_sslmode` toward PostgreSQL.']},
+{h:'Troubleshooting'},
+{t:[['Symptom','Cause','Fix'],['`no more connections allowed (max_client_conn)`','Client limit reached','Raise `max_client_conn` and the file-descriptor limit'],['`pooler error: server login has been failing`','Wrong password or `pg_hba.conf` rule for PgBouncer host','Check the PgBouncer log and the PostgreSQL log'],['`prepared statement ... does not exist`','Transaction mode with an old PgBouncer or driver prepared statements','Upgrade PgBouncer, set `max_prepared_statements`, or disable server-side prepares in the driver'],['Settings such as `search_path` or `timezone` are lost','Session state is not kept in transaction mode','Set them per role or per database, or use `SET LOCAL`'],['Clients stall','Pool too small, long transactions','`SHOW POOLS`; fix slow transactions; resize']]}
+],src:[['PgBouncer documentation','https://www.pgbouncer.org/config.html'],['PgBouncer usage','https://www.pgbouncer.org/usage.html'],['Connections and authentication',D+'runtime-config-connection.html']]};
+
+/* ---------------------------------------------------------------- 10:4 Partitioning */
+L['pg:10:4']={blocks:[
+{p:'**Partitioning** splits one large logical table into smaller physical tables called **partitions**. Applications still use one table name; PostgreSQL routes each row to the right partition and, for queries that filter on the partition key, reads only the partitions that can contain matching rows (**partition pruning**). The main benefits are operational: dropping a month of old data is an instant `DROP TABLE` instead of a huge `DELETE`, vacuum works on small pieces, and old data can move to cheaper storage.'},
+{h:'When to partition'},
+{ul:['Tables in the hundreds of GB or more, or larger than the available memory.','Data with a natural lifetime (logs, events, measurements, orders) and a retention rule.','Queries that nearly always filter on the same column, usually a date.','Do **not** partition small tables or tables where queries rarely use the key. You gain nothing and make planning slower.']},
+{h:'Partition methods'},
+{t:[['Method','Rows are placed by','Typical use'],['`RANGE`','A range of values; upper bound is exclusive','Dates, ids. The most common choice'],['`LIST`','A list of values','Region, tenant, status'],['`HASH`','`MODULUS` and `REMAINDER` of the key hash','Even spread when there is no natural range, or to spread I/O']]},
+{h:'Creating a range-partitioned table'},
+{code:`CREATE TABLE orders (
+    order_id    bigint GENERATED ALWAYS AS IDENTITY,
+    customer_id bigint      NOT NULL,
+    created_at  timestamptz NOT NULL,
+    total       numeric(12,2),
+    PRIMARY KEY (order_id, created_at)        -- the key must include the partition column
+) PARTITION BY RANGE (created_at);
+
+CREATE TABLE orders_2026_01 PARTITION OF orders
+    FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+CREATE TABLE orders_2026_02 PARTITION OF orders
+    FOR VALUES FROM ('2026-02-01') TO ('2026-03-01');
+
+-- rows that match no partition fail unless there is a default partition
+CREATE TABLE orders_default PARTITION OF orders DEFAULT;
+
+-- an index created on the parent is created on every partition
+CREATE INDEX idx_orders_customer ON orders (customer_id);
+
+-- LIST and HASH
+CREATE TABLE customers (id bigint, region text, name text) PARTITION BY LIST (region);
+CREATE TABLE customers_eu PARTITION OF customers FOR VALUES IN ('DE','FR','ES');
+
+CREATE TABLE sessions (id uuid, data jsonb) PARTITION BY HASH (id);
+CREATE TABLE sessions_p0 PARTITION OF sessions FOR VALUES WITH (MODULUS 4, REMAINDER 0);
+CREATE TABLE sessions_p1 PARTITION OF sessions FOR VALUES WITH (MODULUS 4, REMAINDER 1);
+-- ... p2 and p3`},
+{note:'The parent table holds **no rows**. Data, storage, vacuum and statistics live in the partitions. `UNIQUE` constraints and primary keys must include all partition key columns, because PostgreSQL has no global index across partitions.'},
+{h:'Partition pruning'},
+{code:`EXPLAIN SELECT * FROM orders WHERE created_at >= '2026-02-10' AND created_at < '2026-02-20';
+-- Append
+--   -> Seq Scan on orders_2026_02 ...      (only one partition is listed)`},
+{ul:['`enable_partition_pruning` is on by default.','Filter on the **bare partition column** with constants or parameters. `WHERE date_trunc(\'month\', created_at) = ...` or a cast on the column can prevent pruning.','With prepared statements, pruning also happens at execution time when parameters are known.','`enable_partitionwise_join` and `enable_partitionwise_aggregate` are off by default; turn them on for large joins between tables partitioned the same way.']},
+{h:'Maintenance: adding, attaching, detaching and dropping'},
+{flow:['Create next month\'s partition in advance','Load or attach data','Detach old partition','Archive it or drop it']},
+{code:`-- attach an existing table with minimal locking
+CREATE TABLE orders_2026_03 (LIKE orders INCLUDING DEFAULTS INCLUDING CONSTRAINTS);
+ALTER TABLE orders_2026_03 ADD CONSTRAINT chk_2026_03
+    CHECK (created_at >= '2026-03-01' AND created_at < '2026-04-01');   -- avoids a full scan on attach
+-- (load the data here)
+ALTER TABLE orders ATTACH PARTITION orders_2026_03
+    FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
+ALTER TABLE orders_2026_03 DROP CONSTRAINT chk_2026_03;
+
+-- retention: detach without blocking queries (version 14+), then archive or drop
+ALTER TABLE orders DETACH PARTITION orders_2025_01 CONCURRENTLY;
+DROP TABLE orders_2025_01;
+
+-- inspect the structure
+SELECT * FROM pg_partition_tree('orders');
+\\d+ orders`},
+{ul:['**Create partitions ahead of time.** If no partition exists for a new row and there is no default partition, inserts fail. Schedule creation with `pg_cron`, a cron job, or the `pg_partman` extension (it creates and drops partitions by policy).','A **default partition** catches stray rows but can slow `ATTACH` (it must be scanned for conflicting rows). Monitor it and keep it empty.','`ANALYZE` of the **parent** is not run by autovacuum. Run `ANALYZE orders;` yourself (for example after a bulk load) so the planner has statistics for the whole hierarchy. Autovacuum does handle each partition separately.']},
+{h:'Moving an existing table to partitions'},
+{flow:['Create new partitioned table with the same columns','Create partitions that cover the existing data','Copy in batches or attach the old table as a partition','Rename tables in one short transaction','Verify counts and drop the old table']},
+{code:`BEGIN;
+ALTER TABLE orders RENAME TO orders_old;
+-- (create the partitioned table "orders" and its partitions here)
+ALTER TABLE orders ATTACH PARTITION orders_old
+    FOR VALUES FROM ('2020-01-01') TO ('2026-01-01');   -- needs a matching CHECK constraint to avoid a scan
+COMMIT;`},
+{h:'Limits and pitfalls'},
+{t:[['Pitfall','Details','Advice'],['Too many partitions','Planning time and memory grow with partition count; thousands hurt','Aim for tens to a few hundred; use monthly rather than daily partitions unless volume demands it'],['No global unique index','Uniqueness is only enforced per partition, including the key','Include the partition key, or enforce uniqueness in the application'],['Updates that change the partition key','The row is moved to another partition (a delete plus an insert)','Avoid updating the partition column'],['Queries without the partition key','All partitions are scanned','Always filter on the key; or do not partition'],['Foreign keys','A partitioned table can reference and be referenced (version 12+), but pay attention to the key columns','Test with realistic volume'],['Different storage per partition','Possible with `TABLESPACE` on each partition','Put old partitions on cheaper disks'],['Backups','`pg_dump` dumps partitions as separate tables; you can dump or restore one partition','Test restore of a single partition']]},
+{note:'Practice: create a range-partitioned `events` table, insert a million rows with `generate_series`, run `EXPLAIN` with and without a date filter, then detach and drop the oldest partition and note how long it takes compared with `DELETE`.'}
+],src:[['Table Partitioning',D+'ddl-partitioning.html'],['CREATE TABLE ... PARTITION BY',D+'sql-createtable.html'],['ALTER TABLE ... ATTACH / DETACH PARTITION',D+'sql-altertable.html'],['pg_partman','https://github.com/pgpartman/pg_partman']]};
 })();
