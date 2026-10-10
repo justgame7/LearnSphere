@@ -3645,6 +3645,7 @@ const LAZY={rs:si=>{const n=String(si+1).padStart(2,'0');return['rs-common.js','
  tf:si=>{const n=String(si+1).padStart(2,'0');return['tf-common.js','tf-s'+n+'.js','tf-q'+n+'.js']},
  'ora-core':si=>{const n=String(si+1).padStart(2,'0');return['ora-common.js','ora-core-s'+n+'.js','ora-core-q'+n+'.js']}};
 for(const sub of['bkp','perf','sec','upg','rac','exa','dg','gg'])LAZY['ora-'+sub]=si=>{const n=String(si+1).padStart(2,'0');return['ora-common.js','ora-'+sub+'-s'+n+'.js','ora-'+sub+'-q'+n+'.js']};
+for(const sub of['core'])LAZY['mss-'+sub]=si=>{const n=String(si+1).padStart(2,'0');return['mss-common.js','mss-'+sub+'-s'+n+'.js','mss-'+sub+'-q'+n+'.js']};
 const _ld={},_rdy={};
 function ensure(id,si){const k=id+':'+si;if(_ld[k])return _ld[k];
  const one=f=>_ld[f]||(_ld[f]=new Promise(r=>{const s=document.createElement('script');s.src=f;s.onload=s.onerror=()=>r();document.head.appendChild(s)}));

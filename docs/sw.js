@@ -1,5 +1,5 @@
 /* LearnSphere service worker. Bump VERSION on every release so installed apps update. */
-const VERSION = 'v20';
+const VERSION = 'v21';
 const SHELL = `ls-shell-${VERSION}`;
 const RUNTIME = `ls-runtime-${VERSION}`;
 const ASSETS = [
@@ -14,7 +14,8 @@ const ASSETS = [
   './ora-gg-s01.js', './ora-gg-q01.js', './ora-gg-s02.js', './ora-gg-q02.js', './ora-gg-s03.js', './ora-gg-q03.js', './ora-gg-s04.js', './ora-gg-q04.js', './ora-gg-s05.js', './ora-gg-q05.js', './ora-gg-s06.js', './ora-gg-q06.js', './ora-gg-s07.js', './ora-gg-q07.js', './ora-gg-s08.js', './ora-gg-q08.js', './ora-gg-s09.js', './ora-gg-q09.js', './ora-gg-s10.js', './ora-gg-q10.js', './ora-gg-s11.js', './ora-gg-q11.js', './ora-gg-s12.js', './ora-gg-q12.js', './ora-gg-s13.js', './ora-gg-q13.js',
   './ora-bkp-s01.js', './ora-bkp-q01.js', './ora-bkp-s02.js', './ora-bkp-q02.js', './ora-bkp-s03.js', './ora-bkp-q03.js', './ora-bkp-s04.js', './ora-bkp-q04.js', './ora-bkp-s05.js', './ora-bkp-q05.js', './ora-bkp-s06.js', './ora-bkp-q06.js', './ora-bkp-s07.js', './ora-bkp-q07.js', './ora-bkp-s08.js', './ora-bkp-q08.js', './ora-bkp-s09.js', './ora-bkp-q09.js', './ora-bkp-s10.js', './ora-bkp-q10.js', './ora-perf-s01.js', './ora-perf-q01.js', './ora-perf-s02.js', './ora-perf-q02.js', './ora-perf-s03.js', './ora-perf-q03.js', './ora-perf-s04.js', './ora-perf-q04.js', './ora-perf-s05.js', './ora-perf-q05.js', './ora-perf-s06.js', './ora-perf-q06.js', './ora-perf-s07.js', './ora-perf-q07.js', './ora-perf-s08.js', './ora-perf-q08.js', './ora-perf-s09.js', './ora-perf-q09.js', './ora-perf-s10.js', './ora-perf-q10.js', './ora-perf-s11.js', './ora-perf-q11.js', './ora-sec-s01.js', './ora-sec-q01.js', './ora-sec-s02.js', './ora-sec-q02.js', './ora-sec-s03.js', './ora-sec-q03.js', './ora-sec-s04.js', './ora-sec-q04.js', './ora-sec-s05.js', './ora-sec-q05.js', './ora-sec-s06.js', './ora-sec-q06.js', './ora-sec-s07.js', './ora-sec-q07.js', './ora-sec-s08.js', './ora-sec-q08.js', './ora-sec-s09.js', './ora-sec-q09.js', './ora-upg-s01.js', './ora-upg-q01.js', './ora-upg-s02.js', './ora-upg-q02.js', './ora-upg-s03.js', './ora-upg-q03.js', './ora-upg-s04.js', './ora-upg-q04.js', './ora-upg-s05.js', './ora-upg-q05.js', './ora-upg-s06.js', './ora-upg-q06.js', './ora-upg-s07.js', './ora-upg-q07.js',
   './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png',
-  './icons/maskable-512.png', './icons/apple-touch-icon.png'
+  './icons/maskable-512.png', './icons/apple-touch-icon.png',
+  './mss-common.js', './mss-core-s01.js', './mss-core-q01.js', './mss-core-s02.js', './mss-core-q02.js', './mss-core-s03.js', './mss-core-q03.js', './mss-core-s04.js', './mss-core-q04.js', './mss-core-s05.js', './mss-core-q05.js', './mss-core-s06.js', './mss-core-q06.js', './mss-core-s07.js', './mss-core-q07.js', './mss-core-s08.js', './mss-core-q08.js', './mss-core-s09.js', './mss-core-q09.js', './mss-core-s10.js', './mss-core-q10.js',
 ];
 
 self.addEventListener('install', e => {
