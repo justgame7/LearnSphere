@@ -73,6 +73,53 @@ h1{font-size:clamp(26px,5vw,38px);letter-spacing:-1px;line-height:1.1;margin:14p
 .quiz .chk{border-radius:50%}.quiz .t{color:var(--mut)}
 .pn{display:flex;justify-content:space-between;gap:10px;margin-top:22px;flex-wrap:wrap}
 h2{font-size:14px;font:600 12px var(--mono);letter-spacing:.8px;text-transform:uppercase;color:var(--mut);margin:26px 0 12px}
+.h2row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:26px 0 12px}.h2row h2{margin:0}
+.dens{width:32px;height:32px;border-radius:10px;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center;color:var(--mut)}
+.dens svg{width:14px;height:14px}.dens:hover,.dens.on{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+.dens.on{background:color-mix(in srgb,var(--accent) 10%,var(--panel))}
+body.compact .grid.courses{gap:8px}
+.ib{position:relative}
+.sq{width:100%;margin:14px 0 6px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;color:var(--tx);font:15px var(--sans);outline:none}
+.sq:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}
+.sq-scope{font:600 11px var(--mono);color:var(--mut);margin:0 0 10px}
+.sq-scope b{color:var(--accent)}
+.hc mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;border-radius:3px;padding:0 1px}
+.hm{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.55);backdrop-filter:blur(3px);display:none;align-items:flex-start;justify-content:center;padding:max(18px,env(safe-area-inset-top,0px)) 14px 14px}
+.hm.open{display:flex}
+.hd{width:min(640px,100%);max-height:calc(100vh - 36px);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:18px;box-shadow:0 24px 60px -20px rgba(0,0,0,.6)}
+.hd-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.hd-top h2{margin:0;font:700 18px var(--sans);letter-spacing:-.3px;text-transform:none;color:var(--tx)}
+.hd-top p{margin:2px 0 0;font:12px var(--mono);color:var(--mut)}
+.hd-tb{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:14px 0 12px}
+.hd-f{display:flex;gap:6px;flex-wrap:wrap}
+.hf{font:600 11px var(--mono);color:var(--mut);background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:6px 12px}
+.hf:hover{color:var(--tx)}.hf.on{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--line));background:color-mix(in srgb,var(--accent) 9%,var(--panel2))}
+.hclr{font:600 11px var(--mono);color:var(--mut);border:1px solid var(--line);border-radius:20px;padding:6px 12px}
+.hclr:hover{color:#ff4d6d;border-color:#ff4d6d}
+.hl{overflow:auto;flex:1;min-height:0}
+.hi{display:flex;gap:12px}
+.hr{position:relative;width:16px;flex:none;display:flex;justify-content:center}
+.hr:before{content:'';position:absolute;top:18px;bottom:0;left:7px;width:1px;background:var(--line)}
+.hi:last-child .hr:before{display:none}
+.hdot{width:15px;height:15px;border-radius:50%;margin-top:3px;box-shadow:0 0 0 3px var(--panel);background:var(--c)}
+.hc{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:11px;cursor:pointer}
+.hc:hover{border-color:color-mix(in srgb,var(--c) 55%,var(--line))}
+.hc-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.hc-t{font-weight:600;font-size:14px;line-height:1.3}
+.hc-s{font:11.5px var(--mono);color:var(--mut);margin-top:3px}
+.hc-time{font:600 10.5px var(--mono);color:var(--mut);white-space:nowrap}
+.hc-tags{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.hempty{text-align:center;padding:38px 16px;color:var(--mut)}
+.hempty b{display:block;color:var(--tx);font-size:14px;margin:8px 0 5px}
+.hundo{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:30;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px;display:flex;gap:14px;align-items:center;font-size:13px;box-shadow:0 12px 30px -10px rgba(0,0,0,.6)}
+.hundo button{color:var(--accent);font-weight:700}
+body.compact .grid.courses .card{display:flex;align-items:center;gap:12px;padding:10px 12px;animation:none}
+body.compact .grid.courses .card:hover{transform:none}
+body.compact .grid.courses .card:before{width:3px;height:100%;inset:0 auto 0 0}
+body.compact .grid.courses .ico{width:34px;height:34px;border-radius:10px;font-size:15px;flex:none}
+body.compact .grid.courses .card h3{margin:0;font-size:15px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.compact .grid.courses .card p,body.compact .grid.courses .meta,body.compact .grid.courses .pct{display:none}
+body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:0;height:3px;border-radius:0}
 @media(max-width:520px){.ld{padding-left:14px}.hero{padding:18px}}
 @media(max-width:480px){
 .hero.course{display:grid;grid-template-columns:1fr auto;column-gap:14px;align-items:center}
@@ -146,8 +193,19 @@ h2{font-size:14px;font:600 12px var(--mono);letter-spacing:.8px;text-transform:u
 <body>
 <header><div class="bar"><div class="logo" onclick="location.hash='#/'"><i>L</i>LearnSphere</div><div class="sp"></div>
 <button class="ib" id="inst" title="Install app" aria-label="Install app" hidden style="width:auto;padding:0 12px;font:600 12px var(--mono)">Install</button>
+<button class="ib" id="srch" title="Search" aria-label="Search" onclick="openSearch()"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg></button>
+<button class="ib" id="hist" title="Learning history" aria-label="Learning history" onclick="openHist()"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/></svg></button>
 <button class="ib" id="th" title="Toggle theme" aria-label="Toggle theme">◐</button></div></header>
 <main class="wrap" id="app"></main>
+<div class="hm" id="srchM" onclick="if(event.target===this)closeSearch()"><div class="hd" role="dialog" aria-modal="true" aria-label="Search">
+ <div class="hd-top"><div><h2>🔍 Search</h2></div><button class="ib" aria-label="Close" onclick="closeSearch()">×</button></div>
+ <input class="sq" id="sqIn" type="search" placeholder="Search lectures…" autocomplete="off" oninput="renderSearch()">
+ <div class="sq-scope" id="sqScope"></div>
+ <div class="hl" id="sqL"></div></div></div>
+<div class="hm" id="histM" onclick="if(event.target===this)closeHist()"><div class="hd" role="dialog" aria-modal="true" aria-labelledby="histT">
+ <div class="hd-top"><div><h2 id="histT">🕘 Learning history</h2><p id="histS">—</p></div><button class="ib" aria-label="Close" onclick="closeHist()">×</button></div>
+ <div class="hd-tb"><div class="hd-f" id="histF"></div><button class="hclr" id="histClr" onclick="clearHist()">Clear</button></div>
+ <div class="hl" id="histL"></div></div></div>
 <script src="pg-lesson.js"></script>
 <script src="pg-quiz.js"></script>
 <script>
@@ -3560,13 +3618,88 @@ function toggleAddl(si){ADDL_OPEN[si]=!ADDL_OPEN[si];const e=document.getElement
 function openAddl(si,cid){ADDL_OPEN[si]=true;go('#/c/'+cid+'/'+si);setTimeout(()=>{const e=document.getElementById('addl');if(e)e.scrollIntoView({behavior:'smooth',block:'start'})},160)}
 const esc=s=>s.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
 const go=h=>location.hash=h;
+/* ---------- Learning history (lessons opened, marked done, quizzes finished; last 50, kept on this device) ---------- */
+const HK='ls_hist_v1',HMAX=50;let hFilter='all',hCleared=null;
+const hLoad=()=>{try{const a=JSON.parse(localStorage.getItem(HK));return Array.isArray(a)?a.filter(x=>x&&x.id&&x.ts&&x.cid):[]}catch(e){return[]}};
+const hSave=a=>{try{localStorage.setItem(HK,JSON.stringify(a.slice(0,HMAX)))}catch(e){}};
+function recHist(type,c,si,li,extra){
+ try{const t=type==='quiz'?(c.sections[si].q||c.sections[si].t):c.sections[si].l[li][0];
+  const a=hLoad(),top=a[0];
+  if(type==='view'&&top&&top.type==='view'&&top.cid===c.id&&top.si===si&&top.li===li){top.ts=Date.now()}
+  else a.unshift(Object.assign({id:'h'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),ts:Date.now(),type,cid:c.id,cn:c.name,col:c.color,si,li:li==null?null:li,t,st:c.sections[si].t},extra||{}));
+  hSave(a);if(document.getElementById('histM').classList.contains('open'))renderHist()}catch(e){}}
+const HT={view:{l:'Opened',i:'\uD83D\uDCD6'},done:{l:'Completed',i:'\u2713'},quiz:{l:'Quiz',i:'\u2753'}};
+const hRel=ts=>{const s=Math.round((Date.now()-ts)/1000);if(s<5)return'just now';if(s<60)return s+'s ago';const m=Math.round(s/60);if(m<60)return m+'m ago';const h=Math.round(m/60);if(h<24)return h+'h ago';const d=Math.round(h/24);return d<7?d+'d ago':new Date(ts).toLocaleDateString(undefined,{month:'short',day:'numeric'})};
+function hHref(e){return e.type==='quiz'?`#/c/${e.cid}/${e.si}/quiz`:`#/c/${e.cid}/${e.si}/${e.li}`}
+function renderHist(){
+ const all=hLoad(),list=hFilter==='all'?all:all.filter(e=>e.type===hFilter);
+ document.getElementById('histS').textContent=all.length?`${all.length} of the last ${HMAX} activities \u00b7 kept on this device`:`Kept on this device \u2014 up to ${HMAX} activities`;
+ document.getElementById('histClr').style.display=all.length?'':'none';
+ document.getElementById('histF').innerHTML=[['all','All'],['view','Opened'],['done','Completed'],['quiz','Quizzes']].map(f=>`<button class="hf ${hFilter===f[0]?'on':''}" onclick="hFilter='${f[0]}';renderHist()">${f[1]}</button>`).join('');
+ const L=document.getElementById('histL');
+ if(!all.length){L.innerHTML='<div class="hempty">\uD83D\uDD58<b>No history yet</b>Open a lesson, mark one as done or finish a quiz \u2014 it will show up here.</div>';return}
+ if(!list.length){L.innerHTML='<div class="hempty">\uD83D\uDD0D<b>Nothing for this filter</b>Try a different filter.</div>';return}
+ L.innerHTML=list.map(e=>{const m=HT[e.type]||HT.view;
+  return `<div class="hi" style="--c:${e.col||'var(--accent)'}"><div class="hr"><span class="hdot"></span></div><div class="hc" onclick="goHist('${e.id}')"><div class="hc-top"><div><div class="hc-t">${esc(e.t)}</div><div class="hc-s">${esc(e.cn)} \u203a ${esc(e.st)}</div></div><span class="hc-time" title="${new Date(e.ts).toLocaleString()}">${hRel(e.ts)}</span></div>
+  <div class="hc-tags"><span class="chip">${m.i} ${m.l}</span>${e.type==='quiz'&&e.pct!=null?`<span class="chip ${e.pct>=QPASS?'live':''}">${e.pct}%</span>`:''}</div></div></div>`}).join('')}
+function openHist(){hFilter='all';document.getElementById('histM').classList.add('open');renderHist()}
+function closeHist(){document.getElementById('histM').classList.remove('open')}
+function goHist(id){const e=hLoad().find(x=>x.id===id);if(!e)return;closeHist();go(hHref(e))}
+function clearHist(){hCleared=hLoad();hSave([]);renderHist();
+ const o=document.getElementById('hundo');if(o)o.remove();
+ const u=document.createElement('div');u.className='hundo';u.id='hundo';u.innerHTML='<span>History cleared</span><button>Undo</button>';
+ u.querySelector('button').onclick=()=>{if(hCleared){hSave(hCleared);hCleared=null;renderHist()}u.remove()};
+ document.body.appendChild(u);setTimeout(()=>{u.remove();hCleared=null},6000)}
+/* ---------- Search (scoped to where it was opened: home -> all courses, course -> that course, section -> that section) ---------- */
+let SQ=null;
+function sqScope(){
+ const[,r,id,si]=location.hash.split('/');
+ const live=x=>x&&!x.hold&&(x.sections.length||x.subs);
+ const c=r==='c'?COURSES.find(x=>x.id===id):null;
+ if(!live(c))return{label:'All courses',cs:COURSES.filter(live),kind:'all'};
+ if(c.subs)return{label:c.name,cs:[c,...subsOf(c).filter(live)],kind:'course'};
+ if(si!==undefined&&c.sections[+si])return{label:c.sections[+si].t,sub:c.name,cs:[c],si:+si,kind:'section'};
+ return{label:c.name,cs:[c],kind:'course'};
+}
+function openSearch(){
+ SQ=sqScope();const inp=document.getElementById('sqIn');inp.value='';
+ document.getElementById('sqScope').innerHTML='Searching in <b>'+esc(SQ.label)+'</b>'+(SQ.sub?' \u00b7 '+esc(SQ.sub):'');
+ inp.placeholder=SQ.kind==='all'?'Search all courses\u2026':SQ.kind==='course'?'Search this course\u2026':'Search this section\u2026';
+ document.getElementById('srchM').classList.add('open');renderSearch();setTimeout(()=>inp.focus(),30)}
+function closeSearch(){document.getElementById('srchM').classList.remove('open')}
+const sqHi=(t,ws)=>{let h=esc(t);ws.forEach(w=>{h=h.replace(new RegExp('('+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')(?![^<]*>)','ig'),'<mark>$1</mark>')});return h};
+function renderSearch(){
+ const L=document.getElementById('sqL'),q=document.getElementById('sqIn').value.trim().toLowerCase();
+ if(!q){L.innerHTML='<div class="hempty">\U0001F50D<b>Type to search</b>Matches lecture titles, descriptions and section names.</div>';return}
+ const ws=q.split(/\s+/).filter(Boolean),out=[];
+ const sc=(txt,desc)=>{const t=txt.toLowerCase(),d=(desc||'').toLowerCase();
+  if(!ws.every(w=>t.includes(w)||d.includes(w)))return 0;
+  let n=1;if(t.includes(q))n+=6;if(t.startsWith(q))n+=3;ws.forEach(w=>{if(t.includes(w))n+=2});return n};
+ SQ.cs.forEach(c=>{
+  if(SQ.kind!=='section'){const n=sc(c.name,c.blurb);if(n&&SQ.kind==='all')out.push({n:n+4,t:c.name,s:c.blurb||'',tag:'Course',href:'#/c/'+c.id,col:c.color})}
+  c.sections.forEach((s,si)=>{
+   if(SQ.si!==undefined&&si!==SQ.si)return;
+   if(SQ.kind!=='section'){const n=sc(s.t,'');if(n)out.push({n:n+2,t:s.t,s:c.name,tag:'Section',href:'#/c/'+c.id+'/'+si,col:c.color})}
+   s.l.forEach((x,li)=>{const n=sc(x[0],x[2]);if(n)out.push({n,t:x[0],s:c.name+' \u203a '+s.t,tag:isX(x)?'Additional':'Lecture',href:'#/c/'+c.id+'/'+si+'/'+li,col:c.color,d:x[2]})})})});
+ out.sort((a,b)=>b.n-a.n);
+ if(!out.length){L.innerHTML='<div class="hempty">\U0001F937<b>No matches</b>Nothing in '+esc(SQ.label)+' matches \u201c'+esc(q)+'\u201d.</div>';return}
+ const shown=out.slice(0,60);
+ L.innerHTML=shown.map((e,i)=>`<div class="hi" style="--c:${e.col||'var(--accent)'}"><div class="hr"><span class="hdot"></span></div><div class="hc" data-i="${i}"><div class="hc-t">${sqHi(e.t,ws)}</div><div class="hc-s">${sqHi(e.s,ws)}</div><div class="hc-tags"><span class="chip">${e.tag}</span></div></div></div>`).join('')+(out.length>60?`<div class="hempty" style="padding:8px">Showing 60 of ${out.length} \u2014 refine your search.</div>`:'');
+ L.querySelectorAll('.hc').forEach(el=>el.onclick=()=>{const e=shown[+el.dataset.i];closeSearch();go(e.href)})}
+addEventListener('keydown',e=>{if(e.key==='Escape'){closeHist();closeSearch()}});
+
+/* ---------- Home card density (expanded / compact) ---------- */
+const isCompact=()=>document.body.classList.contains('compact');
+(function(){try{if(localStorage.getItem('ls_dens')==='compact')document.body.classList.add('compact')}catch(e){}})();
+function toggleDensity(){const on=document.body.classList.toggle('compact');try{localStorage.setItem('ls_dens',on?'compact':'expanded')}catch(e){}
+ const b=document.getElementById('dens');if(b){b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);b.title=on?'Switch to expanded cards':'Switch to compact cards'}}
 /* ---------- VIEWS ---------- */
 function vCourses(){
  const live=COURSES.filter(c=>!c.hold&&c.sections.length&&dn(c)&&pct(c)<100)[0];
  let h=`<h1>Learn by course.<br><span style="color:var(--accent)">Pick up where you stopped.</span></h1><p class="sub">Structured, bite-sized lessons with progress saved on this device.</p>`;
  if(live){const n=nextUp(live),L=live.sections[n[0]].l[n[1]];
   h+=`<div class="hero" style="--c:${live.color}"><div class="ring" style="--p:${pct(live)}"><span>${pct(live)}%</span></div><div class="tx"><span class="chip live">● CONTINUE</span><h3 style="margin:10px 0 2px;font-size:22px">${live.name}</h3><div style="color:var(--mut)">Up next: ${esc(L[0])}</div><div class="row"><button class="btn" onclick="go('#/c/${live.id}/${n[0]}')">Resume ▸</button></div></div></div>`}
- h+=`<h2>Courses</h2><div class="grid">`+COURSES.filter(c=>!c.parent).map((c,i)=>{const sb=!!c.subs,on=(c.sections.length||sb)&&!c.hold,N=sb?aCnt(c):cnt(c),D=sb?aDn(c):dn(c),Pc=sb?aPct(c):pct(c);
+ h+=`<div class="h2row"><h2>Courses</h2><button class="dens${isCompact()?' on':''}" id="dens" onclick="toggleDensity()" title="${isCompact()?'Switch to expanded cards':'Switch to compact cards'}" aria-label="Toggle compact cards" aria-pressed="${isCompact()}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1.2"/><rect x="3" y="10" width="18" height="4" rx="1.2"/><rect x="3" y="16" width="18" height="4" rx="1.2"/></svg></button></div><div class="grid courses">`+COURSES.filter(c=>!c.parent).map((c,i)=>{const sb=!!c.subs,on=(c.sections.length||sb)&&!c.hold,N=sb?aCnt(c):cnt(c),D=sb?aDn(c):dn(c),Pc=sb?aPct(c):pct(c);
   return `<div class="card ${on?'':'off'}" style="--c:${c.color};animation-delay:${i*70}ms" ${on?`onclick="go('#/c/${c.id}')"`:''}><div class="ico">${c.tag}</div><h3>${c.name}</h3><p>${c.blurb}</p>
   <div class="meta">${on?(sb?`<span class="chip">${c.subs.length} sub-courses</span>`:`<span class="chip">${c.sections.length} sections</span>`)+`<span class="chip">${N} lectures</span>`:`<span class="chip">Curriculum coming soon</span>`}</div>
   ${on?`<div class="bt"><b style="width:${Pc}%"></b></div><div class="pct"><span>${D}/${N} done</span><span>${Pc}%</span></div>`:''}</div>`}).join('')+`</div>`;
@@ -3635,7 +3768,7 @@ function vLesson(c,si,li){
  h+=`<div class="row" style="margin-top:26px"><button id="dnb" class="btn ${d?'ghost':''}" onclick="tog('${c.id}',${si},${li})">${d?'✓ Completed (undo)':'Mark as done'}</button>${!isX(x)&&xIdx(s).length&&coreIdx(s).slice(-1)[0]===li?`<button class="btn ghost" onclick="openAddl(${si},'${c.id}')">+ Additional content for this section ▸</button>`:''}</div>
  <div class="pn">${pv?`<button class="btn ghost" onclick="go('#/c/${c.id}/${pv[0]}/${pv[1]}')">◂ ${esc(c.sections[pv[0]].l[pv[1]][0])}</button>`:(isX(x)?`<button class="btn ghost" onclick="go('#/c/${c.id}/${si}')">◂ Back to section</button>`:'<span></span>')}${nx?`<button class="btn" onclick="go('#/c/${c.id}/${nx[0]}/${nx[1]}')">${esc(c.sections[nx[0]].l[nx[1]][0])} ▸</button>`:''}</div></div>`;
  return h}
-function tog(cid,si,li){stopTrack();const k=key(si,li);P[cid]=P[cid]||{};if(P[cid][k])delete P[cid][k];else P[cid][k]=1;save();
+function tog(cid,si,li){stopTrack();const k=key(si,li);P[cid]=P[cid]||{};if(P[cid][k])delete P[cid][k];else{P[cid][k]=1;const hc=COURSES.find(x=>x.id===cid);if(hc)recHist('done',hc,si,li)}save();
  const open=[...document.querySelectorAll('.lec.open')].map(e=>e.id);render(true,true);open.forEach(i=>{const e=document.getElementById(i);e&&e.classList.add('open')})}
 /* Lazy lesson files: a course listed here loads its helper + one lesson file and one quiz file per section the first time that section is opened.
    Missing files (sections not written yet) are treated as loaded so the page still renders its overview text. */
@@ -3688,7 +3821,7 @@ function qNext(){if(!QS||!QS.checked)return;
  if(QS.i<QS.qs.length-1){QS.i++;QS.sel=[];QS.checked=false}
  else{QS.end=true;const c=qCourse(),n=QS.res.filter(r=>r.ok).length,pct=Math.round(n/QS.qs.length*100);
   QZ[c.id]=QZ[c.id]||{};const sc=QZ[c.id][QS.si]=QZ[c.id][QS.si]||{},r=sc[QS.mode]||{best:0,att:0};
-  sc[QS.mode]={best:Math.max(r.best,pct),att:r.att+1,last:pct};qSave()}
+  sc[QS.mode]={best:Math.max(r.best,pct),att:r.att+1,last:pct};qSave();recHist('quiz',c,QS.si,null,{pct})}
  qRefresh()}
 const qLink=(c,si,li)=>`<a onclick="go('#/c/${c.id}/${si}/${li}')" style="cursor:pointer;text-decoration:underline">${esc(c.sections[si].l[li][0])}</a>`;
 function vQuiz(c,si){
@@ -3724,7 +3857,7 @@ function render(keep,noTrack){
  if(r==='c'&&c&&LAZY[c.id]&&si!==undefined&&!_rdy[c.id+':'+si]){app.innerHTML='<p class="sub">Loading lessons…</p>';ensure(c.id,+si).then(()=>{if(location.hash.split('/')[2]===id)render(keep,noTrack)});return}
  app.innerHTML=r==='c'&&c&&c.subs?vSubCourses(c):r==='c'&&c?(li==='quiz'?vQuiz(c,+si):li!==undefined?vLesson(c,+si,+li):si!==undefined?vSub(c,+si):vTopics(c)):vCourses();
  if(!keep)window.scrollTo(0,0);
- if(!noTrack&&r==='c'&&c&&!c.subs&&li!==undefined&&c.sections[+si]&&c.sections[+si].l[+li])startTrack(c,+si,+li)}
+ if(!noTrack&&r==='c'&&c&&!c.subs&&li!==undefined&&c.sections[+si]&&c.sections[+si].l[+li]){startTrack(c,+si,+li);recHist('view',c,+si,+li)}}
 addEventListener('hashchange',()=>render());
 $('#th').onclick=()=>{const r=document.documentElement,t=r.dataset.theme==='light'?'dark':'light';r.dataset.theme=t;try{localStorage.setItem('ls_theme',t)}catch(e){}const m=document.querySelector('meta[name=theme-color]');if(m)m.content=t==='light'?'#F4F6FA':'#0A0C10'};
 render();
