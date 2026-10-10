@@ -202,6 +202,18 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 .rsearch{width:100%;padding:12px 14px;margin:0 0 16px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--tx);font:inherit}.rsearch:focus{outline:2px solid var(--accent);border-color:transparent}
 .rsel{display:block;width:100%;padding:12px 40px 12px 14px;margin:0 0 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238A93A3' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center;color:var(--tx);font:inherit;font-weight:600;cursor:pointer;-webkit-appearance:none;appearance:none}.rsel:focus{outline:2px solid var(--accent);border-color:transparent}.rsel option{background:var(--panel);color:var(--tx)}
 .rsee{margin:0 0 14px;color:var(--mut);font-size:13px}.rsee a{cursor:pointer;text-decoration:underline;margin-right:10px}.rnone{display:none;color:var(--mut)}
+/* quick reference on phones: every table row becomes a card, so nothing scrolls sideways */
+@media(max-width:640px){
+#refbody .tw{overflow:visible;border:0;background:none;border-radius:0}
+#refbody .tw table{display:block;width:100%;min-width:0}
+#refbody .tw thead{display:none}
+#refbody .tw tbody{display:block}
+#refbody .tw tr{display:block;margin:0 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+#refbody .tw td{display:block;border:0;padding:3px 0;min-width:0;width:auto;white-space:normal;overflow-wrap:anywhere}
+#refbody .tw td:empty{display:none}
+#refbody .tw td:first-child{font-weight:700;padding-bottom:6px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+#refbody .tw td:not(:first-child):before{content:attr(data-l);display:block;font:600 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin-top:4px}
+}
 
 .ls{max-width:var(--rw,760px);font-size:calc(15px*var(--rscale,1))}
 .ls p{color:var(--tx);margin:0 0 14px;line-height:1.65}
@@ -4011,7 +4023,7 @@ function blk(b){
  if(b.p)return `<p>${fx(b.p)}</p>`;
  if(b.h)return `<h4>${fx(b.h)}</h4>`;
  if(b.ul)return `<ul>${b.ul.map(i=>`<li>${fx(i)}</li>`).join('')}</ul>`;
- if(b.t)return `<div class="tw"><table><thead><tr>${b.t[0].map(c=>`<th>${fx(c)}</th>`).join('')}</tr></thead><tbody>${b.t.slice(1).map(r=>`<tr>${r.map(c=>`<td>${fx(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+ if(b.t)return `<div class="tw"><table><thead><tr>${b.t[0].map(c=>`<th>${fx(c)}</th>`).join('')}</tr></thead><tbody>${b.t.slice(1).map(r=>`<tr>${r.map((c,ci)=>`<td data-l="${esc(String(b.t[0][ci]||'').replace(/`/g,''))}">${fx(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
  if(b.flow)return `<div class="fl">${b.flow.map((f,i,a)=>`<span class="sw"><span class="st"><b>${i+1}</b><span class="tx">${fx(f)}</span></span>${i<a.length-1?'<span class="ar" aria-hidden="true">→</span>':''}</span>`).join('')}</div>`;
  if(b.code)return `<div class="cb"><button onclick="cpy(this)">Copy</button><pre>${esc(b.code)}</pre></div>`;
  if(b.svg)return `<div class="dg">${b.svg}</div>`;
