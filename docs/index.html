@@ -202,18 +202,18 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 .rsearch{width:100%;padding:12px 14px;margin:0 0 16px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--tx);font:inherit}.rsearch:focus{outline:2px solid var(--accent);border-color:transparent}
 .rsel{display:block;width:100%;padding:12px 40px 12px 14px;margin:0 0 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238A93A3' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center;color:var(--tx);font:inherit;font-weight:600;cursor:pointer;-webkit-appearance:none;appearance:none}.rsel:focus{outline:2px solid var(--accent);border-color:transparent}.rsel option{background:var(--panel);color:var(--tx)}
 .rsee{margin:0 0 14px;color:var(--mut);font-size:13px}.rsee a{cursor:pointer;text-decoration:underline;margin-right:10px}.rnone{display:none;color:var(--mut)}
-/* quick reference on phones: every table row becomes a card, so nothing scrolls sideways */
-@media(max-width:640px){
-#refbody .tw{overflow:visible;border:0;background:none;border-radius:0}
-#refbody .tw table{display:block;width:100%;min-width:0}
-#refbody .tw thead{display:none}
-#refbody .tw tbody{display:block}
-#refbody .tw tr{display:block;margin:0 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
-#refbody .tw td{display:block;border:0;padding:3px 0;min-width:0;width:auto;white-space:normal;overflow-wrap:anywhere}
-#refbody .tw td:empty{display:none}
-#refbody .tw td:first-child{font-weight:700;padding-bottom:6px;margin-bottom:4px;border-bottom:1px solid var(--line)}
-#refbody .tw td:not(:first-child):before{content:attr(data-l);display:block;font:600 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin-top:4px}
-}
+/* quick reference card view: every table row becomes a card, so nothing scrolls sideways (chosen with the Table / Cards switch) */
+#refbody.cards .tw{overflow:visible;border:0;background:none;border-radius:0}
+#refbody.cards .tw table{display:block;width:100%;min-width:0}
+#refbody.cards .tw thead{display:none}
+#refbody.cards .tw tbody{display:block}
+#refbody.cards .tw tr{display:block;margin:0 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+#refbody.cards .tw td{display:block;border:0;padding:3px 0;min-width:0;width:auto;white-space:normal;overflow-wrap:anywhere}
+#refbody.cards .tw td:empty{display:none}
+#refbody.cards .tw td:first-child{font-weight:700;padding-bottom:6px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+#refbody.cards .tw td:not(:first-child):before{content:attr(data-l);display:block;font:600 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin-top:4px}
+.rbar{display:flex;gap:10px;align-items:stretch;margin:0 0 16px}.rbar .rsearch{margin:0;flex:1;width:auto;min-width:0}
+.rseg{display:flex;flex:none;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}.rseg button{padding:0 13px;font-size:13px;font-weight:600;color:var(--mut)}.rseg button.on{background:var(--accent);color:#06100E;font-weight:700}
 
 .ls{max-width:var(--rw,760px);font-size:calc(15px*var(--rscale,1))}
 .ls p{color:var(--tx);margin:0 0 14px;line-height:1.65}
@@ -4132,6 +4132,11 @@ function vQuiz(c,si){
 /* ---------- QUICK REFERENCE (data in pg-ref.js: window.QREF['<course id>']) ---------- */
 const qrefOf=c=>(window.QREF||{})[c.id];
 const refBtn=c=>qrefOf(c)?`<a class="refbtn" onclick="event.stopPropagation();go('#/c/${c.id}/ref/0')">&#9889; <b>Quick reference</b></a>`:'';
+const refPref=()=>{try{return localStorage.getItem('ls_refmode')}catch(e){return null}};
+const refModeNow=()=>refPref()||(innerWidth<=640?'cards':'table');
+function refMode(m){try{localStorage.setItem('ls_refmode',m)}catch(e){}
+ const b=document.getElementById('refbody');if(b)b.classList.toggle('cards',m==='cards');
+ document.querySelectorAll('.rseg button').forEach(x=>x.classList.toggle('on',x.dataset.m===m))}
 function refFilter(q){
  q=q.trim().toLowerCase();let hit=0;
  document.querySelectorAll('#refbody .tw tbody tr').forEach(r=>{const m=!q||r.textContent.toLowerCase().includes(q);r.style.display=m?'':'none';if(m)hit++});
@@ -4146,9 +4151,9 @@ function vRef(c,pi){
  const tabs=`<select class="rsel" aria-label="Choose a reference page" onchange="go('#/c/${c.id}/ref/'+this.value)">${R.pages.map((p,i)=>`<option value="${i}"${i===n?' selected':''}>${esc(p.t)}</option>`).join('')}</select>`;
  const p=R.pages[n];
  return crumbs+`<h1>${esc(p.t)}</h1><p class="sub">${esc(p.d)}</p>${tabs}
-  <input class="rsearch" type="search" placeholder="Filter this page, for example wal or autovacuum" oninput="refFilter(this.value)" aria-label="Filter rows">
+  <div class="rbar"><input class="rsearch" type="search" placeholder="Filter this page, for example wal or autovacuum" oninput="refFilter(this.value)" aria-label="Filter rows"><div class="rseg" role="group" aria-label="View"><button data-m="table" class="${refModeNow()==='table'?'on':''}" onclick="refMode('table')">Table</button><button data-m="cards" class="${refModeNow()==='cards'?'on':''}" onclick="refMode('cards')">Cards</button></div></div>
   ${(p.see&&p.see.length)?`<p class="rsee">Learn more: ${p.see.map(s=>`<a onclick="go('#/c/${c.id}/${s[0]}/${s[1]}')">${esc(s[2])}</a>`).join('')}</p>`:''}
-  <div id="refbody">${p.b.map(blk).join('')}<p class="rnone" id="rnone">No rows match.</p></div>
+  <div id="refbody" class="${refModeNow()==='cards'?'cards':''}">${p.b.map(blk).join('')}<p class="rnone" id="rnone">No rows match.</p></div>
   <div class="pn">${n>0?`<button class="btn ghost" onclick="go('#/c/${c.id}/ref/${n-1}')">◂ ${esc(R.pages[n-1].t)}</button>`:`<button class="btn ghost" onclick="go('#/c/${c.id}')">◂ Back to course</button>`}${n<R.pages.length-1?`<button class="btn" onclick="go('#/c/${c.id}/ref/${n+1}')">${esc(R.pages[n+1].t)} ▸</button>`:`<button class="btn" onclick="go('#/c/${c.id}')">Back to course</button>`}</div>`}
 function render(keep,noTrack){
  stopTrack();
