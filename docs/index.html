@@ -6,7 +6,7 @@
 if(t!=="light"&&t!=="tinted")t="dark";if(dk!=="tinted")dk="dark";
 if(au==="1"&&window.matchMedia)t=matchMedia("(prefers-color-scheme: light)").matches?"light":dk;
 d.dataset.theme=t;
-if(a==="system")d.style.setProperty("--accent","AccentColor");else if(/^#[0-9a-f]{6}$/i.test(a))d.style.setProperty("--accent",a)})();</script>
+if(/^#[0-9a-f]{6}$/i.test(a))d.style.setProperty("--accent",a)})();</script>
 <meta name="description" content="LearnSphere: structured, bite-sized lessons with progress saved on your device.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
@@ -122,7 +122,6 @@ body.compact .grid.courses{gap:8px}
 .ac.on{border-color:var(--c)}
 .ac.cust{background:conic-gradient(#f87171,#fbbf24,#4ade80,#38bdf8,#a78bfa,#f87171);display:grid;place-items:center}
 .ac.cust input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;border:0;padding:0}
-.ac.sysoff{opacity:.35;pointer-events:none}
 .chkr{display:flex;align-items:center;gap:10px;margin-top:12px;font:14px var(--sans);cursor:pointer}
 .chkr input{width:18px;height:18px;accent-color:var(--accent);flex:none;margin:0}
 .chkr small{margin-left:auto;font:600 11px var(--mono);color:var(--mut)}
@@ -265,7 +264,6 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 <div class="rp" id="rp" onclick="event.stopPropagation()">
  <div class="sec2"><h5>Themes</h5><div class="tcards" id="rpTh"></div>
   <div class="acs" id="rpAc" style="margin-top:14px"></div>
-  <label class="chkr"><input type="checkbox" id="rpSys" onchange="setAccent(this.checked?'system':'')"><span>System accent color</span></label>
   <label class="chkr"><input type="checkbox" id="rpAuto" onchange="setAuto(this.checked)"><span>Auto-night mode</span><small>System</small></label></div>
  <div class="sec2"><h5>Text size</h5><div class="stp"><button type="button" onclick="rdr('fs',-1)" aria-label="Smaller text">A−</button><span id="rpFs">100%</span><button type="button" onclick="rdr('fs',1)" aria-label="Larger text">A+</button></div></div>
  <div class="sec2"><h5>Reading width</h5><div class="seg" id="rpW"></div></div>
@@ -4048,18 +4046,18 @@ function themeEffective(){let t=lsGet('ls_theme');if(t!=='light'&&t!=='tinted')t
 function applyTheme(){const t=themeEffective(),r=document.documentElement;r.dataset.theme=t;
  const m=document.querySelector('meta[name=theme-color]');if(m)m.content=TMETA[t];
  const a=lsGet('ls_accent')||'';
- if(a==='system')r.style.setProperty('--accent','AccentColor');else if(/^#[0-9a-f]{6}$/i.test(a))r.style.setProperty('--accent',a);else r.style.removeProperty('--accent')}
+ if(/^#[0-9a-f]{6}$/i.test(a))r.style.setProperty('--accent',a);else r.style.removeProperty('--accent')}
 function setTheme(t){lsSet('ls_theme',t);if(t!=='light')lsSet('ls_dark',t);lsSet('ls_auto','0');applyTheme();renderAppearance()}
 function setAuto(on){lsSet('ls_auto',on?'1':'0');applyTheme();renderAppearance()}
 function setAccent(v){lsSet('ls_accent',v);applyTheme();renderAppearance()}
 function renderAppearance(){
- const eff=themeEffective(),acc=lsGet('ls_accent')||'',sys=acc==='system';
+ const eff=themeEffective(),acc=lsGet('ls_accent')||'',sys=false;
  const th=document.getElementById('rpTh');if(!th)return;
  th.innerHTML=THEMES.map(x=>`<div class="tc ${eff===x[0]?'on':''}"><button type="button" class="tcard t-${x[0]}" aria-label="${x[1]} theme" aria-pressed="${eff===x[0]}" onclick="setTheme('${x[0]}')"><b></b><b></b><i></i></button><span>${x[1]}</span></div>`).join('');
  const cust=/^#[0-9a-f]{6}$/i.test(acc)&&!ACCENTS.includes(acc.toUpperCase());
- document.getElementById('rpAc').innerHTML=ACCENTS.map((c,i)=>`<button type="button" class="ac ${sys?'sysoff':''} ${!sys&&((i===0&&!acc)||acc.toUpperCase()===c)?'on':''}" style="--c:${c}" aria-label="Accent ${c}" onclick="setAccent('${i===0?'':c}')"></button>`).join('')
-  +`<label class="ac cust ${sys?'sysoff':''} ${cust&&!sys?'on':''}" style="--c:${cust?acc:'#888'}" title="Custom color"><input type="color" value="${cust?acc:'#35e0c0'}" aria-label="Custom accent color" onchange="setAccent(this.value)"></label>`;
- document.getElementById('rpSys').checked=sys;
+ document.getElementById('rpAc').innerHTML=ACCENTS.map((c,i)=>`<button type="button" class="ac ${!sys&&((i===0&&!acc)||acc.toUpperCase()===c)?'on':''}" style="--c:${c}" aria-label="Accent ${c}" onclick="setAccent('${i===0?'':c}')"></button>`).join('')
+  +`<label class="ac cust ${cust&&!sys?'on':''}" style="--c:${cust?acc:'#888'}" title="Custom color"><input type="color" value="${cust?acc:'#35e0c0'}" aria-label="Custom accent color" onchange="setAccent(this.value)"></label>`;
+ 
  document.getElementById('rpAuto').checked=lsGet('ls_auto')==='1'}
 if(window.matchMedia)matchMedia('(prefers-color-scheme: light)').addEventListener('change',()=>{if(lsGet('ls_auto')==='1')applyTheme()});
 renderAppearance();
