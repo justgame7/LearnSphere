@@ -144,6 +144,15 @@ input,textarea,.ls,.ld{-webkit-user-select:text;user-select:text}
 .bmi-sub{margin-left:18px}
 .bmrm{flex:none;width:28px;height:28px;border-radius:8px;border:1px solid var(--line);color:var(--mut)}
 .bmrm:hover{color:#ff4d6d;border-color:#ff4d6d}
+.outc{margin-top:4px;border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden}
+.outc summary{display:flex;align-items:center;gap:10px;padding:14px 16px;cursor:pointer;list-style:none;font:600 12px var(--mono);letter-spacing:.8px;text-transform:uppercase;color:var(--mut)}
+.outc summary::-webkit-details-marker{display:none}
+.outc summary:hover{color:var(--tx)}
+.outc summary small{font:600 11px var(--mono);background:var(--panel2);border:1px solid var(--line);border-radius:99px;padding:1px 8px}
+.outc .oc-ch{margin-left:auto;font-size:14px;transition:transform .2s}
+.outc[open] .oc-ch{transform:rotate(180deg)}
+.outc[open] summary{border-bottom:1px solid var(--line)}
+.oc-b{display:flex;flex-wrap:wrap;gap:8px;padding:14px 16px}
 .sq-snip{font-size:12.5px;color:var(--mut);margin-top:6px;line-height:1.45;word-break:break-word}
 .sq-scope{font:600 11px var(--mono);color:var(--mut);margin:0 0 10px}
 .sq-scope b{color:var(--accent)}
@@ -3994,7 +4003,7 @@ function vTopics(c){
  <div class="hero course" style="--c:${c.color}"><div class="tx"><span class="chip">${c.level}</span><h1 style="margin:10px 0 6px">${c.name}</h1> <div class="stats"><div><b>${c.sections.length}</b>sections</div><div><b>${cnt(c)}</b>lectures</div>${cntX(c)?`<div><b>${cntX(c)}</b>additional</div>`:''}</div>
  <div class="row">${n?`<button class="btn" onclick="go('#/c/${c.id}/${n[0]}')">${dn(c)?'Resume':'Start course'} ▸</button>`:`<span class="chip live">✓ Course complete</span>`}</div><div class="tools">${autoBox(c.id,1)}${refBtn(c)}</div></div>
  <div class="ring" style="--p:${pct(c)}"><span>${pct(c)}%</span></div></div>
- <div class="row" style="margin:-8px 0 6px">${c.outcomes.map(o=>`<span class="chip">✓ ${o}</span>`).join('')}</div><h2>Topics</h2><div class="grid">`;
+ ${c.outcomes&&c.outcomes.length?`<details class="outc" style="--c:${c.color}"><summary><span>What you'll learn</span><small>${c.outcomes.length}</small><span class="oc-ch">▾</span></summary><div class="oc-b">${c.outcomes.map(o=>`<span class="chip">✓ ${o}</span>`).join('')}</div></details>`:''}<h2>Topics</h2><div class="grid">`;
  h+=c.sections.map((s,si)=>{const d=secDone(c,si),n=coreIdx(s).length,m=xIdx(s).length,p=n?Math.round(d/n*100):0;
   return `<div class="card" style="--c:${c.color};animation-delay:${si*45}ms" onclick="go('#/c/${c.id}/${si}')"><div class="sec"><span class="num">${String(si+1).padStart(2,'0')}</span><div style="flex:1"><h3>${esc(s.t)}</h3><p>${n} lectures${m?` · +${m} additional`:''}</p></div>${p==100?'<span style="color:var(--accent)">✓</span>':''}</div>
   <div class="bt"><b style="width:${p}%"></b></div><div class="pct"><span>${d}/${n}</span><span>${p}%</span></div></div>`}).join('')+`</div>`;
