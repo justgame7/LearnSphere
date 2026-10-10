@@ -198,14 +198,14 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 .hero.course .auto{grid-column:1/-1;grid-row:5}
 }
 
-.ls{max-width:var(--rw,760px);font-size:calc(15px*var(--rs,1))}
+.ls{max-width:var(--rw,760px);font-size:calc(15px*var(--rscale,1))}
 .ls p{color:var(--tx);margin:0 0 14px;line-height:1.65}
-.ls h4{font:700 calc(19px*var(--rs,1)) var(--sans);letter-spacing:-.3px;margin:30px 0 10px;padding-left:12px;border-left:3px solid var(--c,var(--accent))}
+.ls h4{font:700 calc(19px*var(--rscale,1)) var(--sans);letter-spacing:-.3px;margin:30px 0 10px;padding-left:12px;border-left:3px solid var(--c,var(--accent))}
 .ls ul{margin:0 0 16px;padding:0;list-style:none}.ls li{position:relative;padding:5px 0 5px 22px}
 .ls li:before{content:"";position:absolute;left:4px;top:14px;width:7px;height:7px;border-radius:50%;background:var(--accent)}
-.ls code{font:calc(13px*var(--rs,1)) var(--mono);background:var(--panel2);border:1px solid var(--line);padding:1px 6px;border-radius:6px;color:var(--accent)}
+.ls code{font:calc(13px*var(--rscale,1)) var(--mono);background:var(--panel2);border:1px solid var(--line);padding:1px 6px;border-radius:6px;color:var(--accent)}
 .tw{overflow-x:auto;margin:0 0 18px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
-.tw table{border-collapse:collapse;width:100%;font-size:calc(14px*var(--rs,1))}
+.tw table{border-collapse:collapse;width:100%;font-size:calc(14px*var(--rscale,1))}
 .tw th{text-align:left;font:600 12px var(--mono);text-transform:uppercase;letter-spacing:.5px;color:var(--mut);background:var(--panel2)}
 .tw th,.tw td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
 .tw tr:last-child td{border-bottom:0}.tw td:first-child{font-weight:600;white-space:nowrap}
@@ -221,9 +221,9 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 .fl .ar{align-self:flex-start;margin:3px 0 3px 17px;transform:rotate(90deg)}
 }
 .cb{position:relative;margin:0 0 18px}
-.cb pre{margin:0;padding:40px 16px 16px;overflow-x:auto;background:#0B0E13;color:#D7E0EC;border:1px solid var(--line);border-radius:14px;font:calc(12.5px*var(--rs,1))/1.6 var(--mono)}
+.cb pre{margin:0;padding:40px 16px 16px;overflow-x:auto;background:#0B0E13;color:#D7E0EC;border:1px solid var(--line);border-radius:14px;font:calc(12.5px*var(--rscale,1))/1.6 var(--mono)}
 .cb button{position:absolute;top:8px;right:8px;font:600 11px var(--mono);padding:4px 9px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);color:var(--mut)}
-.nt{margin:0 0 18px;padding:14px 16px;border-radius:14px;background:color-mix(in srgb,var(--accent) 10%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 35%,var(--line));font-size:calc(14px*var(--rs,1))}
+.nt{margin:0 0 18px;padding:14px 16px;border-radius:14px;background:color-mix(in srgb,var(--accent) 10%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 35%,var(--line));font-size:calc(14px*var(--rscale,1))}
 .nt:before{content:"💡 ";}
 .dg{margin:0 0 18px;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow-x:auto}.dg svg{width:100%;min-width:560px;height:auto;display:block}
 .srcs{margin-top:30px;padding-top:14px;border-top:1px solid var(--line);font:12px var(--mono);color:var(--mut)}
@@ -3814,7 +3814,7 @@ addEventListener('keydown',e=>{if(e.key==='Escape'){closeHist();closeSearch();cl
 /* ---------- Reader controls: text size + width (kept on this device) ---------- */
 const RK='ls_reader',RFS=[0.85,0.92,1,1.12,1.25,1.4],RW=[['Narrow','600px'],['Normal','760px'],['Wide','100%']];
 let RD={fs:2,w:1};try{const o=JSON.parse(localStorage.getItem(RK));if(o&&typeof o.fs==='number'&&typeof o.w==='number')RD={fs:Math.min(5,Math.max(0,o.fs|0)),w:Math.min(2,Math.max(0,o.w|0))}}catch(e){}
-function applyReader(){const r=document.documentElement.style;r.setProperty('--rs',RFS[RD.fs]);r.setProperty('--rw',RW[RD.w][1]);
+function applyReader(){const r=document.documentElement.style;r.setProperty('--rscale',RFS[RD.fs]);r.setProperty('--rw',RW[RD.w][1]);
  const f=document.getElementById('rpFs');if(f)f.textContent=Math.round(RFS[RD.fs]*100)+'%';
  try{renderAppearance()}catch(e){}
  const w=document.getElementById('rpW');if(w)w.innerHTML=RW.map((x,i)=>`<button type="button" class="${RD.w===i?'on':''}" aria-pressed="${RD.w===i}" onclick="rdr('w',${i})">${x[0]}</button>`).join('')
