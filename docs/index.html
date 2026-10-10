@@ -120,7 +120,7 @@ input,textarea,.ls,.ld{-webkit-user-select:text;user-select:text}
 .t-tinted{background:#3b4752}.t-tinted b{background:#6c7e8d}.t-tinted b+b{background:#4a8fc7}
 .t-dark{background:#1a1f27}.t-dark b{background:#394150}.t-dark b+b{background:#1d7f6e}
 .acs{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
-#rpW{grid-template-columns:repeat(3,1fr)}
+#rpW,#rpTb{grid-template-columns:repeat(3,1fr)}
 .ac{width:24px;height:24px;border-radius:50%;border:2px solid transparent;background:var(--c);box-shadow:inset 0 0 0 2px var(--panel);position:relative;flex:none}
 .ac.on{border-color:var(--c)}
 .ac.cust{background:conic-gradient(#f87171,#fbbf24,#4ade80,#38bdf8,#a78bfa,#f87171);display:grid;place-items:center}
@@ -202,18 +202,16 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 .rsearch{width:100%;padding:12px 14px;margin:0 0 16px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--tx);font:inherit}.rsearch:focus{outline:2px solid var(--accent);border-color:transparent}
 .rsel{display:block;width:100%;padding:12px 40px 12px 14px;margin:0 0 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238A93A3' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center;color:var(--tx);font:inherit;font-weight:600;cursor:pointer;-webkit-appearance:none;appearance:none}.rsel:focus{outline:2px solid var(--accent);border-color:transparent}.rsel option{background:var(--panel);color:var(--tx)}
 .rsee{margin:0 0 14px;color:var(--mut);font-size:13px}.rsee a{cursor:pointer;text-decoration:underline;margin-right:10px}.rnone{display:none;color:var(--mut)}
-/* quick reference card view: every table row becomes a card, so nothing scrolls sideways (chosen with the Table / Cards switch) */
-#refbody.cards .tw{overflow:visible;border:0;background:none;border-radius:0}
-#refbody.cards .tw table{display:block;width:100%;min-width:0}
-#refbody.cards .tw thead{display:none}
-#refbody.cards .tw tbody{display:block}
-#refbody.cards .tw tr{display:block;margin:0 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
-#refbody.cards .tw td{display:block;border:0;padding:3px 0;min-width:0;width:auto;white-space:normal;overflow-wrap:anywhere}
-#refbody.cards .tw td:empty{display:none}
-#refbody.cards .tw td:first-child{font-weight:700;padding-bottom:6px;margin-bottom:4px;border-bottom:1px solid var(--line)}
-#refbody.cards .tw td:not(:first-child):before{content:attr(data-l);display:block;font:600 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin-top:4px}
-.rbar{display:flex;gap:10px;align-items:stretch;margin:0 0 16px}.rbar .rsearch{margin:0;flex:1;width:auto;min-width:0}
-.rseg{display:flex;flex:none;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}.rseg button{padding:0 13px;font-size:13px;font-weight:600;color:var(--mut)}.rseg button.on{background:var(--accent);color:#06100E;font-weight:700}
+/* table card view: Settings (Aa) > Tables sets class tblcards on <html>, so every table in the app becomes cards; nothing scrolls sideways */
+html.tblcards .tw{overflow:visible;border:0;background:none;border-radius:0}
+html.tblcards .tw table{display:block;width:100%;min-width:0}
+html.tblcards .tw thead{display:none}
+html.tblcards .tw tbody{display:block}
+html.tblcards .tw tr{display:block;margin:0 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+html.tblcards .tw td{display:block;border:0;padding:3px 0;min-width:0;width:auto;white-space:normal;overflow-wrap:anywhere}
+html.tblcards .tw td:empty{display:none}
+html.tblcards .tw td:first-child{font-weight:700;padding-bottom:6px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+html.tblcards .tw td:not(:first-child):before{content:attr(data-l);display:block;font:600 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin-top:4px}
 
 .ls{max-width:var(--rw,760px);font-size:calc(15px*var(--rscale,1))}
 .ls p{color:var(--tx);margin:0 0 14px;line-height:1.65}
@@ -287,6 +285,7 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
   <label class="chkr"><input type="checkbox" id="rpAuto" onchange="setNightAuto(this.checked)"><span>Auto-night mode</span><small>System</small></label></div>
  <div class="sec2"><h5>Text size</h5><div class="stp"><button type="button" onclick="rdr('fs',-1)" aria-label="Smaller text">A−</button><span id="rpFs">100%</span><button type="button" onclick="rdr('fs',1)" aria-label="Larger text">A+</button></div></div>
  <div class="sec2"><h5>Reading width</h5><div class="seg" id="rpW"></div></div>
+ <div class="sec2"><h5>Tables</h5><div class="seg" id="rpTb"></div><p class="sub" style="margin:8px 0 0;font:11px/1.5 var(--mono)">Auto shows cards on phones. Cards stack each row so nothing scrolls sideways.</p></div>
  <button type="button" class="rp-reset" onclick="rdr('reset')">Reset to default</button>
  <div class="sec2" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"><h5>Backup &amp; restore</h5>
   <div class="seg" style="grid-template-columns:1fr 1fr"><button type="button" onclick="exportProgress()">⬇ Export</button><button type="button" onclick="document.getElementById('impFile').click()">⬆ Import</button></div>
@@ -3849,9 +3848,9 @@ function applyReader(){const r=document.documentElement.style;r.setProperty('--r
  const f=document.getElementById('rpFs');if(f)f.textContent=Math.round(RFS[RD.fs]*100)+'%';
  try{renderAppearance()}catch(e){}
  const w=document.getElementById('rpW');if(w)w.innerHTML=RW.map((x,i)=>`<button type="button" class="${RD.w===i?'on':''}" aria-pressed="${RD.w===i}" onclick="rdr('w',${i})">${x[0]}</button>`).join('')
- const a=document.getElementById('aa');if(a)a.classList.toggle('on',RD.fs!==2||RD.w!==1)}
-function rdr(k,v){if(k==='fs')RD.fs=Math.min(5,Math.max(0,RD.fs+v));else if(k==='w')RD.w=v;else RD={fs:2,w:1};
- try{localStorage.setItem(RK,JSON.stringify(RD))}catch(e){}applyReader();readerBar()}
+ const a=document.getElementById('aa');if(a)a.classList.toggle('on',RD.fs!==2||RD.w!==1||(typeof TBM==='string'&&TBM!=='auto'))}
+function rdr(k,v){if(k==='fs')RD.fs=Math.min(5,Math.max(0,RD.fs+v));else if(k==='w')RD.w=v;else{RD={fs:2,w:1};TBM='auto';try{localStorage.removeItem(TBK)}catch(e){}}
+ try{localStorage.setItem(RK,JSON.stringify(RD))}catch(e){}applyReader();applyTables();readerBar()}
 function toggleReader(e){e.stopPropagation();document.getElementById('rp').classList.toggle('open')}
 document.addEventListener('click',e=>{const p=document.getElementById('rp');if(p&&p.classList.contains('open')&&!e.target.closest('#rp'))p.classList.remove('open')});
 applyReader();
@@ -3911,7 +3910,7 @@ function closeBm(){document.getElementById('bmM').classList.remove('open')}
   if(!el||el.closest(keep))return;
   e.preventDefault()},true))})();
 /* ---------- Export / import progress ---------- */
-const BKEYS=['ls_prog','ls_quiz','ls_auto','ls_hist_v1','ls_bookmarks'],SKEYS=['ls_theme','ls_dark','ls_nightauto','ls_accent','ls_reader','ls_dens'];
+const BKEYS=['ls_prog','ls_quiz','ls_auto','ls_hist_v1','ls_bookmarks'],SKEYS=['ls_theme','ls_dark','ls_nightauto','ls_accent','ls_reader','ls_dens','ls_tblmode'];
 function toast(msg){const o=document.getElementById('hundo');if(o)o.remove();
  const u=document.createElement('div');u.className='hundo';u.id='hundo';u.innerHTML='<span></span>';u.firstChild.textContent=msg;
  document.body.appendChild(u);setTimeout(()=>u.remove(),4000)}
@@ -4132,11 +4131,16 @@ function vQuiz(c,si){
 /* ---------- QUICK REFERENCE (data in pg-ref.js: window.QREF['<course id>']) ---------- */
 const qrefOf=c=>(window.QREF||{})[c.id];
 const refBtn=c=>qrefOf(c)?`<a class="refbtn" onclick="event.stopPropagation();go('#/c/${c.id}/ref/0')">&#9889; <b>Quick reference</b></a>`:'';
-const refPref=()=>{try{return localStorage.getItem('ls_refmode')}catch(e){return null}};
-const refModeNow=()=>refPref()||(innerWidth<=640?'cards':'table');
-function refMode(m){try{localStorage.setItem('ls_refmode',m)}catch(e){}
- const b=document.getElementById('refbody');if(b)b.classList.toggle('cards',m==='cards');
- document.querySelectorAll('.rseg button').forEach(x=>x.classList.toggle('on',x.dataset.m===m))}
+/* Table view: one app-wide setting (Aa > Tables): auto (cards on phones), table or cards */
+const TBK='ls_tblmode';
+var TBM='auto';try{const v=localStorage.getItem(TBK)||localStorage.getItem('ls_refmode');if(v==='table'||v==='cards'||v==='auto')TBM=v}catch(e){}
+function applyTables(){const eff=TBM==='auto'?(innerWidth<=640?'cards':'table'):TBM;
+ document.documentElement.classList.toggle('tblcards',eff==='cards');
+ const w=document.getElementById('rpTb');if(w)w.innerHTML=[['auto','Auto'],['table','Table'],['cards','Cards']].map(x=>`<button type="button" class="${TBM===x[0]?'on':''}" aria-pressed="${TBM===x[0]}" onclick="setTables('${x[0]}')">${x[1]}</button>`).join('');
+ const a=document.getElementById('aa');if(a)a.classList.toggle('on',typeof RD==='object'&&(RD.fs!==2||RD.w!==1||TBM!=='auto'))}
+function setTables(m){TBM=m;try{if(m==='auto')localStorage.removeItem(TBK);else localStorage.setItem(TBK,m);localStorage.removeItem('ls_refmode')}catch(e){}applyTables()}
+addEventListener('resize',()=>{if(TBM==='auto')applyTables()});
+applyTables();
 function refFilter(q){
  q=q.trim().toLowerCase();let hit=0;
  document.querySelectorAll('#refbody .tw tbody tr').forEach(r=>{const m=!q||r.textContent.toLowerCase().includes(q);r.style.display=m?'':'none';if(m)hit++});
@@ -4151,9 +4155,9 @@ function vRef(c,pi){
  const tabs=`<select class="rsel" aria-label="Choose a reference page" onchange="go('#/c/${c.id}/ref/'+this.value)">${R.pages.map((p,i)=>`<option value="${i}"${i===n?' selected':''}>${esc(p.t)}</option>`).join('')}</select>`;
  const p=R.pages[n];
  return crumbs+`<h1>${esc(p.t)}</h1><p class="sub">${esc(p.d)}</p>${tabs}
-  <div class="rbar"><input class="rsearch" type="search" placeholder="Filter this page, for example wal or autovacuum" oninput="refFilter(this.value)" aria-label="Filter rows"><div class="rseg" role="group" aria-label="View"><button data-m="table" class="${refModeNow()==='table'?'on':''}" onclick="refMode('table')">Table</button><button data-m="cards" class="${refModeNow()==='cards'?'on':''}" onclick="refMode('cards')">Cards</button></div></div>
+  <input class="rsearch" type="search" placeholder="Filter this page, for example wal or autovacuum" oninput="refFilter(this.value)" aria-label="Filter rows">
   ${(p.see&&p.see.length)?`<p class="rsee">Learn more: ${p.see.map(s=>`<a onclick="go('#/c/${c.id}/${s[0]}/${s[1]}')">${esc(s[2])}</a>`).join('')}</p>`:''}
-  <div id="refbody" class="${refModeNow()==='cards'?'cards':''}">${p.b.map(blk).join('')}<p class="rnone" id="rnone">No rows match.</p></div>
+  <div id="refbody">${p.b.map(blk).join('')}<p class="rnone" id="rnone">No rows match.</p></div>
   <div class="pn">${n>0?`<button class="btn ghost" onclick="go('#/c/${c.id}/ref/${n-1}')">◂ ${esc(R.pages[n-1].t)}</button>`:`<button class="btn ghost" onclick="go('#/c/${c.id}')">◂ Back to course</button>`}${n<R.pages.length-1?`<button class="btn" onclick="go('#/c/${c.id}/ref/${n+1}')">${esc(R.pages[n+1].t)} ▸</button>`:`<button class="btn" onclick="go('#/c/${c.id}')">Back to course</button>`}</div>`}
 function render(keep,noTrack){
  stopTrack();
