@@ -4119,7 +4119,7 @@ function vQuiz(c,si){
  <div class="pn"><button class="btn ghost" onclick="QS=null;render(true)">Quit quiz</button>${chk?`<button class="btn" onclick="qNext()">${QS.i<t-1?'Next question ▸':'See results ▸'}</button>`:`<button class="btn" ${QS.sel.length?'':'disabled style="opacity:.5"'} onclick="qCheck()">Check answer</button>`}</div></div>`}
 /* ---------- QUICK REFERENCE (data in pg-ref.js: window.QREF['<course id>']) ---------- */
 const qrefOf=c=>(window.QREF||{})[c.id];
-const refBtn=c=>qrefOf(c)?`<a class="refbtn" onclick="event.stopPropagation();go('#/c/${c.id}/ref/0')">&#9889; <b>Quick reference</b> <span style="color:var(--mut);font-weight:400">${qrefOf(c).pages.length} pages</span></a>`:'';
+const refBtn=c=>qrefOf(c)?`<a class="refbtn" onclick="event.stopPropagation();go('#/c/${c.id}/ref/0')">&#9889; <b>Quick reference</b></a>`:'';
 function refFilter(q){
  q=q.trim().toLowerCase();let hit=0;
  document.querySelectorAll('#refbody .tw tbody tr').forEach(r=>{const m=!q||r.textContent.toLowerCase().includes(q);r.style.display=m?'':'none';if(m)hit++});
