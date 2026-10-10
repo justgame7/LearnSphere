@@ -84,6 +84,9 @@ h2{font-size:14px;font:600 12px var(--mono);letter-spacing:.8px;text-transform:u
 .dens.on{background:color-mix(in srgb,var(--accent) 10%,var(--panel))}
 body.compact .grid.courses{gap:8px}
 .ib{position:relative}
+/* Tappable UI is not selectable text: stops mobile Chrome's "Tap to search" panel / word highlight when navigating */
+[onclick],button,.card,.crumbs,.hero,.lec .lh,.pn,.chip,.hc,.hf,header,.h2row,.addl-h,.tcard,.ac,.seg{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+input,textarea,.ls,.ld{-webkit-user-select:text;user-select:text}
 .sq{width:100%;margin:14px 0 6px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;color:var(--tx);font:15px var(--sans);outline:none}
 .sq:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}
 .sq-seg{display:flex;flex-direction:column;gap:8px;margin:6px 0 4px}
