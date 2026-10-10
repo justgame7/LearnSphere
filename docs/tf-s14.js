@@ -302,7 +302,7 @@ src:[['aws_s3_bucket',AWS+'/resources/s3_bucket'],['aws_iam_role',AWS+'/resource
 
 /* ---------- 4: RDS ---------- */
 L['tf:13:4']={blocks:[
-{p:'Databases are **stateful**: mistakes lose data. Terraform can create **Amazon RDS for PostgreSQL** safely when you give it the right guard rails. (This pairs with the PostgreSQL DBA course.)'},
+{p:'Databases are **stateful**: mistakes lose data. Terraform can create **Amazon RDS for PostgreSQL** safely when you give it the right guard rails. (This pairs with the PostgreSQL course.)'},
 {h:'Parts of an RDS setup'},
 {t:[['Piece','Job','Resource'],
 ['**Subnet group**','Which private subnets the database may use','`aws_db_subnet_group`'],

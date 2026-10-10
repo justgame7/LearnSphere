@@ -120,7 +120,7 @@ input,textarea,.ls,.ld{-webkit-user-select:text;user-select:text}
 .t-tinted{background:#3b4752}.t-tinted b{background:#6c7e8d}.t-tinted b+b{background:#4a8fc7}
 .t-dark{background:#1a1f27}.t-dark b{background:#394150}.t-dark b+b{background:#1d7f6e}
 .acs{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
-#rpW,#rpTb{grid-template-columns:repeat(3,1fr)}
+#rpW{grid-template-columns:repeat(3,1fr)}
 .ac{width:24px;height:24px;border-radius:50%;border:2px solid transparent;background:var(--c);box-shadow:inset 0 0 0 2px var(--panel);position:relative;flex:none}
 .ac.on{border-color:var(--c)}
 .ac.cust{background:conic-gradient(#f87171,#fbbf24,#4ade80,#38bdf8,#a78bfa,#f87171);display:grid;place-items:center}
@@ -194,7 +194,7 @@ body.compact .grid.courses .card h3{margin:0;font-size:15px;flex:1;min-width:0;w
 body.compact .grid.courses .card p,body.compact .grid.courses .meta,body.compact .grid.courses .pct{display:none}
 body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:0;height:3px;border-radius:0}
 @media(max-width:520px){.ld{padding-left:14px}.hero{padding:18px}}
-.tools{display:flex;flex-wrap:nowrap;gap:8px;align-items:stretch;margin-top:12px}.tools>*{min-width:0}.tools .auto,.tools .auto.big{margin:0;flex:0 1 auto;align-items:center}.tools .refbtn{flex:1 1 0;line-height:1.25;white-space:normal}
+.tools{display:flex;flex-wrap:nowrap;gap:8px;align-items:stretch;margin-top:12px}.tools>*{min-width:0}.tools .auto,.tools .auto.big{margin:0;flex:0 1 auto;align-items:center}.tools .refbtn{flex:0 1 auto;line-height:1.25;white-space:normal}@media(max-width:640px){.tools .refbtn{flex:1 1 0}}
 @media(max-width:480px){
 .hero.course{display:grid;grid-template-columns:1fr auto;column-gap:14px;row-gap:0;align-items:center}
 .hero.course .tx{display:contents}
@@ -209,17 +209,39 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 .refbtn{display:inline-flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);color:var(--tx);font-size:13px;font-weight:600;cursor:pointer}.refbtn:hover{border-color:var(--accent)}.refbtn b{color:var(--accent)}
 .rsearch{width:100%;padding:12px 14px;margin:0 0 16px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--tx);font:inherit}.rsearch:focus{outline:2px solid var(--accent);border-color:transparent}
 .rsel{display:block;width:100%;padding:12px 40px 12px 14px;margin:0 0 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238A93A3' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center;color:var(--tx);font:inherit;font-weight:600;cursor:pointer;-webkit-appearance:none;appearance:none}.rsel:focus{outline:2px solid var(--accent);border-color:transparent}.rsel option{background:var(--panel);color:var(--tx)}
+.rmode{display:flex;gap:6px;align-items:center;margin:0 0 10px;font-size:12px;color:var(--mute,#8A93A3)}.rmode button{padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--tx);font:inherit;font-size:12px;cursor:pointer}.rmode button.on{border-color:var(--accent);color:var(--accent);font-weight:700}
+.rlist{margin:0 0 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.rlist>summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;justify-content:space-between;gap:10px;align-items:center;font-weight:600}.rlist>summary::-webkit-details-marker{display:none}.rlist>summary span{font-size:12px;font-weight:500;color:var(--mute,#8A93A3)}.rlist>summary b{flex:1;text-align:right;color:var(--tx)}.rlist>summary:after{content:"▾";color:var(--accent)}.rlist[open]>summary:after{content:"▴"}
+.rlist .rl{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px;padding:0 10px 10px}.rlist .rl button{text-align:left;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--tx);font:inherit;font-size:13px;cursor:pointer}.rlist .rl button:hover{border-color:var(--accent)}.rlist .rl button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--panel2));font-weight:700}
 .rsee{margin:0 0 14px;color:var(--mut);font-size:13px}.rsee a{cursor:pointer;text-decoration:underline;margin-right:10px}.rnone{display:none;color:var(--mut)}
-/* table card view: Settings (Aa) > Tables sets class tblcards on <html>, so every table in the app becomes cards; nothing scrolls sideways */
-html.tblcards .tw{overflow:visible;border:0;background:none;border-radius:0}
-html.tblcards .tw table{display:block;width:100%;min-width:0}
-html.tblcards .tw thead{display:none}
-html.tblcards .tw tbody{display:block}
-html.tblcards .tw tr{display:block;margin:0 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
-html.tblcards .tw td{display:block;border:0;padding:3px 0;min-width:0;width:auto;white-space:normal;overflow-wrap:anywhere}
-html.tblcards .tw td:empty{display:none}
-html.tblcards .tw td:first-child{font-weight:700;padding-bottom:6px;margin-bottom:4px;border-bottom:1px solid var(--line)}
-html.tblcards .tw td:not(:first-child):before{content:attr(data-l);display:block;font:600 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin-top:4px}
+/* table views: Settings (Aa) > Tables sets data-tbl on <html> (table, cards, collapse, compact, pinned), so every table in the app follows it */
+html[data-tbl="cards"] .tw,html[data-tbl="collapse"] .tw,html[data-tbl="compact"] .tw{overflow:visible;border:0;background:none;border-radius:0}
+html[data-tbl="cards"] .tw table,html[data-tbl="collapse"] .tw table,html[data-tbl="compact"] .tw table{display:block;width:100%;min-width:0}
+html[data-tbl="cards"] .tw thead,html[data-tbl="collapse"] .tw thead,html[data-tbl="compact"] .tw thead{display:none}
+html[data-tbl="cards"] .tw tbody,html[data-tbl="collapse"] .tw tbody,html[data-tbl="compact"] .tw tbody{display:block}
+html[data-tbl="cards"] .tw td,html[data-tbl="collapse"] .tw td,html[data-tbl="compact"] .tw td{border:0;min-width:0;width:auto;white-space:normal;overflow-wrap:anywhere}
+html[data-tbl="cards"] .tw td:empty,html[data-tbl="collapse"] .tw td:empty,html[data-tbl="compact"] .tw td:empty{display:none}
+/* cards and collapsible cards */
+html[data-tbl="cards"] .tw tr,html[data-tbl="collapse"] .tw tr{display:block;margin:0 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+html[data-tbl="cards"] .tw td,html[data-tbl="collapse"] .tw td{display:block;padding:3px 0}
+html[data-tbl="cards"] .tw td:first-child,html[data-tbl="collapse"] .tw td:first-child{font-weight:700;padding-bottom:6px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+html[data-tbl="cards"] .tw td:not(:first-child):before,html[data-tbl="collapse"] .tw td:not(:first-child):before{content:attr(data-l);display:block;font:600 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin-top:4px}
+/* collapsible: only the title row shows until you tap the card */
+html[data-tbl="collapse"] .tw tr{cursor:pointer}
+html[data-tbl="collapse"] .tw td:first-child{position:relative;padding-right:24px;margin-bottom:0;border-bottom:0;padding-bottom:3px}
+html[data-tbl="collapse"] .tw td:first-child:after{content:"\25BE";position:absolute;right:2px;top:2px;color:var(--mut);transition:transform .15s}
+html[data-tbl="collapse"] .tw tr.open td:first-child{border-bottom:1px solid var(--line);margin-bottom:4px;padding-bottom:6px}
+html[data-tbl="collapse"] .tw tr.open td:first-child:after{transform:rotate(180deg)}
+html[data-tbl="collapse"] .tw td:not(:first-child){display:none}
+html[data-tbl="collapse"] .tw tr.open td:not(:first-child){display:block}
+/* compact list: two lines per row, no card borders */
+html[data-tbl="compact"] .tw tr{display:block;padding:9px 2px;border-bottom:1px solid var(--line)}
+html[data-tbl="compact"] .tw tr:last-child{border-bottom:0}
+html[data-tbl="compact"] .tw td:first-child{display:block;font-weight:700;padding:0 0 2px}
+html[data-tbl="compact"] .tw td:not(:first-child){display:inline;padding:0 12px 0 0;font-size:.94em}
+html[data-tbl="compact"] .tw td:not(:first-child):before{content:attr(data-l) ": ";font:600 11px var(--mono);color:var(--mut)}
+/* pinned first column: keeps the table, the left column stays while the rest scrolls sideways */
+html[data-tbl="pinned"] .tw table{min-width:620px}
+html[data-tbl="pinned"] .tw th:first-child,html[data-tbl="pinned"] .tw td:first-child{position:sticky;left:0;z-index:1;background:var(--panel);max-width:42vw;box-shadow:2px 0 0 var(--line);width:42vw;min-width:120px;white-space:normal;overflow-wrap:anywhere;word-break:normal;vertical-align:top}
 
 .ls{max-width:var(--rw,760px);font-size:calc(15px*var(--rscale,1))}
 .ls p{color:var(--tx);margin:0 0 14px;line-height:1.65}
@@ -293,7 +315,7 @@ html.tblcards .tw td:not(:first-child):before{content:attr(data-l);display:block
   <label class="chkr"><input type="checkbox" id="rpAuto" onchange="setNightAuto(this.checked)"><span>Auto-night mode</span><small>System</small></label></div>
  <div class="sec2"><h5>Text size</h5><div class="stp"><button type="button" onclick="rdr('fs',-1)" aria-label="Smaller text">A−</button><span id="rpFs">100%</span><button type="button" onclick="rdr('fs',1)" aria-label="Larger text">A+</button></div></div>
  <div class="sec2"><h5>Reading width</h5><div class="seg" id="rpW"></div></div>
- <div class="sec2"><h5>Tables</h5><div class="seg" id="rpTb"></div><p class="sub" style="margin:8px 0 0;font:11px/1.5 var(--mono)">Auto shows cards on phones. Cards stack each row so nothing scrolls sideways.</p></div>
+ <div class="sec2"><h5>Tables</h5><select class="rsel" id="rpTb" aria-label="Table view" onchange="setTables(this.value)" style="margin:0"></select><p class="sub" id="rpTbH" style="margin:8px 0 0;font:11px/1.5 var(--mono)"></p></div>
  <div class="sec2" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"><h5>Backup &amp; restore</h5>
   <div class="seg" style="grid-template-columns:1fr 1fr"><button type="button" onclick="exportProgress()">⬇ Export</button><button type="button" onclick="document.getElementById('impFile').click()">⬆ Import</button></div>
   <input type="file" id="impFile" accept=".json,application/json" hidden onchange="importProgress(this)">
@@ -319,7 +341,7 @@ html.tblcards .tw td:not(:first-child):before{content:attr(data-l);display:block
 /* ---------- DATA ---------- */
 // lecture: [title, mm:ss, description]; quiz: section quiz title
 const COURSES=[
-{id:'pg',name:'PostgreSQL DBA',tag:'PG',color:'var(--pg)',level:'Beginner → Production',blurb:'Install, secure, back up, tune and replicate PostgreSQL like a production DBA.',
+{id:'pg',name:'PostgreSQL',tag:'PG',color:'var(--pg)',level:'Beginner → Production',blurb:'Install, secure, back up, tune and replicate PostgreSQL like a production DBA.',
 outcomes:['Installation & configuration','Architecture & WAL','Backup & recovery','Replication & HA','Performance tuning','Security & roles'],
 sections:[
 {t:'Introduction',q:'Introduction Quiz',l:[
@@ -1136,7 +1158,7 @@ sections:[
 ['AWS Networking: VPC, Subnets, Routing and Security Groups','8:00','Build a VPC with public and private subnets, route tables, gateways and security groups. (CLI)'],
 ['Compute: EC2, Launch Templates, Auto Scaling and Load Balancers','8:00','Run an application on EC2 behind a load balancer with an Auto Scaling group. (CLI)'],
 ['Storage and IAM: S3, KMS and Least-Privilege Roles','8:00','Create encrypted buckets, keys and IAM roles with narrowly scoped policies. (CLI)'],
-['Databases: Provisioning Amazon RDS for PostgreSQL','8:00','Create an RDS PostgreSQL instance with subnet groups, parameter groups and secrets handled safely. Pairs with the PostgreSQL DBA course. (CLI)'],
+['Databases: Provisioning Amazon RDS for PostgreSQL','8:00','Create an RDS PostgreSQL instance with subnet groups, parameter groups and secrets handled safely. Pairs with the PostgreSQL course. (CLI)'],
 ['Containers: the Docker Provider and ECS/EKS Overview','8:00','Manage local containers with the Docker provider and see how Terraform provisions container platforms. Pairs with the Docker course. (CLI)'],
 ['Kubernetes and Helm Providers: Deploying to a Cluster','8:00','Deploy workloads and Helm charts with the Kubernetes and Helm providers and avoid the common cluster-creation ordering problems. Pairs with the Kubernetes course. (CLI)'],
 ['Practical: A Three-Tier Application End to End','8:00','Build network, compute and database layers as modules, deploy an application and destroy it cleanly. (CLI)'],
@@ -2093,8 +2115,8 @@ sections:[
 ['Open Source Contribution and Staying Current','0:00','Follow release notes, advisories and communities. (Any)',5],
 ['Moving On: SRE, Platform Engineering and Security Paths','0:00','Next steps after this course. (Any)',6]]}
 ]},
-{id:'ora',name:'Oracle Database',tag:'OR',color:'var(--ora)',level:'9 sub-courses · 19c baseline with 26ai',blurb:'Core DBA, backup and recovery, tuning, security, upgrades, RAC, Exadata, Data Guard and GoldenGate, each a full course.',outcomes:[],sections:[],start:'Start with Oracle Core DBA; the others build on it.',soon:{ico:'CL',name:'Oracle Database in the Cloud',blurb:'OCI, Autonomous Database, multicloud and cloud migration and DR.'},subs:["ora-core", "ora-bkp", "ora-perf", "ora-sec", "ora-upg", "ora-rac", "ora-exa", "ora-dg", "ora-gg"]},
-{id:"ora-core",parent:'ora',name:"Oracle Core DBA",tag:"OC",color:'var(--ora)',level:'Oracle Database sub-course',blurb:"Install, configure, secure, move data and operate Oracle Database (19c baseline, 26ai differences marked).",outcomes:["Architecture & multitenant", "Install & create CDBs", "Storage, redo & archiving", "Users & privileges", "Data Pump & automation", "Troubleshooting"],
+{id:'ora',name:'Oracle',tag:'OR',color:'var(--ora)',level:'9 sub-courses · 19c baseline with 26ai',blurb:'Core DBA, backup and recovery, tuning, security, upgrades, RAC, Exadata, Data Guard and GoldenGate, each a full course.',outcomes:[],sections:[],start:'Start with Oracle Core DBA; the others build on it.',soon:{ico:'CL',name:'Oracle in the Cloud',blurb:'OCI, Autonomous Database, multicloud and cloud migration and DR.'},subs:["ora-core", "ora-bkp", "ora-perf", "ora-sec", "ora-upg", "ora-rac", "ora-exa", "ora-dg", "ora-gg"]},
+{id:"ora-core",parent:'ora',name:"Oracle Core DBA",tag:"OC",color:'var(--ora)',level:'Oracle sub-course',blurb:"Install, configure, secure, move data and operate Oracle Database (19c baseline, 26ai differences marked).",outcomes:["Architecture & multitenant", "Install & create CDBs", "Storage, redo & archiving", "Users & privileges", "Data Pump & automation", "Troubleshooting"],
 sections:[{t:"Introduction & Oracle Foundations",q:"Introduction Quiz",cka:"Foundations · supports every Oracle sub-course",l:[["Course Overview, Prerequisites and How Lectures Are Tagged",'8:00',''],
 ["What Oracle Database Is: Engine, Editions and the Converged Database",'8:00',''],
 ["Releases and Support: 19c, 21c, 23ai and 26ai Long-Term Support",'8:00',''],
@@ -2297,7 +2319,7 @@ sections:[{t:"Introduction & Oracle Foundations",q:"Introduction Quiz",cka:"Foun
 ["Exam Practice Strategy for 1Z0-082, 1Z0-083 and 1Z0-182",'0:00','',3],
 ["Moving On: RAC, Data Guard, GoldenGate, Exadata and Cloud",'0:00','',4],
 ["Career Paths for Oracle DBAs",'0:00','',5]]}]},
-{id:"ora-bkp",parent:'ora',name:"Backup, Recovery & Flashback",tag:"BR",color:'var(--ora)',level:'Oracle Database sub-course',blurb:"Design backup strategy, use RMAN, recover from every failure type and undo mistakes with Flashback.",outcomes:["RMAN backups", "Complete & incomplete recovery", "PDB recovery", "Flashback", "Duplication", "Recovery drills"],
+{id:"ora-bkp",parent:'ora',name:"Backup, Recovery & Flashback",tag:"BR",color:'var(--ora)',level:'Oracle sub-course',blurb:"Design backup strategy, use RMAN, recover from every failure type and undo mistakes with Flashback.",outcomes:["RMAN backups", "Complete & incomplete recovery", "PDB recovery", "Flashback", "Duplication", "Recovery drills"],
 sections:[{t:"Backup & Recovery Foundations",q:"Backup Foundations Quiz",cka:"Foundations · 1Z0-083",l:[["Failure Types: Statement, Process, User Error, Instance and Media",'8:00',''],
 ["RTO, RPO and Designing a Strategy",'8:00',''],
 ["Backup Types: Physical vs Logical, Full vs Incremental, Consistent vs Inconsistent",'8:00',''],
@@ -2418,7 +2440,7 @@ sections:[{t:"Backup & Recovery Foundations",q:"Backup Foundations Quiz",cka:"Fo
 ["Recovery with Damaged Archived Logs",'0:00','',2],
 ["Support Escalation for Recovery Cases",'0:00','',3],
 ["Postmortem Template for Recovery Incidents",'0:00','',4]]}]},
-{id:"ora-perf",parent:'ora',name:"Performance & Tuning",tag:"PT",color:'var(--ora)',level:'Oracle Database sub-course',blurb:"Find bottlenecks with waits, AWR, ASH and execution plans, then fix them with statistics, indexing and SQL plan management.",outcomes:["Wait interface", "AWR, ASH & ADDM", "Optimizer & plans", "SQL tuning tools", "Memory & I/O tuning", "Hang analysis"],
+{id:"ora-perf",parent:'ora',name:"Performance & Tuning",tag:"PT",color:'var(--ora)',level:'Oracle sub-course',blurb:"Find bottlenecks with waits, AWR, ASH and execution plans, then fix them with statistics, indexing and SQL plan management.",outcomes:["Wait interface", "AWR, ASH & ADDM", "Optimizer & plans", "SQL tuning tools", "Memory & I/O tuning", "Hang analysis"],
 sections:[{t:"Performance Foundations & Method",q:"Performance Foundations Quiz",cka:"Foundations · 1Z0-084",l:[["A Tuning Methodology: Measure, Find the Bottleneck, Fix, Verify",'8:00',''],
 ["DB Time, the Time Model and Wait Classes",'8:00',''],
 ["Proactive vs Reactive Tuning and Baselines",'8:00',''],
@@ -2540,7 +2562,7 @@ sections:[{t:"Performance Foundations & Method",q:"Performance Foundations Quiz"
 ["AI Vector Search Performance for DBAs (26ai)",'0:00','',1],
 ["Machine-Assisted Tuning Features and Their Limits",'0:00','',2],
 ["Performance Testing Before Go-Live",'0:00','',3]]}]},
-{id:"ora-sec",parent:'ora',name:"Security & Compliance",tag:"SC",color:'var(--ora)',level:'Oracle Database sub-course',blurb:"Harden Oracle Database: authentication, privileges, encryption, auditing, data protection and SQL Firewall.",outcomes:["Authentication", "Least privilege", "TLS & TDE", "Unified auditing", "Redaction, VPD & Vault", "Hardening"],
+{id:"ora-sec",parent:'ora',name:"Security & Compliance",tag:"SC",color:'var(--ora)',level:'Oracle sub-course',blurb:"Harden Oracle Database: authentication, privileges, encryption, auditing, data protection and SQL Firewall.",outcomes:["Authentication", "Least privilege", "TLS & TDE", "Unified auditing", "Redaction, VPD & Vault", "Hardening"],
 sections:[{t:"Security Foundations & Threat Model",q:"Security Foundations Quiz",cka:"Foundations · security",l:[["Defense in Depth and the Oracle Security Architecture",'8:00',''],
 ["Threat Model for an Oracle Database",'8:00',''],
 ["Least Privilege and Separation of Duties",'8:00',''],
@@ -2639,7 +2661,7 @@ sections:[{t:"Security Foundations & Threat Model",q:"Security Foundations Quiz"
 ["Compliance Evidence and Audit Preparation",'0:00','',2],
 ["Red-Team Style Database Testing (Defensive View)",'0:00','',3],
 ["Security Metrics and Maturity",'0:00','',4]]}]},
-{id:"ora-upg",parent:'ora',name:"Upgrade, Patching & Migration",tag:"UP",color:'var(--ora)',level:'Oracle Database sub-course',blurb:"Patch with OPatch and Datapatch, upgrade with AutoUpgrade and migrate with minimal downtime.",outcomes:["Patching", "AutoUpgrade", "Non-CDB to PDB", "Migration methods", "Fleet patching", "Rollback"],
+{id:"ora-upg",parent:'ora',name:"Upgrade, Patching & Migration",tag:"UP",color:'var(--ora)',level:'Oracle sub-course',blurb:"Patch with OPatch and Datapatch, upgrade with AutoUpgrade and migrate with minimal downtime.",outcomes:["Patching", "AutoUpgrade", "Non-CDB to PDB", "Migration methods", "Fleet patching", "Rollback"],
 sections:[{t:"Release, Patch & Lifecycle Fundamentals",q:"Patch Fundamentals Quiz",cka:"Foundations · patching",l:[["The Release Model: Long-Term, Innovation and Version Naming",'8:00',''],
 ["Patch Types: Release Update, MRP, One-Off, Bundle and CPU",'8:00',''],
 ["Monthly CSPUs and the Quarterly CPU Cycle (2026 Change)",'8:00',''],
@@ -2718,7 +2740,7 @@ sections:[{t:"Release, Patch & Lifecycle Fundamentals",q:"Patch Fundamentals Qui
 ["Post-Upgrade Optimizer and Statistics Review",'0:00','',1],
 ["Lessons Learned Template",'0:00','',2],
 ["Planning the Next Cycle",'0:00','',3]]}]},
-{id:"ora-rac",parent:'ora',name:"Grid Infrastructure, ASM & RAC",tag:"RC",color:'var(--ora)',level:'Oracle Database sub-course',blurb:"Build and run Clusterware, ASM and Real Application Clusters, with services and Application Continuity.",outcomes:["Clusterware", "ASM", "RAC & Cache Fusion", "Services & failover", "Node eviction", "Rolling patching"],
+{id:"ora-rac",parent:'ora',name:"Grid Infrastructure, ASM & RAC",tag:"RC",color:'var(--ora)',level:'Oracle sub-course',blurb:"Build and run Clusterware, ASM and Real Application Clusters, with services and Application Continuity.",outcomes:["Clusterware", "ASM", "RAC & Cache Fusion", "Services & failover", "Node eviction", "Rolling patching"],
 sections:[{t:"High Availability & Cluster Concepts",q:"Cluster Concepts Quiz",cka:"Foundations · 1Z0-078",l:[["HA, Scalability and DR: What Each Technology Solves",'8:00',''],
 ["Shared-Everything Clusters and Why Oracle RAC Exists",'8:00',''],
 ["Grid Infrastructure Components: Clusterware, ASM and ACFS",'8:00',''],
@@ -2836,7 +2858,7 @@ sections:[{t:"High Availability & Cluster Concepts",q:"Cluster Concepts Quiz",ck
 ["Fleet Patching and Provisioning",'0:00','',2],
 ["Upgrading Grid to 26ai: Special Considerations",'0:00','',3],
 ["RAC Game Day",'0:00','',4]]}]},
-{id:"ora-exa",parent:'ora',name:"Exadata",tag:"EX",color:'var(--ora)',level:'Oracle Database sub-course',blurb:"Understand Exadata architecture, smart features, Exascale, administration, patching and cloud deployment.",outcomes:["Hardware & fabric", "Cells & grid disks", "Smart Scan & offload", "Exascale", "IORM", "Patching"],
+{id:"ora-exa",parent:'ora',name:"Exadata",tag:"EX",color:'var(--ora)',level:'Oracle sub-course',blurb:"Understand Exadata architecture, smart features, Exascale, administration, patching and cloud deployment.",outcomes:["Hardware & fabric", "Cells & grid disks", "Smart Scan & offload", "Exascale", "IORM", "Patching"],
 sections:[{t:"Exadata Foundations",q:"Exadata Foundations Quiz",cka:"Foundations · 1Z0-902",l:[["What Exadata Is and Which Problems It Solves",'8:00',''],
 ["Deployment Models: On-Premises, Cloud@Customer, Cloud and Multicloud",'8:00',''],
 ["Generations and Naming: X9M, X10M and X11M",'8:00',''],
@@ -2951,7 +2973,7 @@ sections:[{t:"Exadata Foundations",q:"Exadata Foundations Quiz",cka:"Foundations
 ["Performance Case Studies",'0:00','',2],
 ["Disaster Recovery Drills on Exadata",'0:00','',3],
 ["Moving On: Cloud and Autonomous Database",'0:00','',4]]}]},
-{id:"ora-dg",parent:'ora',name:"Data Guard",tag:"DG",color:'var(--ora)',level:'Oracle Database sub-course',blurb:"Build, switch, fail over and monitor standby databases with the broker, Fast-Start Failover and Active Data Guard.",outcomes:["Physical standby", "Broker & DGMGRL", "Switchover & failover", "Fast-Start Failover", "Active Data Guard", "Rolling upgrades"],
+{id:"ora-dg",parent:'ora',name:"Data Guard",tag:"DG",color:'var(--ora)',level:'Oracle sub-course',blurb:"Build, switch, fail over and monitor standby databases with the broker, Fast-Start Failover and Active Data Guard.",outcomes:["Physical standby", "Broker & DGMGRL", "Switchover & failover", "Fast-Start Failover", "Active Data Guard", "Rolling upgrades"],
 sections:[{t:"HA, DR & Data Guard Foundations",q:"Data Guard Foundations Quiz",cka:"Foundations · 1Z0-076",l:[["HA vs DR: RPO and RTO in Practice",'8:00',''],
 ["Maximum Availability Architecture Tiers",'8:00',''],
 ["Data Guard vs Backup, RAC and GoldenGate",'8:00',''],
@@ -3084,7 +3106,7 @@ sections:[{t:"HA, DR & Data Guard Foundations",q:"Data Guard Foundations Quiz",c
 ["Cross-Region and Cross-Cloud Data Guard",'0:00','',2],
 ["DR Game Day",'0:00','',3],
 ["Compliance Evidence for DR Tests",'0:00','',4]]}]},
-{id:"ora-gg",parent:'ora',name:"GoldenGate",tag:"GG",color:'var(--ora)',level:'Oracle Database sub-course',blurb:"Replicate and migrate data with GoldenGate Microservices: capture, transform, tune, secure and run in production.",outcomes:["Extract & Replicat", "Transformation", "Active-active", "Tuning", "Zero-downtime migration", "Heterogeneous targets"],
+{id:"ora-gg",parent:'ora',name:"GoldenGate",tag:"GG",color:'var(--ora)',level:'Oracle sub-course',blurb:"Replicate and migrate data with GoldenGate Microservices: capture, transform, tune, secure and run in production.",outcomes:["Extract & Replicat", "Transformation", "Active-active", "Tuning", "Zero-downtime migration", "Heterogeneous targets"],
 sections:[{t:"GoldenGate Foundations & Use Cases",q:"GoldenGate Foundations Quiz",cka:"Foundations · GoldenGate",l:[["What GoldenGate Is: Log-Based Change Data Capture and Replication",'8:00',''],
 ["GoldenGate vs Data Guard, Streams and Other Replication Tools",'8:00',''],
 ["Use Cases: Zero-Downtime Migration, Upgrade, Active-Active and Data Distribution",'8:00',''],
@@ -3778,7 +3800,8 @@ function sqScope(){
  return{label:c.name,cs:[c],kind:'course'};
 }
 function openSearch(){
- SQ=sqScope();SQmode='title';SQexact=false;const inp=document.getElementById('sqIn');inp.value='';
+ SQ=sqScope();SQmode=SQ.kind==='all'?'title':'body';SQexact=false; /* home page: titles and descriptions; every other page: lesson content */
+ const inp=document.getElementById('sqIn');inp.value='';
  document.getElementById('sqScope').innerHTML='Searching in <b>'+esc(SQ.label)+'</b>'+(SQ.sub?' \u00b7 '+esc(SQ.sub):'');
  inp.placeholder=SQ.kind==='all'?'Search all courses\u2026':SQ.kind==='course'?'Search this course\u2026':'Search this section\u2026';
  document.getElementById('srchM').classList.add('open');renderSearch();setTimeout(()=>inp.focus(),30)}
@@ -3839,12 +3862,21 @@ async function renderSearch(){
     if(!n)return;
     const tl=x[0].toLowerCase(),inMeta=ws.every(w=>sqHas(tl,w)||sqHas((x[2]||'').toLowerCase(),w));
     out.push({k:(body&&bod&&!inMeta)?3:2,n,t:x[0],s:c.name+' \u203a '+s.t,tag:isX(x)?'Additional':'Lecture',href:'#/c/'+c.id+'/'+si+'/'+li,col:c.color,
-     snip:body&&bod?sqSnippet(bod,ws):'',inBody:body&&bod&&!inMeta})})})});
+     snip:body&&bod?sqSnippet(bod,ws):'',inBody:body&&bod&&!inMeta})})});
+  /* quick reference pages are searchable too (title and description; with Lesson content on, the page text as well) */
+  const QR=SQ.kind!=='section'&&window.QREF&&QREF[c.id];
+  if(QR)QR.pages.forEach((p,pi)=>{
+   const bod=body?p.b.map(sqBlockText).join(' \n').replace(/[`*]/g,''):null,n=sc(p.t,p.d,bod);
+   if(!n)return;
+   const tl=p.t.toLowerCase(),inMeta=ws.every(w=>sqHas(tl,w)||sqHas((p.d||'').toLowerCase(),w));
+   out.push({k:(body&&bod&&!inMeta)?3:2,n,t:p.t,s:c.name+' › Quick reference',tag:'Quick reference',href:'#/c/'+c.id+'/ref/'+pi,col:c.color,
+    snip:body&&bod?sqSnippet(bod,ws):'',inBody:body&&bod&&!inMeta})});
+ });
  out.sort((a,b)=>a.k-b.k||b.n-a.n);
  const hint=body&&SQ.kind==='all'?'<div class="sq-scope">Home searches only lessons already loaded \u2014 open a course to search all of its lesson content.</div>':'';
  if(!out.length){L.innerHTML=hint+'<div class="hempty">🤷<b>No matches</b>Nothing in '+esc(SQ.label)+' matches \u201c'+esc(q)+'\u201d.</div>';return}
  const shown=out.slice(0,60);
- L.innerHTML=hint+shown.map((e,i)=>`<div class="hi" style="--c:${e.col||'var(--accent)'}"><div class="hr"><span class="hdot"></span></div><div class="hc" data-i="${i}"><div class="hc-t">${sqHi(e.t,ws)}</div><div class="hc-s">${sqHi(e.s,ws)}</div>${e.snip?`<div class="sq-snip">${sqHi(e.snip,ws)}</div>`:''}<div class="hc-tags"><span class="chip">${e.tag}</span>${e.inBody?'<span class="chip live">in lesson</span>':''}</div></div></div>`).join('')+(out.length>60?`<div class="hempty" style="padding:8px">Showing 60 of ${out.length} \u2014 refine your search.</div>`:'');
+ L.innerHTML=hint+shown.map((e,i)=>`<div class="hi" style="--c:${e.col||'var(--accent)'}"><div class="hr"><span class="hdot"></span></div><div class="hc" data-i="${i}"><div class="hc-t">${sqHi(e.t,ws)}</div><div class="hc-s">${sqHi(e.s,ws)}</div>${e.snip?`<div class="sq-snip">${sqHi(e.snip,ws)}</div>`:''}<div class="hc-tags"><span class="chip">${e.tag}</span>${e.inBody?'<span class="chip live">'+(e.tag==='Quick reference'?'in page':'in lesson')+'</span>':''}</div></div></div>`).join('')+(out.length>60?`<div class="hempty" style="padding:8px">Showing 60 of ${out.length} \u2014 refine your search.</div>`:'');
  L.querySelectorAll('.hc').forEach(el=>el.onclick=()=>{const e=shown[+el.dataset.i];closeSearch();go(e.href)})}
 addEventListener('keydown',e=>{if(e.key==='Escape'){closeHist();closeSearch();closeBm();const p=document.getElementById('rp');if(p)p.classList.remove('open')}});
 
@@ -3993,7 +4025,7 @@ function vSubCourses(c){
  const L=subsOf(c),N=aCnt(c),D=aDn(c),Pc=aPct(c),X=L.reduce((a,x)=>a+cntX(x),0),S=L.reduce((a,x)=>a+x.sections.length,0);
  let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›<span>${c.name}</span></div>
  <div class="hero course" style="--c:${c.color}"><div class="tx"><span class="chip">${c.level}</span><h1 style="margin:10px 0 6px">${c.name}</h1><div class="stats"><div><b>${L.length}</b>sub-courses</div><div><b>${S}</b>sections</div><div><b>${N}</b>lectures</div><div><b>${X}</b>additional</div></div></div><div class="ring" style="--p:${Pc}"><span>${Pc}%</span></div></div>
- <p class="sub">Pick a sub-course. Each has its own sections, lectures, quizzes and progress. ${c.start||''}</p><h2>Sub-courses</h2><div class="grid">`;
+ <p class="sub">Pick a sub-course. Each has its own sections, lectures, quizzes and progress. ${c.start||''}</p>${(c.subs||[]).some(x=>REFLAZY[x])?`<div class="tools" style="margin:0 0 18px"><a class="refbtn" onclick="go('#/c/${c.subs.find(x=>REFLAZY[x])}/ref/0')">&#9889; <b>Quick reference</b> &middot; choose a sub-course</a></div>`:''}<h2>Sub-courses</h2><div class="grid">`;
  h+=L.map((x,i)=>`<div class="card" style="--c:${x.color};animation-delay:${i*45}ms" onclick="go('#/c/${x.id}')"><div class="ico">${x.tag}</div><h3>${esc(x.name)}</h3><p>${x.blurb}</p><div class="meta"><span class="chip">${x.sections.length} sections</span><span class="chip">${cnt(x)} lectures</span><span class="chip">+${cntX(x)} additional</span></div><div class="bt"><b style="width:${pct(x)}%"></b></div><div class="pct"><span>${dn(x)}/${cnt(x)} done</span><span>${pct(x)}%</span></div></div>`).join('');
  h+=(c.soon?`<div class="card off" style="--c:${c.color}"><div class="ico">${c.soon.ico}</div><h3>${c.soon.name}</h3><p>${c.soon.blurb}</p><div class="meta"><span class="chip">Curriculum coming soon</span></div></div>`:'')+`</div>`;
  return h}
@@ -4067,6 +4099,10 @@ const _ld={},_rdy={};
 function ensure(id,si){const k=id+':'+si;if(_ld[k])return _ld[k];
  const one=f=>_ld[f]||(_ld[f]=new Promise(r=>{const s=document.createElement('script');s.src=f;s.onload=s.onerror=()=>r();document.head.appendChild(s)}));
  return _ld[k]=LAZY[id](si).reduce((p,f)=>p.then(()=>one(f)),Promise.resolve()).then(()=>{_rdy[k]=1})}
+/* Oracle quick references: one data file per sub-course, loaded when the reference is opened (window.QREF['ora-core'] ...) */
+const REFLAZY={};['core','bkp','perf','sec','upg','rac','exa','dg','gg'].forEach(s=>REFLAZY['ora-'+s]='ora-ref-'+s+'.js');
+function refEnsure(id){const f=REFLAZY[id];if(!f||(window.QREF||{})[id])return Promise.resolve();
+ return _ld[f]||(_ld[f]=new Promise(r=>{const s=document.createElement('script');s.src=f;s.onload=s.onerror=()=>r();document.head.appendChild(s)}))}
 /* ---------- QUIZZES (data in pg-quiz.js: window.QUIZZES['<course>:<section>']) ---------- */
 let QZ={};try{QZ=JSON.parse(localStorage.getItem('ls_quiz')||'{}')}catch(e){}
 const qSave=()=>{try{localStorage.setItem('ls_quiz',JSON.stringify(QZ))}catch(e){}};
@@ -4137,17 +4173,32 @@ function vQuiz(c,si){
  <div class="pn"><button class="btn ghost" onclick="QS=null;render(true)">Quit quiz</button>${chk?`<button class="btn" onclick="qNext()">${QS.i<t-1?'Next question ▸':'See results ▸'}</button>`:`<button class="btn" ${QS.sel.length?'':'disabled style="opacity:.5"'} onclick="qCheck()">Check answer</button>`}</div></div>`}
 /* ---------- QUICK REFERENCE (data in pg-ref.js: window.QREF['<course id>']) ---------- */
 const qrefOf=c=>(window.QREF||{})[c.id];
-const refBtn=c=>qrefOf(c)?`<a class="refbtn" onclick="event.stopPropagation();go('#/c/${c.id}/ref/0')">&#9889; <b>Quick reference</b></a>`:'';
+const refBtn=c=>(qrefOf(c)||REFLAZY[c.id])?`<a class="refbtn" onclick="event.stopPropagation();go('#/c/${c.id}/ref/0')">&#9889; <b>Quick reference</b></a>`:'';
 /* Table view: one app-wide setting (Aa > Tables): auto (cards on phones), table or cards */
 const TBK='ls_tblmode';
-var TBM='auto';try{const v=localStorage.getItem(TBK)||localStorage.getItem('ls_refmode');if(v==='table'||v==='cards'||v==='auto')TBM=v}catch(e){}
+var TBM='auto';
+const TBV=[['auto','Auto (cards on phones)','Cards on phone-sized screens, normal tables on larger ones.'],
+ ['table','Table','The normal table. Wide tables scroll sideways on a phone.'],
+ ['cards','Cards','Each row becomes a card: first column as the title, other columns as labelled lines.'],
+ ['collapse','Collapsible cards','Each row shows only its title. Tap a card to open the details.'],
+ ['compact','Compact list','Two lines per row with no card borders: denser, easier on long tables.'],
+ ['pinned','Pinned first column','Keeps the table and fixes the first column while the rest scrolls sideways.']];
+try{const v=localStorage.getItem(TBK)||localStorage.getItem('ls_refmode');if(TBV.some(x=>x[0]===v))TBM=v}catch(e){}
 function applyTables(){const eff=TBM==='auto'?(innerWidth<=640?'cards':'table'):TBM;
- document.documentElement.classList.toggle('tblcards',eff==='cards');
- const w=document.getElementById('rpTb');if(w)w.innerHTML=[['auto','Auto'],['table','Table'],['cards','Cards']].map(x=>`<button type="button" class="${TBM===x[0]?'on':''}" aria-pressed="${TBM===x[0]}" onclick="setTables('${x[0]}')">${x[1]}</button>`).join('');
-}
+ document.documentElement.dataset.tbl=eff;
+ const w=document.getElementById('rpTb');if(w){w.innerHTML=TBV.map(x=>`<option value="${x[0]}"${TBM===x[0]?' selected':''}>${x[1]}</option>`).join('');
+  const h=document.getElementById('rpTbH');if(h)h.textContent=(TBV.find(x=>x[0]===TBM)||TBV[0])[2]}}
 function setTables(m){TBM=m;try{if(m==='auto')localStorage.removeItem(TBK);else localStorage.setItem(TBK,m);localStorage.removeItem('ls_refmode')}catch(e){}applyTables()}
+/* collapsible cards: tap a card to open or close it (links and buttons inside still work) */
+document.addEventListener('click',e=>{if(document.documentElement.dataset.tbl!=='collapse')return;
+ if(e.target.closest('a,button,input,select,textarea'))return;
+ const tr=e.target.closest('.tw tbody tr');if(tr)tr.classList.toggle('open')});
 addEventListener('resize',()=>{if(TBM==='auto')applyTables()});
 applyTables();
+var RFM='list';try{if(localStorage.getItem('ls_refnav')==='select')RFM='select'}catch(e){}
+function setRefNav(m){RFM=m;try{localStorage.setItem('ls_refnav',m)}catch(e){}render(true,true)}
+function refSub(id){const h=location.hash.split('/'),R=(window.QREF||{})[h[2]],t=R&&R.pages[+h[4]||0]&&R.pages[+h[4]||0].t;
+ refEnsure(id).then(()=>{const N=(window.QREF||{})[id];let j=0;if(N&&t){const k=N.pages.findIndex(p=>p.t===t);if(k>=0)j=k}go('#/c/'+id+'/ref/'+j)})}
 function refFilter(q){
  q=q.trim().toLowerCase();let hit=0;
  document.querySelectorAll('#refbody .tw tbody tr').forEach(r=>{const m=!q||r.textContent.toLowerCase().includes(q);r.style.display=m?'':'none';if(m)hit++});
@@ -4159,17 +4210,23 @@ function vRef(c,pi){
  const crumbs=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›${par(c)}<a onclick="go('#/c/${c.id}')">${c.name}</a>›<span>Quick reference</span></div>`;
  if(!R)return crumbs+`<h1>Quick reference</h1><p class="sub">Not available for this course yet.</p>`;
  const n=pi===undefined||pi===''||isNaN(+pi)?0:Math.min(Math.max(+pi,0),R.pages.length-1);
- const tabs=`<select class="rsel" aria-label="Choose a reference page" onchange="go('#/c/${c.id}/ref/'+this.value)">${R.pages.map((p,i)=>`<option value="${i}"${i===n?' selected':''}>${esc(p.t)}</option>`).join('')}</select>`;
+ const sibs=c.parent?COURSES.filter(x=>x.parent===c.parent&&(REFLAZY[x.id]||qrefOf(x))):[];
+ const lst=(lab,cur,items)=>`<details class="rlist"><summary><span>${lab}</span><b>${esc(cur)}</b></summary><div class="rl">${items.map(x=>`<button type="button" class="${x[2]?'on':''}" onclick="${x[1]}">${esc(x[0])}</button>`).join('')}</div></details>`;
+ const subSel=sibs.length<2?'':RFM==='list'?lst('Sub-course',c.name,sibs.map(x=>[x.name,`refSub('${x.id}')`,x.id===c.id])):`<select class="rsel" aria-label="Choose a sub-course" onchange="refSub(this.value)">${sibs.map(x=>`<option value="${x.id}"${x.id===c.id?' selected':''}>${esc(x.name)}</option>`).join('')}</select>`;
+ const pgSel=RFM==='list'?lst('Page',R.pages[n].t,R.pages.map((p,i)=>[p.t,`go('#/c/${c.id}/ref/${i}')`,i===n])):`<select class="rsel" aria-label="Choose a reference page" onchange="go('#/c/${c.id}/ref/'+this.value)">${R.pages.map((p,i)=>`<option value="${i}"${i===n?' selected':''}>${esc(p.t)}</option>`).join('')}</select>`;
+ const tabs=`<div class="rmode"><span>Choose with:</span><button type="button" class="${RFM==='select'?'on':''}" onclick="setRefNav('select')">Drop-down</button><button type="button" class="${RFM==='list'?'on':''}" onclick="setRefNav('list')">Expandable list</button></div>`+subSel+pgSel;
  const p=R.pages[n];
  return crumbs+`<h1>${esc(p.t)}</h1><p class="sub">${esc(p.d)}</p>${tabs}
-  <input class="rsearch" type="search" placeholder="Filter this page, for example wal or autovacuum" oninput="refFilter(this.value)" aria-label="Filter rows">
+  <input class="rsearch" type="search" placeholder="Filter this page, for example ${esc(R.hint||'wal or autovacuum')}" oninput="refFilter(this.value)" aria-label="Filter rows">
   ${(p.see&&p.see.length)?`<p class="rsee">Learn more: ${p.see.map(s=>`<a onclick="go('#/c/${c.id}/${s[0]}/${s[1]}')">${esc(s[2])}</a>`).join('')}</p>`:''}
   <div id="refbody">${p.b.map(blk).join('')}<p class="rnone" id="rnone">No rows match.</p></div>
   <div class="pn">${n>0?`<button class="btn ghost" onclick="go('#/c/${c.id}/ref/${n-1}')">◂ ${esc(R.pages[n-1].t)}</button>`:`<button class="btn ghost" onclick="go('#/c/${c.id}')">◂ Back to course</button>`}${n<R.pages.length-1?`<button class="btn" onclick="go('#/c/${c.id}/ref/${n+1}')">${esc(R.pages[n+1].t)} ▸</button>`:`<button class="btn" onclick="go('#/c/${c.id}')">Back to course</button>`}</div>`}
 function render(keep,noTrack){
  stopTrack();
  const[,r,id,si,li]=location.hash.split('/');let c=COURSES.find(x=>x.id===id&&!x.hold&&(x.sections.length||x.subs));
- if(r==='c'&&c&&LAZY[c.id]&&si!==undefined&&!_rdy[c.id+':'+si]){app.innerHTML='<p class="sub">Loading lessons…</p>';ensure(c.id,+si).then(()=>{if(location.hash.split('/')[2]===id)render(keep,noTrack)});return}
+ if(r==='c'&&c&&LAZY[c.id]&&si!==undefined&&si!=='ref'&&!_rdy[c.id+':'+si]){app.innerHTML='<p class="sub">Loading lessons…</p>';ensure(c.id,+si).then(()=>{if(location.hash.split('/')[2]===id)render(keep,noTrack)});return}
+ if(r==='c'&&c&&c.subs&&si==='ref'){const f=c.subs.find(x=>REFLAZY[x]);if(f){location.replace('#/c/'+f+'/ref/'+(li||0));return}}
+ if(r==='c'&&c&&si==='ref'&&REFLAZY[c.id]&&!qrefOf(c)){app.innerHTML='<p class="sub">Loading quick reference…</p>';refEnsure(c.id).then(()=>{if(location.hash.split('/')[2]===id)render(keep,noTrack)});return}
  app.innerHTML=r==='c'&&c&&c.subs?vSubCourses(c):r==='c'&&c?(si==='ref'?vRef(c,li):li==='quiz'?vQuiz(c,+si):li!==undefined?vLesson(c,+si,+li):si!==undefined?vSub(c,+si):vTopics(c)):vCourses();
  if(!keep)window.scrollTo(0,0);
  readerAfterRender(r,c,si,li);

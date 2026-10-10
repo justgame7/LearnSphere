@@ -1,6 +1,6 @@
 # LearnSphere
 
-Bite-sized, structured lessons (currently a PostgreSQL DBA course) with progress saved on-device.
+Bite-sized, structured lessons (currently a PostgreSQL course) with progress saved on-device.
 Static site, installable as an Android app (PWA), works offline.
 
 ## Layout
