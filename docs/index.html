@@ -3868,6 +3868,17 @@ function goBm(i){const e=bmLoad()[i];if(!e)return;closeBm();go(`#/c/${e.cid}/${e
 function openBm(){document.getElementById('bmM').classList.add('open');renderBm()}
 function closeBm(){document.getElementById('bmM').classList.remove('open')}
 
+/* ---------- No "Tap to search" on single taps (mobile Chrome) ----------
+   Chrome's Tap to Search only fires for a tap the page did not handle. Marking the touch-generated
+   mouse events as handled (preventDefault) stops it, while long-press text selection and links keep working. */
+(function(){
+ const fromTouch=e=>e.sourceCapabilities?!!e.sourceCapabilities.firesTouchEvents:matchMedia('(pointer:coarse)').matches;
+ const keep='a[href],input,textarea,select,[contenteditable],summary,label';
+ ['mousedown','mouseup','click'].forEach(t=>document.addEventListener(t,e=>{
+  if(!e.cancelable||!fromTouch(e))return;
+  const el=e.target&&e.target.closest?e.target:(e.target&&e.target.parentElement);
+  if(!el||el.closest(keep))return;
+  e.preventDefault()},true))})();
 /* ---------- Home card density (expanded / compact) ---------- */
 const isCompact=()=>document.body.classList.contains('compact');
 (function(){try{if(localStorage.getItem('ls_dens')==='compact')document.body.classList.add('compact')}catch(e){}})();
