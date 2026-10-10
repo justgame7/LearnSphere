@@ -129,10 +129,9 @@ input,textarea,.ls,.ld{-webkit-user-select:text;user-select:text}
 .chkr input{width:18px;height:18px;accent-color:var(--accent);flex:none;margin:0}
 .chkr small{margin-left:auto;font:600 11px var(--mono);color:var(--mut)}
 .stp{display:grid;grid-template-columns:44px 1fr 44px;gap:6px;align-items:center}
-.stp button,.rp-reset{height:38px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);font:700 15px var(--sans)}
-.stp button:hover,.rp-reset:hover{border-color:var(--accent);color:var(--accent)}
+.stp button{height:38px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);font:700 15px var(--sans)}
+.stp button:hover{border-color:var(--accent);color:var(--accent)}
 .stp span{text-align:center;font:600 13px var(--mono);color:var(--mut)}
-.rp-reset{width:100%;font:600 12px var(--mono);color:var(--mut)}
 .bmk{display:inline-grid;place-items:center;width:34px;height:34px;margin-left:10px;vertical-align:middle;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--mut);font-size:17px;line-height:1}
 .bmk:hover,.bmk.on{color:#f5b942;border-color:#f5b942}
 .bmg{display:flex;align-items:center;gap:8px;margin:14px 0 8px;font-weight:700}
@@ -273,7 +272,7 @@ html.tblcards .tw td:not(:first-child):before{content:attr(data-l);display:block
 <body>
 <header><div class="bar"><div class="logo" onclick="location.hash='#/'"><i>L</i>LearnSphere</div><div class="sp"></div>
 <button class="ib" id="inst" title="Install app" aria-label="Install app" hidden style="width:auto;padding:0 12px;font:600 12px var(--mono)">Install</button>
-<button class="ib txt" id="aa" title="Appearance: theme, text size and width" aria-label="Appearance settings" onclick="toggleReader(event)">Aa</button>
+<button class="ib" id="aa" title="Settings: theme, text size, width and tables" aria-label="Settings" onclick="toggleReader(event)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
 <button class="ib" id="bm" title="Saved lessons" aria-label="Saved lessons" onclick="openBm()"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg></button>
 <button class="ib" id="hist" title="Learning history" aria-label="Learning history" onclick="openHist()"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/></svg></button>
 <button class="ib" id="srch" title="Search" aria-label="Search" onclick="openSearch()"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg></button></div></header>
@@ -286,7 +285,6 @@ html.tblcards .tw td:not(:first-child):before{content:attr(data-l);display:block
  <div class="sec2"><h5>Text size</h5><div class="stp"><button type="button" onclick="rdr('fs',-1)" aria-label="Smaller text">A−</button><span id="rpFs">100%</span><button type="button" onclick="rdr('fs',1)" aria-label="Larger text">A+</button></div></div>
  <div class="sec2"><h5>Reading width</h5><div class="seg" id="rpW"></div></div>
  <div class="sec2"><h5>Tables</h5><div class="seg" id="rpTb"></div><p class="sub" style="margin:8px 0 0;font:11px/1.5 var(--mono)">Auto shows cards on phones. Cards stack each row so nothing scrolls sideways.</p></div>
- <button type="button" class="rp-reset" onclick="rdr('reset')">Reset to default</button>
  <div class="sec2" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"><h5>Backup &amp; restore</h5>
   <div class="seg" style="grid-template-columns:1fr 1fr"><button type="button" onclick="exportProgress()">⬇ Export</button><button type="button" onclick="document.getElementById('impFile').click()">⬆ Import</button></div>
   <input type="file" id="impFile" accept=".json,application/json" hidden onchange="importProgress(this)">
@@ -3848,8 +3846,8 @@ function applyReader(){const r=document.documentElement.style;r.setProperty('--r
  const f=document.getElementById('rpFs');if(f)f.textContent=Math.round(RFS[RD.fs]*100)+'%';
  try{renderAppearance()}catch(e){}
  const w=document.getElementById('rpW');if(w)w.innerHTML=RW.map((x,i)=>`<button type="button" class="${RD.w===i?'on':''}" aria-pressed="${RD.w===i}" onclick="rdr('w',${i})">${x[0]}</button>`).join('')
- const a=document.getElementById('aa');if(a)a.classList.toggle('on',RD.fs!==2||RD.w!==1||(typeof TBM==='string'&&TBM!=='auto'))}
-function rdr(k,v){if(k==='fs')RD.fs=Math.min(5,Math.max(0,RD.fs+v));else if(k==='w')RD.w=v;else{RD={fs:2,w:1};TBM='auto';try{localStorage.removeItem(TBK)}catch(e){}}
+}
+function rdr(k,v){if(k==='fs')RD.fs=Math.min(5,Math.max(0,RD.fs+v));else if(k==='w')RD.w=v;
  try{localStorage.setItem(RK,JSON.stringify(RD))}catch(e){}applyReader();applyTables();readerBar()}
 function toggleReader(e){e.stopPropagation();document.getElementById('rp').classList.toggle('open')}
 document.addEventListener('click',e=>{const p=document.getElementById('rp');if(p&&p.classList.contains('open')&&!e.target.closest('#rp'))p.classList.remove('open')});
@@ -4137,7 +4135,7 @@ var TBM='auto';try{const v=localStorage.getItem(TBK)||localStorage.getItem('ls_r
 function applyTables(){const eff=TBM==='auto'?(innerWidth<=640?'cards':'table'):TBM;
  document.documentElement.classList.toggle('tblcards',eff==='cards');
  const w=document.getElementById('rpTb');if(w)w.innerHTML=[['auto','Auto'],['table','Table'],['cards','Cards']].map(x=>`<button type="button" class="${TBM===x[0]?'on':''}" aria-pressed="${TBM===x[0]}" onclick="setTables('${x[0]}')">${x[1]}</button>`).join('');
- const a=document.getElementById('aa');if(a)a.classList.toggle('on',typeof RD==='object'&&(RD.fs!==2||RD.w!==1||TBM!=='auto'))}
+}
 function setTables(m){TBM=m;try{if(m==='auto')localStorage.removeItem(TBK);else localStorage.setItem(TBK,m);localStorage.removeItem('ls_refmode')}catch(e){}applyTables()}
 addEventListener('resize',()=>{if(TBM==='auto')applyTables()});
 applyTables();
