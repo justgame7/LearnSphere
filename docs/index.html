@@ -87,6 +87,47 @@ body.compact .grid.courses{gap:8px}
 .seg button:hover{color:var(--tx)}
 .seg button.on{background:color-mix(in srgb,var(--accent) 16%,var(--panel));color:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 40%,var(--line))}
 @media(max-width:380px){.seg button{font-size:11px;padding:9px 4px}}
+
+/* ---- reader controls, bookmarks, progress bar, flashcards ---- */
+.bar{gap:10px}
+.ib.txt{font:700 13px var(--sans);letter-spacing:-.5px}
+.ib.on{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+@media(max-width:520px){.bar{gap:6px;padding:10px 12px}.ib{width:34px;height:34px}.logo{font-size:0}.logo i{font-size:15px}}
+#rbar{position:fixed;left:0;top:0;height:3px;width:0;z-index:40;background:linear-gradient(90deg,var(--accent),var(--pg));pointer-events:none;display:none;transition:width .08s linear}
+.rp{position:fixed;z-index:25;top:58px;right:14px;width:min(290px,calc(100vw - 28px));background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:0 18px 40px -16px rgba(0,0,0,.6);display:none}
+.rp.open{display:block}
+.rp h5{margin:0 0 8px;font:600 11px var(--mono);letter-spacing:.6px;text-transform:uppercase;color:var(--mut)}
+.rp .sec2{margin-bottom:14px}.rp .sec2:last-child{margin-bottom:0}
+.stp{display:grid;grid-template-columns:44px 1fr 44px;gap:6px;align-items:center}
+.stp button,.rp-reset{height:38px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);font:700 15px var(--sans)}
+.stp button:hover,.rp-reset:hover{border-color:var(--accent);color:var(--accent)}
+.stp span{text-align:center;font:600 13px var(--mono);color:var(--mut)}
+.rp-reset{width:100%;font:600 12px var(--mono);color:var(--mut)}
+.bmk{display:inline-grid;place-items:center;width:34px;height:34px;margin-left:10px;vertical-align:middle;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--mut);font-size:17px;line-height:1}
+.bmk:hover,.bmk.on{color:#f5b942;border-color:#f5b942}
+.bmg{display:flex;align-items:center;gap:8px;margin:14px 0 8px;font-weight:700}
+.bmg:first-child{margin-top:2px}
+.bmg-top{font-size:15px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.bmg-dot{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}
+.bmg-sub{font:600 12px var(--mono);color:var(--mut);margin:10px 0 8px 18px}
+.bmg-sub:before{content:'';width:8px;height:8px;border-radius:2px;background:var(--c);flex:none}
+.bmg small{margin-left:auto;font:600 11px var(--mono);color:var(--mut)}
+.bmi-sub{margin-left:18px}
+.bmrm{flex:none;width:28px;height:28px;border-radius:8px;border:1px solid var(--line);color:var(--mut)}
+.bmrm:hover{color:#ff4d6d;border-color:#ff4d6d}
+.fcstat{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+.fcbig{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:210px;padding:22px 18px;background:var(--panel2);border:1px solid var(--line);border-radius:18px;margin:12px 0}
+.fcbig .fq{font:700 20px/1.35 var(--sans);word-break:break-word}
+.fcbig .fh{font:600 11px var(--mono);color:var(--mut);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px}
+.fcbig .fa{font:15px/1.55 var(--sans);white-space:pre-wrap;word-break:break-word;text-align:left;width:100%;border-top:1px dashed var(--line);margin-top:16px;padding-top:14px}
+.fcbig .fa.code{font:12.5px/1.6 var(--mono);background:#0B0E13;color:#D7E0EC;border-radius:12px;padding:12px;border:1px solid var(--line)}
+.fcgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.fcgrid button{padding:10px 4px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);font:700 13px var(--sans);display:flex;flex-direction:column;gap:2px;align-items:center}
+.fcgrid button small{font:500 10.5px var(--mono);color:var(--mut)}
+.fcgrid button:hover{border-color:var(--accent)}
+.fcgrid .g0{color:#ff6b81}.fcgrid .g1{color:#f5b942}.fcgrid .g2{color:var(--accent)}.fcgrid .g3{color:#7cb7ff}
+@media(max-width:420px){.fcgrid{grid-template-columns:1fr 1fr}}
+.fcprog{height:5px;border-radius:9px;background:var(--panel2);overflow:hidden}.fcprog b{display:block;height:100%;background:var(--accent);width:0;transition:width .25s}
 .sq-snip{font-size:12.5px;color:var(--mut);margin-top:6px;line-height:1.45;word-break:break-word}
 .sq-scope{font:600 11px var(--mono);color:var(--mut);margin:0 0 10px}
 .sq-scope b{color:var(--accent)}
@@ -140,14 +181,14 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 .hero.course .auto{grid-column:1/-1;grid-row:5}
 }
 
-.ls{max-width:760px}
+.ls{max-width:var(--rw,760px);font-size:calc(15px*var(--rs,1))}
 .ls p{color:var(--tx);margin:0 0 14px;line-height:1.65}
-.ls h4{font:700 19px var(--sans);letter-spacing:-.3px;margin:30px 0 10px;padding-left:12px;border-left:3px solid var(--c,var(--accent))}
+.ls h4{font:700 calc(19px*var(--rs,1)) var(--sans);letter-spacing:-.3px;margin:30px 0 10px;padding-left:12px;border-left:3px solid var(--c,var(--accent))}
 .ls ul{margin:0 0 16px;padding:0;list-style:none}.ls li{position:relative;padding:5px 0 5px 22px}
 .ls li:before{content:"";position:absolute;left:4px;top:14px;width:7px;height:7px;border-radius:50%;background:var(--accent)}
-.ls code{font:13px var(--mono);background:var(--panel2);border:1px solid var(--line);padding:1px 6px;border-radius:6px;color:var(--accent)}
+.ls code{font:calc(13px*var(--rs,1)) var(--mono);background:var(--panel2);border:1px solid var(--line);padding:1px 6px;border-radius:6px;color:var(--accent)}
 .tw{overflow-x:auto;margin:0 0 18px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
-.tw table{border-collapse:collapse;width:100%;font-size:14px}
+.tw table{border-collapse:collapse;width:100%;font-size:calc(14px*var(--rs,1))}
 .tw th{text-align:left;font:600 12px var(--mono);text-transform:uppercase;letter-spacing:.5px;color:var(--mut);background:var(--panel2)}
 .tw th,.tw td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
 .tw tr:last-child td{border-bottom:0}.tw td:first-child{font-weight:600;white-space:nowrap}
@@ -163,9 +204,9 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 .fl .ar{align-self:flex-start;margin:3px 0 3px 17px;transform:rotate(90deg)}
 }
 .cb{position:relative;margin:0 0 18px}
-.cb pre{margin:0;padding:40px 16px 16px;overflow-x:auto;background:#0B0E13;color:#D7E0EC;border:1px solid var(--line);border-radius:14px;font:12.5px/1.6 var(--mono)}
+.cb pre{margin:0;padding:40px 16px 16px;overflow-x:auto;background:#0B0E13;color:#D7E0EC;border:1px solid var(--line);border-radius:14px;font:calc(12.5px*var(--rs,1))/1.6 var(--mono)}
 .cb button{position:absolute;top:8px;right:8px;font:600 11px var(--mono);padding:4px 9px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);color:var(--mut)}
-.nt{margin:0 0 18px;padding:14px 16px;border-radius:14px;background:color-mix(in srgb,var(--accent) 10%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 35%,var(--line));font-size:14px}
+.nt{margin:0 0 18px;padding:14px 16px;border-radius:14px;background:color-mix(in srgb,var(--accent) 10%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 35%,var(--line));font-size:calc(14px*var(--rs,1))}
 .nt:before{content:"💡 ";}
 .dg{margin:0 0 18px;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow-x:auto}.dg svg{width:100%;min-width:560px;height:auto;display:block}
 .srcs{margin-top:30px;padding-top:14px;border-top:1px solid var(--line);font:12px var(--mono);color:var(--mut)}
@@ -200,10 +241,25 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 <body>
 <header><div class="bar"><div class="logo" onclick="location.hash='#/'"><i>L</i>LearnSphere</div><div class="sp"></div>
 <button class="ib" id="inst" title="Install app" aria-label="Install app" hidden style="width:auto;padding:0 12px;font:600 12px var(--mono)">Install</button>
-<button class="ib" id="th" title="Toggle theme" aria-label="Toggle theme">◐</button>
+<button class="ib txt" id="aa" title="Appearance: theme, text size and width" aria-label="Appearance settings" onclick="toggleReader(event)">Aa</button>
+<button class="ib" id="bm" title="Saved lessons" aria-label="Saved lessons" onclick="openBm()"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg></button>
+<button class="ib" id="fc" title="Flashcards" aria-label="Flashcards" onclick="openFc()"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="14" height="12" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v10"/></svg></button>
 <button class="ib" id="hist" title="Learning history" aria-label="Learning history" onclick="openHist()"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/></svg></button>
 <button class="ib" id="srch" title="Search" aria-label="Search" onclick="openSearch()"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg></button></div></header>
 <main class="wrap" id="app"></main>
+<div id="rbar"></div>
+<div class="rp" id="rp" onclick="event.stopPropagation()">
+ <div class="sec2"><h5>Theme</h5><div class="seg" id="rpT"></div></div>
+ <div class="sec2"><h5>Text size</h5><div class="stp"><button type="button" onclick="rdr('fs',-1)" aria-label="Smaller text">A−</button><span id="rpFs">100%</span><button type="button" onclick="rdr('fs',1)" aria-label="Larger text">A+</button></div></div>
+ <div class="sec2"><h5>Reading width</h5><div class="seg" id="rpW"></div></div>
+ <button type="button" class="rp-reset" onclick="rdr('reset')">Reset to default</button>
+</div>
+<div class="hm" id="bmM" onclick="if(event.target===this)closeBm()"><div class="hd" role="dialog" aria-modal="true" aria-label="Saved lessons">
+ <div class="hd-top"><div><h2>⭐ Saved lessons</h2><p id="bmS">—</p></div><button class="ib" aria-label="Close" onclick="closeBm()">×</button></div>
+ <div class="hl" id="bmL" style="margin-top:14px"></div></div></div>
+<div class="hm" id="fcM" onclick="if(event.target===this)closeFc()"><div class="hd" role="dialog" aria-modal="true" aria-label="Flashcards">
+ <div class="hd-top"><div><h2>🃏 Flashcards</h2><p id="fcS">—</p></div><button class="ib" aria-label="Close" onclick="closeFc()">×</button></div>
+ <div class="hl" id="fcL" style="margin-top:12px"></div></div></div>
 <div class="hm" id="srchM" onclick="if(event.target===this)closeSearch()"><div class="hd" role="dialog" aria-modal="true" aria-label="Search">
  <div class="hd-top"><div><h2>🔍 Search</h2></div><button class="ib" aria-label="Close" onclick="closeSearch()">×</button></div>
  <input class="sq" id="sqIn" type="search" placeholder="Search lectures…" autocomplete="off" oninput="renderSearch()">
@@ -3738,8 +3794,146 @@ async function renderSearch(){
  const shown=out.slice(0,60);
  L.innerHTML=hint+shown.map((e,i)=>`<div class="hi" style="--c:${e.col||'var(--accent)'}"><div class="hr"><span class="hdot"></span></div><div class="hc" data-i="${i}"><div class="hc-t">${sqHi(e.t,ws)}</div><div class="hc-s">${sqHi(e.s,ws)}</div>${e.snip?`<div class="sq-snip">${sqHi(e.snip,ws)}</div>`:''}<div class="hc-tags"><span class="chip">${e.tag}</span>${e.inBody?'<span class="chip live">in lesson</span>':''}</div></div></div>`).join('')+(out.length>60?`<div class="hempty" style="padding:8px">Showing 60 of ${out.length} \u2014 refine your search.</div>`:'');
  L.querySelectorAll('.hc').forEach(el=>el.onclick=()=>{const e=shown[+el.dataset.i];closeSearch();go(e.href)})}
-addEventListener('keydown',e=>{if(e.key==='Escape'){closeHist();closeSearch()}});
+addEventListener('keydown',e=>{if(e.key==='Escape'){closeHist();closeSearch();closeBm();closeFc();const p=document.getElementById('rp');if(p)p.classList.remove('open')}});
 
+/* ---------- Reader controls: text size + width (kept on this device) ---------- */
+const RK='ls_reader',RFS=[0.85,0.92,1,1.12,1.25,1.4],RW=[['Narrow','600px'],['Normal','760px'],['Wide','100%']];
+let RD={fs:2,w:1};try{const o=JSON.parse(localStorage.getItem(RK));if(o&&typeof o.fs==='number'&&typeof o.w==='number')RD={fs:Math.min(5,Math.max(0,o.fs|0)),w:Math.min(2,Math.max(0,o.w|0))}}catch(e){}
+function applyReader(){const r=document.documentElement.style;r.setProperty('--rs',RFS[RD.fs]);r.setProperty('--rw',RW[RD.w][1]);
+ const f=document.getElementById('rpFs');if(f)f.textContent=Math.round(RFS[RD.fs]*100)+'%';
+ const th=document.getElementById('rpT'),cur=document.documentElement.dataset.theme==='light'?'light':'dark';
+ if(th)th.innerHTML=[['dark','☾ Dark'],['light','☀ Light']].map(x=>`<button type="button" class="${cur===x[0]?'on':''}" aria-pressed="${cur===x[0]}" onclick="setTheme('${x[0]}')">${x[1]}</button>`).join('');
+ const w=document.getElementById('rpW');if(w)w.innerHTML=RW.map((x,i)=>`<button type="button" class="${RD.w===i?'on':''}" aria-pressed="${RD.w===i}" onclick="rdr('w',${i})">${x[0]}</button>`).join('')
+ const a=document.getElementById('aa');if(a)a.classList.toggle('on',RD.fs!==2||RD.w!==1)}
+function rdr(k,v){if(k==='fs')RD.fs=Math.min(5,Math.max(0,RD.fs+v));else if(k==='w')RD.w=v;else RD={fs:2,w:1};
+ try{localStorage.setItem(RK,JSON.stringify(RD))}catch(e){}applyReader();readerBar()}
+function toggleReader(e){e.stopPropagation();document.getElementById('rp').classList.toggle('open')}
+document.addEventListener('click',e=>{const p=document.getElementById('rp');if(p&&p.classList.contains('open')&&!e.target.closest('#rp'))p.classList.remove('open')});
+applyReader();
+
+/* ---------- Reading progress bar (lesson pages only) ---------- */
+function readerBar(){const b=document.getElementById('rbar');if(!b)return;
+ const on=!!document.querySelector('#app .ls');b.style.display=on?'block':'none';if(!on)return;
+ const max=document.documentElement.scrollHeight-innerHeight;b.style.width=(max>0?Math.min(100,Math.max(0,scrollY/max*100)):100)+'%'}
+addEventListener('scroll',readerBar,{passive:true});addEventListener('resize',readerBar);
+
+/* ---------- Bookmarks (lessons) ---------- */
+const BK='ls_bookmarks';
+const bmLoad=()=>{try{const a=JSON.parse(localStorage.getItem(BK));return Array.isArray(a)?a.filter(x=>x&&x.cid&&typeof x.si==='number'&&typeof x.li==='number'):[]}catch(e){return[]}};
+const bmSave=a=>{try{localStorage.setItem(BK,JSON.stringify(a))}catch(e){}};
+const bmHas=(cid,si,li)=>bmLoad().some(x=>x.cid===cid&&x.si===si&&x.li===li);
+function bmToggle(cid,si,li){const c=COURSES.find(x=>x.id===cid);if(!c)return;
+ let a=bmLoad();const i=a.findIndex(x=>x.cid===cid&&x.si===si&&x.li===li);
+ if(i>=0)a.splice(i,1);else a.unshift({cid,si,li,t:c.sections[si].l[li][0],cn:c.name,st:c.sections[si].t,col:c.color,ts:Date.now()});
+ bmSave(a);bmSync();if(document.getElementById('bmM').classList.contains('open'))renderBm()}
+function bmSync(){const b=document.querySelector('#app .bmk');if(!b)return;const[,,id,si,li]=location.hash.split('/');
+ const on=bmHas(id,+si,+li);b.classList.toggle('on',on);b.textContent=on?'\u2605':'\u2606';b.title=on?'Remove from saved':'Save this lesson';b.setAttribute('aria-pressed',on)}
+function readerAfterRender(r,c,si,li){
+ if(r==='c'&&c&&!c.subs&&li!==undefined&&li!=='quiz'&&c.sections[+si]&&c.sections[+si].l[+li]){
+  const h=document.querySelector('#app .ls h1');
+  if(h&&!h.querySelector('.bmk')){const b=document.createElement('button');b.type='button';b.className='bmk';b.setAttribute('aria-label','Save lesson');
+   b.onclick=()=>bmToggle(c.id,+si,+li);h.appendChild(b);bmSync()}}
+ readerBar()}
+function renderBm(){const a=bmLoad(),L=document.getElementById('bmL');
+ document.getElementById('bmS').textContent=a.length?`${a.length} saved · kept on this device`:'Kept on this device';
+ if(!a.length){L.innerHTML='<div class="hempty">☆<b>Nothing saved yet</b>Tap the star next to a lesson title to save it here.</div>';return}
+ const ci=id=>{const k=COURSES.findIndex(x=>x.id===id);return k<0?9999:k};
+ const gs={};a.forEach((e,i)=>{(gs[e.cid]=gs[e.cid]||[]).push({e,i})});
+ const ids=Object.keys(gs).sort((x,y)=>{const cx=COURSES.find(c=>c.id===x),cy=COURSES.find(c=>c.id===y);
+  const px=ci(cx&&cx.parent||x),py=ci(cy&&cy.parent||y);return px-py||ci(x)-ci(y)});
+ let h='',lastTop=null;
+ ids.forEach(id=>{const c=COURSES.find(x=>x.id===id),par=c&&c.parent?COURSES.find(x=>x.id===c.parent):null,items=gs[id],col=(c&&c.color)||items[0].e.col||'var(--accent)';
+  if(par){
+   if(lastTop!==par.id){h+=`<div class="bmg bmg-top" style="--c:${par.color||col}"><span class="bmg-dot"></span><span>${esc(par.name)}</span></div>`;lastTop=par.id}
+   h+=`<div class="bmg bmg-sub" style="--c:${col}"><span>${esc(c.name)}</span><small>${items.length}</small></div>`}
+  else{h+=`<div class="bmg bmg-top" style="--c:${col}"><span class="bmg-dot"></span><span>${esc(c?c.name:items[0].e.cn)}</span><small>${items.length}</small></div>`;lastTop=id}
+  h+=items.map(({e,i})=>`<div class="hi${par?' bmi-sub':''}" style="--c:${col}"><div class="hr"><span class="hdot"></span></div><div class="hc" onclick="goBm(${i})"><div class="hc-top"><div><div class="hc-t">${esc(e.t)}</div><div class="hc-s">${esc(e.st)}</div></div><button class="bmrm" aria-label="Remove" onclick="event.stopPropagation();bmDel(${i})">×</button></div></div></div>`).join('')});
+ L.innerHTML=h}
+function bmDel(i){const a=bmLoad();a.splice(i,1);bmSave(a);renderBm();bmSync()}
+function goBm(i){const e=bmLoad()[i];if(!e)return;closeBm();go(`#/c/${e.cid}/${e.si}/${e.li}`)}
+function openBm(){document.getElementById('bmM').classList.add('open');renderBm()}
+function closeBm(){document.getElementById('bmM').classList.remove('open')}
+
+/* ---------- Flashcards (auto-built from lesson tables, lists, commands and step flows) ---------- */
+const FK='ls_fc',FNEW=20,FMAX=15;
+let FCS={};try{FCS=JSON.parse(localStorage.getItem(FK))||{}}catch(e){}
+const fcPersist=()=>{try{localStorage.setItem(FK,JSON.stringify(FCS))}catch(e){}};
+let FC=null;
+const fcClean=t=>String(t).replace(/[`*]/g,'').replace(/\s+/g,' ').trim();
+const fcHash=t=>{let h=5381;for(let i=0;i<t.length;i++)h=((h<<5)+h+t.charCodeAt(i))|0;return(h>>>0).toString(36)};
+function fcBuild(c,si,li){
+ const L=LS()[c.id+':'+si+':'+li];if(!L)return[];
+ const B=L.blocks,out=[],seen={};
+ const add=(f,a,hint,code)=>{f=fcClean(f);if(!f||!a||f.length>220)return;const id=c.id+':'+si+':'+li+':'+fcHash(f+'|'+a);if(seen[id])return;seen[id]=1;
+  out.push({id,f,a,h:hint||'',code:!!code,c:c.id,si,li})};
+ B.forEach((b,i)=>{const pv=B[i-1];
+  if(b.t&&b.t.length>1){const hd=b.t[0].map(fcClean);
+   b.t.slice(1).forEach(r=>{if(r.length>=2&&fcClean(r[0])&&fcClean(r[1])){
+    add(r[0],r.slice(1).map((v,k)=>(hd[k+1]&&r.length>2?hd[k+1]+': ':'')+fcClean(v)).join('\n'),hd[0]+' \u2192 '+hd.slice(1).join(' / '))}})}
+  else if(b.ul&&b.ul.length>=2&&b.ul.length<=8&&pv&&(pv.h||(pv.p&&/[:?]$/.test(fcClean(pv.p))))){
+   add(pv.h||pv.p,b.ul.map(x=>'\u2022 '+fcClean(x)).join('\n'),'List')}
+  else if(b.code&&pv&&pv.p&&fcClean(pv.p).length<=180&&b.code.split('\n').length<=8){
+   add(pv.p,b.code.trim(),'Command / config',true)}
+  else if(b.flow&&b.flow.length>=2&&pv&&(pv.h||pv.p)){
+   add(pv.h||pv.p,b.flow.map((x,k)=>(k+1)+'. '+fcClean(x)).join('\n'),'Steps')}});
+ return out.slice(0,FMAX)}
+function fcScope(){
+ const[,r,id,si,li]=location.hash.split('/');const sc=sqScope();
+ if(sc.kind!=='all'&&li!==undefined&&li!=='quiz'&&sc.cs[0].sections[+si]&&sc.cs[0].sections[+si].l[+li])
+  return{label:sc.cs[0].sections[+si].l[+li][0],sub:sc.cs[0].name,cs:sc.cs,si:+si,li:+li,kind:'lesson'};
+ return sc}
+async function fcCollect(sc,prog){
+ const need=[];
+ if(sc.kind!=='all')sc.cs.forEach(c=>{if(!LAZY[c.id])return;c.sections.forEach((s,si)=>{
+  if(sc.si!==undefined&&si!==sc.si)return;if(!_rdy[c.id+':'+si])need.push([c.id,si])})});
+ let n=0;const q=need.slice();
+ const w=async()=>{while(q.length){const[id,si]=q.shift();await ensure(id,si);n++;prog&&prog(n,need.length)}};
+ if(need.length)await Promise.all([w(),w(),w()]);
+ const cards=[];
+ sc.cs.forEach(c=>c.sections.forEach((s,si)=>{if(sc.si!==undefined&&si!==sc.si)return;
+  s.l.forEach((x,li)=>{if(sc.li!==undefined&&li!==sc.li)return;fcBuild(c,si,li).forEach(k=>cards.push(k))})}));
+ return cards}
+const fcNext=(st,g)=>{const i=st?st.i:0;
+ if(g===0)return 0;if(g===1)return Math.max(1,Math.round(i*1.2));
+ if(g===2)return i<1?2:i<2?3:Math.round(i*2.2);return i<1?4:Math.round(i*3)};
+const fcLbl=d=>d===0?'<10m':d<30?d+'d':Math.round(d/30)+'mo';
+async function openFc(){
+ const m=document.getElementById('fcM'),L=document.getElementById('fcL');m.classList.add('open');
+ FC={sc:fcScope(),cards:[],q:[],i:0,show:false,done:0};
+ document.getElementById('fcS').innerHTML='Cards from <b style="color:var(--accent)">'+esc(FC.sc.label)+'</b>';
+ L.innerHTML='<div class="hempty">\u23F3<b>Building cards\u2026</b><span id="fcProg"></span></div>';
+ const mine=FC;
+ const cards=await fcCollect(FC.sc,(n,t)=>{const e=document.getElementById('fcProg');if(e)e.textContent=n+' / '+t});
+ if(FC!==mine)return;FC.cards=cards;renderFcHome()}
+function fcDue(){const now=Date.now(),due=[],nw=[];
+ FC.cards.forEach(k=>{const st=FCS[k.id];if(!st)nw.push(k);else if(st.d<=now)due.push(k)});return{due,nw}}
+function renderFcHome(){const L=document.getElementById('fcL'),{due,nw}=fcDue();
+ if(!FC.cards.length){L.innerHTML='<div class="hempty">\uD83C\uDCCF<b>No cards here yet</b>Cards are built from tables, command examples, lists and step flows in lessons.'+(FC.sc.kind==='all'?'<br><br>Open a course or section to build its deck \u2014 home only uses lessons already loaded.':'')+'</div>';return}
+ const total=FC.cards.length,learned=FC.cards.filter(k=>FCS[k.id]&&FCS[k.id].i>=3).length;
+ L.innerHTML=`<div class="fcstat"><span class="chip">${total} cards</span><span class="chip live">${due.length} due</span><span class="chip">${nw.length} new</span><span class="chip">${learned} known</span></div>
+ <div class="fcprog"><b style="width:${Math.round(learned/total*100)}%"></b></div>
+ <div class="row"><button class="btn" onclick="fcStart()" ${due.length+nw.length?'':'disabled style="opacity:.5"'}>Study now \u25B8</button><button class="btn ghost" onclick="fcResetDeck()">Reset progress</button></div>
+ ${due.length+nw.length?'':'<p class="sub" style="margin-top:14px">All caught up \u2014 nothing due right now.</p>'}`}
+function fcResetDeck(){if(!FC)return;FC.cards.forEach(k=>delete FCS[k.id]);fcPersist();renderFcHome()}
+function fcStart(){const{due,nw}=fcDue();const sh=a=>a.sort(()=>Math.random()-.5);
+ FC.q=sh(due).concat(sh(nw).slice(0,FNEW));FC.i=0;FC.show=false;FC.done=0;FC.total=FC.q.length;renderFcCard()}
+function renderFcCard(){const L=document.getElementById('fcL');
+ if(FC.i>=FC.q.length){L.innerHTML=`<div class="hempty">\uD83C\uDF89<b>Session complete</b>You reviewed ${FC.done} card${FC.done===1?'':'s'}.</div><div class="row" style="justify-content:center"><button class="btn" onclick="renderFcHome()">Done</button></div>`;return}
+ const k=FC.q[FC.i],st=FCS[k.id];
+ L.innerHTML=`<div class="fcprog"><b style="width:${Math.round(FC.done/FC.total*100)}%"></b></div>
+ <div class="fcbig"><div class="fh">${esc(k.h||'Card')}</div><div class="fq">${esc(k.f)}</div>${FC.show?`<div class="fa ${k.code?'code':''}">${esc(k.a)}</div>`:''}</div>
+ ${FC.show?`<div class="fcgrid">${['Again','Hard','Good','Easy'].map((n,g)=>`<button class="g${g}" onclick="fcGrade(${g})">${n}<small>${fcLbl(fcNext(st,g))}</small></button>`).join('')}</div>`
+ :`<button class="btn" style="width:100%;justify-content:center" onclick="FC.show=true;renderFcCard()">Show answer</button>`}
+ <p class="sub" style="margin:12px 0 0;font:11px var(--mono)">${FC.done} / ${FC.total} \u00b7 Space = show \u00b7 1\u20134 = grade</p>`}
+function fcGrade(g){const k=FC.q[FC.i],st=FCS[k.id],iv=fcNext(st,g);
+ FCS[k.id]={i:iv,d:Date.now()+(iv===0?10*60*1000:iv*86400000),r:(st?st.r:0)+1};fcPersist();
+ if(g===0){FC.q.push(k)}else FC.done++;
+ FC.i++;FC.show=false;renderFcCard()}
+function closeFc(){document.getElementById('fcM').classList.remove('open');FC=null}
+addEventListener('keydown',e=>{const m=document.getElementById('fcM');if(!m||!m.classList.contains('open')||!FC||FC.i>=FC.q.length||!FC.q.length||FC.done===undefined)return;
+ if(e.target&&/input|textarea/i.test(e.target.tagName))return;
+ if(e.key===' '&&!FC.show&&FC.q.length){e.preventDefault();FC.show=true;renderFcCard()}
+ else if(FC.show&&'1234'.includes(e.key)&&e.key.length===1)fcGrade(+e.key-1)});
 /* ---------- Home card density (expanded / compact) ---------- */
 const isCompact=()=>document.body.classList.contains('compact');
 (function(){try{if(localStorage.getItem('ls_dens')==='compact')document.body.classList.add('compact')}catch(e){}})();
@@ -3909,9 +4103,10 @@ function render(keep,noTrack){
  if(r==='c'&&c&&LAZY[c.id]&&si!==undefined&&!_rdy[c.id+':'+si]){app.innerHTML='<p class="sub">Loading lessons…</p>';ensure(c.id,+si).then(()=>{if(location.hash.split('/')[2]===id)render(keep,noTrack)});return}
  app.innerHTML=r==='c'&&c&&c.subs?vSubCourses(c):r==='c'&&c?(li==='quiz'?vQuiz(c,+si):li!==undefined?vLesson(c,+si,+li):si!==undefined?vSub(c,+si):vTopics(c)):vCourses();
  if(!keep)window.scrollTo(0,0);
+ readerAfterRender(r,c,si,li);
  if(!noTrack&&r==='c'&&c&&!c.subs&&li!==undefined&&c.sections[+si]&&c.sections[+si].l[+li]){startTrack(c,+si,+li);recHist('view',c,+si,+li)}}
 addEventListener('hashchange',()=>render());
-$('#th').onclick=()=>{const r=document.documentElement,t=r.dataset.theme==='light'?'dark':'light';r.dataset.theme=t;try{localStorage.setItem('ls_theme',t)}catch(e){}const m=document.querySelector('meta[name=theme-color]');if(m)m.content=t==='light'?'#F4F6FA':'#0A0C10'};
+function setTheme(t){document.documentElement.dataset.theme=t;try{localStorage.setItem('ls_theme',t)}catch(e){}const m=document.querySelector('meta[name=theme-color]');if(m)m.content=t==='light'?'#F4F6FA':'#0A0C10';applyReader()}
 render();
 </script><script>
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}
