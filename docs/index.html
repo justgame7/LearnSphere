@@ -241,7 +241,7 @@ html[data-tbl="compact"] .tw td:not(:first-child){display:inline;padding:0 12px 
 html[data-tbl="compact"] .tw td:not(:first-child):before{content:attr(data-l) ": ";font:600 11px var(--mono);color:var(--mut)}
 /* pinned first column: keeps the table, the left column stays while the rest scrolls sideways */
 html[data-tbl="pinned"] .tw table{min-width:620px}
-html[data-tbl="pinned"] .tw th:first-child,html[data-tbl="pinned"] .tw td:first-child{position:sticky;left:0;z-index:1;background:var(--panel);max-width:42vw;box-shadow:2px 0 0 var(--line);width:42vw;min-width:120px;white-space:normal;overflow-wrap:anywhere;word-break:normal;vertical-align:top}
+html[data-tbl="pinned"] .tw th:first-child,html[data-tbl="pinned"] .tw td:first-child{position:sticky;left:0;z-index:1;background:var(--panel);max-width:min(42vw,200px);box-shadow:2px 0 0 var(--line);width:auto;min-width:100px;white-space:normal;overflow-wrap:anywhere;word-break:normal;vertical-align:top}
 
 .ls{max-width:var(--rw,760px);font-size:calc(15px*var(--rscale,1))}
 .ls p{color:var(--tx);margin:0 0 14px;line-height:1.65}
