@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0A0C10">
-<script>(function(){var d=document.documentElement,t="dark",dk="",a="",au="";try{t=localStorage.getItem("ls_theme")||"dark";dk=localStorage.getItem("ls_dark")||"";a=localStorage.getItem("ls_accent")||"";au=localStorage.getItem("ls_auto")}catch(e){}
+<script>(function(){var d=document.documentElement,t="dark",dk="",a="",au="";try{t=localStorage.getItem("ls_theme")||"dark";dk=localStorage.getItem("ls_dark")||"";a=localStorage.getItem("ls_accent")||"";au=localStorage.getItem("ls_nightauto")}catch(e){}
 if(t!=="light"&&t!=="tinted")t="dark";if(dk!=="tinted")dk="dark";
 if(au==="1"&&window.matchMedia)t=matchMedia("(prefers-color-scheme: light)").matches?"light":dk;
 d.dataset.theme=t;
@@ -267,10 +267,14 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 <div class="rp" id="rp" onclick="event.stopPropagation()">
  <div class="sec2"><h5>Themes</h5><div class="tcards" id="rpTh"></div>
   <div class="acs" id="rpAc" style="margin-top:14px"></div>
-  <label class="chkr"><input type="checkbox" id="rpAuto" onchange="setAuto(this.checked)"><span>Auto-night mode</span><small>System</small></label></div>
+  <label class="chkr"><input type="checkbox" id="rpAuto" onchange="setNightAuto(this.checked)"><span>Auto-night mode</span><small>System</small></label></div>
  <div class="sec2"><h5>Text size</h5><div class="stp"><button type="button" onclick="rdr('fs',-1)" aria-label="Smaller text">A−</button><span id="rpFs">100%</span><button type="button" onclick="rdr('fs',1)" aria-label="Larger text">A+</button></div></div>
  <div class="sec2"><h5>Reading width</h5><div class="seg" id="rpW"></div></div>
  <button type="button" class="rp-reset" onclick="rdr('reset')">Reset to default</button>
+ <div class="sec2" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"><h5>Backup &amp; restore</h5>
+  <div class="seg" style="grid-template-columns:1fr 1fr"><button type="button" onclick="exportProgress()">⬇ Export</button><button type="button" onclick="document.getElementById('impFile').click()">⬆ Import</button></div>
+  <input type="file" id="impFile" accept=".json,application/json" hidden onchange="importProgress(this)">
+  <p class="sub" style="margin:8px 0 0;font:11px/1.5 var(--mono)">Progress, quizzes, bookmarks, history and settings. Move them between devices.</p></div>
 </div>
 <div class="hm" id="bmM" onclick="if(event.target===this)closeBm()"><div class="hd" role="dialog" aria-modal="true" aria-label="Saved lessons">
  <div class="hd-top"><div><h2>⭐ Saved lessons</h2><p id="bmS">—</p></div><button class="ib" aria-label="Close" onclick="closeBm()">×</button></div>
@@ -3656,6 +3660,7 @@ const save=()=>{try{localStorage.setItem('ls_prog',JSON.stringify(P))}catch(e){}
 /* ---------- AUTO-PROGRESS (per course, off by default) ---------- */
 const AUTO_SECS=60;
 let AUTO={};try{AUTO=JSON.parse(localStorage.getItem('ls_auto')||'{}')}catch(e){}
+if(!AUTO||typeof AUTO!=='object'||Array.isArray(AUTO))AUTO={};
 const autoOn=cid=>!!AUTO[cid];
 function setAuto(cid,on){if(on)AUTO[cid]=1;else delete AUTO[cid];try{localStorage.setItem('ls_auto',JSON.stringify(AUTO))}catch(e){}}
 const autoBox=(cid,big)=>`<label class="auto${big?' big':''}" onclick="event.stopPropagation()"><input type="checkbox" ${autoOn(cid)?'checked':''} onclick="event.stopPropagation()" onchange="setAuto('${cid}',this.checked)"><span>Auto-progress</span></label>`;
@@ -3887,6 +3892,62 @@ function closeBm(){document.getElementById('bmM').classList.remove('open')}
   const el=e.target&&e.target.closest?e.target:(e.target&&e.target.parentElement);
   if(!el||el.closest(keep))return;
   e.preventDefault()},true))})();
+/* ---------- Export / import progress ---------- */
+const BKEYS=['ls_prog','ls_quiz','ls_auto','ls_hist_v1','ls_bookmarks'],SKEYS=['ls_theme','ls_dark','ls_nightauto','ls_accent','ls_reader','ls_dens'];
+function toast(msg){const o=document.getElementById('hundo');if(o)o.remove();
+ const u=document.createElement('div');u.className='hundo';u.id='hundo';u.innerHTML='<span></span>';u.firstChild.textContent=msg;
+ document.body.appendChild(u);setTimeout(()=>u.remove(),4000)}
+function exportProgress(){
+ const data={};BKEYS.concat(SKEYS).forEach(k=>{const v=lsGet(k);if(v!==null)data[k]=v});
+ const blob=new Blob([JSON.stringify({app:'LearnSphere',version:1,exported:new Date().toISOString(),data},null,1)],{type:'application/json'});
+ const a=document.createElement('a'),d=new Date(),z=n=>String(n).padStart(2,'0');
+ a.href=URL.createObjectURL(blob);a.download=`learnsphere-progress-${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}.json`;
+ document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+ toast('Progress exported')}
+const jp=v=>{try{return JSON.parse(v)}catch(e){return null}};
+function importProgress(inp){
+ const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
+ if(f.size>3e6){toast('That file is too large to be a LearnSphere backup');return}
+ const rd=new FileReader();
+ rd.onerror=()=>toast('Could not read that file');
+ rd.onload=()=>{
+  const o=jp(rd.result);
+  if(!o||o.app!=='LearnSphere'||!o.data||typeof o.data!=='object'){toast('Not a LearnSphere backup file');return}
+  const d={};BKEYS.concat(SKEYS).forEach(k=>{if(typeof o.data[k]==='string')d[k]=o.data[k]});
+  const prog=jp(d.ls_prog)||{},quiz=jp(d.ls_quiz)||{},bm=jp(d.ls_bookmarks),hs=jp(d.ls_hist_v1);
+  const lec=Object.values(prog).reduce((n,c)=>n+(c&&typeof c==='object'?Object.keys(c).length:0),0);
+  const sum=`${lec} lectures completed, ${Object.keys(quiz).length} quiz course${Object.keys(quiz).length===1?'':'s'}, ${Array.isArray(bm)?bm.length:0} saved, ${Array.isArray(hs)?hs.length:0} history`;
+  importDialog(sum,mode=>applyImport(d,mode))};
+ rd.readAsText(f)}
+function applyImport(d,mode){
+ try{
+  if(mode==='replace'){BKEYS.concat(SKEYS).forEach(k=>{try{localStorage.removeItem(k)}catch(e){}});Object.keys(d).forEach(k=>lsSet(k,d[k]))}
+  else{
+   const obj=v=>{const x=jp(v);return x&&typeof x==='object'&&!Array.isArray(x)?x:{}},arr=v=>{const x=jp(v);return Array.isArray(x)?x:[]};
+   const cur=k=>lsGet(k);
+   if(d.ls_prog){const a=obj(cur('ls_prog')),b=obj(d.ls_prog);Object.keys(b).forEach(c=>{a[c]=Object.assign({},a[c]||{},b[c])});lsSet('ls_prog',JSON.stringify(a))}
+   if(d.ls_auto){lsSet('ls_auto',JSON.stringify(Object.assign({},obj(cur('ls_auto')),obj(d.ls_auto))))}
+   if(d.ls_quiz){const a=obj(cur('ls_quiz')),b=obj(d.ls_quiz);
+    Object.keys(b).forEach(c=>{a[c]=a[c]||{};Object.keys(b[c]||{}).forEach(si=>{a[c][si]=a[c][si]||{};Object.keys(b[c][si]||{}).forEach(m=>{
+     const x=a[c][si][m],y=b[c][si][m];if(!x||(y&&y.best>x.best)||(y&&y.best===x.best&&(y.att||0)>(x.att||0)))a[c][si][m]=y})})});lsSet('ls_quiz',JSON.stringify(a))}
+   if(d.ls_bookmarks){const a=arr(cur('ls_bookmarks')),seen={};a.forEach(x=>seen[x.cid+':'+x.si+':'+x.li]=1);
+    arr(d.ls_bookmarks).forEach(x=>{if(x&&!seen[x.cid+':'+x.si+':'+x.li])a.push(x)});lsSet('ls_bookmarks',JSON.stringify(a))}
+   if(d.ls_hist_v1){const a=arr(cur('ls_hist_v1')),seen={};a.forEach(x=>seen[x.id]=1);
+    arr(d.ls_hist_v1).forEach(x=>{if(x&&x.id&&!seen[x.id])a.push(x)});a.sort((x,y)=>y.ts-x.ts);lsSet('ls_hist_v1',JSON.stringify(a.slice(0,HMAX)))}
+  }
+ }catch(e){toast('Import failed');return}
+ toast('Progress imported \u2014 reloading\u2026');setTimeout(()=>location.reload(),900)}
+function importDialog(sum,go2){
+ const o=document.createElement('div');o.className='hm open';o.style.zIndex=60;o.style.alignItems='center';
+ o.innerHTML=`<div class="hd" role="alertdialog" aria-modal="true" style="width:min(420px,100%);max-height:none"><h2 style="margin:0 0 8px;font:700 18px var(--sans);text-transform:none;color:var(--tx)">Import progress?</h2>
+ <p class="sub" style="margin:0 0 6px">This backup has: <b></b></p>
+ <p class="sub" style="margin:0 0 18px;font-size:13px"><b>Merge</b> keeps what is on this device and adds the backup (best quiz scores kept). <b>Replace</b> overwrites everything on this device, settings included.</p>
+ <div class="row" style="margin:0;justify-content:flex-end"><button type="button" class="btn ghost" data-a="no">Cancel</button><button type="button" class="btn ghost" data-a="replace">Replace</button><button type="button" class="btn" data-a="merge">Merge</button></div></div>`;
+ o.querySelector('p b').textContent=sum;
+ const close=()=>{o.remove();document.removeEventListener('keydown',key,true)};
+ const key=e=>{if(e.key==='Escape'){e.stopPropagation();close()}};
+ o.addEventListener('click',e=>{if(e.target===o){close();return}const a=e.target.closest&&e.target.closest('[data-a]');if(!a)return;close();if(a.dataset.a!=='no')go2(a.dataset.a)});
+ document.addEventListener('keydown',key,true);document.body.appendChild(o)}
 /* ---------- Home card density (expanded / compact) ---------- */
 const isCompact=()=>document.body.classList.contains('compact');
 (function(){try{if(localStorage.getItem('ls_dens')==='compact')document.body.classList.add('compact')}catch(e){}})();
@@ -4063,14 +4124,14 @@ const THEMES=[['light','Day'],['tinted','Tinted'],['dark','Night']],TMETA={light
  ACCENTS=['#35E0C0','#4DA3FF','#4ADE80','#F472B6','#FB923C','#A78BFA','#F87171','#94A3B8','#EAB308'];
 const lsGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}},lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
 function themeEffective(){let t=lsGet('ls_theme');if(t!=='light'&&t!=='tinted')t='dark';
- if(lsGet('ls_auto')==='1'&&window.matchMedia){const dk=lsGet('ls_dark')==='tinted'?'tinted':'dark';return matchMedia('(prefers-color-scheme: light)').matches?'light':dk}
+ if(lsGet('ls_nightauto')==='1'&&window.matchMedia){const dk=lsGet('ls_dark')==='tinted'?'tinted':'dark';return matchMedia('(prefers-color-scheme: light)').matches?'light':dk}
  return t}
 function applyTheme(){const t=themeEffective(),r=document.documentElement;r.dataset.theme=t;
  const m=document.querySelector('meta[name=theme-color]');if(m)m.content=TMETA[t];
  const a=lsGet('ls_accent')||'';
  if(/^#[0-9a-f]{6}$/i.test(a))r.style.setProperty('--accent',a);else r.style.removeProperty('--accent')}
-function setTheme(t){lsSet('ls_theme',t);if(t!=='light')lsSet('ls_dark',t);lsSet('ls_auto','0');applyTheme();renderAppearance()}
-function setAuto(on){lsSet('ls_auto',on?'1':'0');applyTheme();renderAppearance()}
+function setTheme(t){lsSet('ls_theme',t);if(t!=='light')lsSet('ls_dark',t);lsSet('ls_nightauto','0');applyTheme();renderAppearance()}
+function setNightAuto(on){lsSet('ls_nightauto',on?'1':'0');applyTheme();renderAppearance()}
 function setAccent(v){lsSet('ls_accent',v);applyTheme();renderAppearance()}
 function renderAppearance(){
  const eff=themeEffective(),acc=lsGet('ls_accent')||'',sys=false;
@@ -4080,8 +4141,8 @@ function renderAppearance(){
  document.getElementById('rpAc').innerHTML=ACCENTS.map((c,i)=>`<button type="button" class="ac ${!sys&&((i===0&&!acc)||acc.toUpperCase()===c)?'on':''}" style="--c:${c}" aria-label="Accent ${c}" onclick="setAccent('${i===0?'':c}')"></button>`).join('')
   +`<label class="ac cust ${cust&&!sys?'on':''}" style="--c:${cust?acc:'#888'}" title="Custom color"><input type="color" value="${cust?acc:'#35e0c0'}" aria-label="Custom accent color" onchange="setAccent(this.value)"></label>`;
  
- document.getElementById('rpAuto').checked=lsGet('ls_auto')==='1'}
-if(window.matchMedia)matchMedia('(prefers-color-scheme: light)').addEventListener('change',()=>{if(lsGet('ls_auto')==='1')applyTheme()});
+ document.getElementById('rpAuto').checked=lsGet('ls_nightauto')==='1'}
+if(window.matchMedia)matchMedia('(prefers-color-scheme: light)').addEventListener('change',()=>{if(lsGet('ls_nightauto')==='1')applyTheme()});
 renderAppearance();
 render();
 </script><script>
