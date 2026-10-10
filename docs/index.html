@@ -4195,8 +4195,6 @@ document.addEventListener('click',e=>{if(document.documentElement.dataset.tbl!==
  const tr=e.target.closest('.tw tbody tr');if(tr)tr.classList.toggle('open')});
 addEventListener('resize',()=>{if(TBM==='auto')applyTables()});
 applyTables();
-var RFM='list';try{if(localStorage.getItem('ls_refnav')==='select')RFM='select'}catch(e){}
-function setRefNav(m){RFM=m;try{localStorage.setItem('ls_refnav',m)}catch(e){}render(true,true)}
 function refSub(id){const h=location.hash.split('/'),R=(window.QREF||{})[h[2]],t=R&&R.pages[+h[4]||0]&&R.pages[+h[4]||0].t;
  refEnsure(id).then(()=>{const N=(window.QREF||{})[id];let j=0;if(N&&t){const k=N.pages.findIndex(p=>p.t===t);if(k>=0)j=k}go('#/c/'+id+'/ref/'+j)})}
 function refFilter(q){
@@ -4212,9 +4210,9 @@ function vRef(c,pi){
  const n=pi===undefined||pi===''||isNaN(+pi)?0:Math.min(Math.max(+pi,0),R.pages.length-1);
  const sibs=c.parent?COURSES.filter(x=>x.parent===c.parent&&(REFLAZY[x.id]||qrefOf(x))):[];
  const lst=(lab,cur,items)=>`<details class="rlist"><summary><span>${lab}</span><b>${esc(cur)}</b></summary><div class="rl">${items.map(x=>`<button type="button" class="${x[2]?'on':''}" onclick="${x[1]}">${esc(x[0])}</button>`).join('')}</div></details>`;
- const subSel=sibs.length<2?'':RFM==='list'?lst('Sub-course',c.name,sibs.map(x=>[x.name,`refSub('${x.id}')`,x.id===c.id])):`<select class="rsel" aria-label="Choose a sub-course" onchange="refSub(this.value)">${sibs.map(x=>`<option value="${x.id}"${x.id===c.id?' selected':''}>${esc(x.name)}</option>`).join('')}</select>`;
- const pgSel=RFM==='list'?lst('Page',R.pages[n].t,R.pages.map((p,i)=>[p.t,`go('#/c/${c.id}/ref/${i}')`,i===n])):`<select class="rsel" aria-label="Choose a reference page" onchange="go('#/c/${c.id}/ref/'+this.value)">${R.pages.map((p,i)=>`<option value="${i}"${i===n?' selected':''}>${esc(p.t)}</option>`).join('')}</select>`;
- const tabs=`<div class="rmode"><span>Choose with:</span><button type="button" class="${RFM==='select'?'on':''}" onclick="setRefNav('select')">Drop-down</button><button type="button" class="${RFM==='list'?'on':''}" onclick="setRefNav('list')">Expandable list</button></div>`+subSel+pgSel;
+ const subSel=sibs.length<2?'':lst('Sub-course',c.name,sibs.map(x=>[x.name,`refSub('${x.id}')`,x.id===c.id]));
+ const pgSel=lst('Page',R.pages[n].t,R.pages.map((p,i)=>[p.t,`go('#/c/${c.id}/ref/${i}')`,i===n]));
+ const tabs=subSel+pgSel;
  const p=R.pages[n];
  return crumbs+`<h1>${esc(p.t)}</h1><p class="sub">${esc(p.d)}</p>${tabs}
   <input class="rsearch" type="search" placeholder="Filter this page, for example ${esc(R.hint||'wal or autovacuum')}" oninput="refFilter(this.value)" aria-label="Filter rows">
