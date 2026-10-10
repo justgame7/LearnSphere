@@ -3697,8 +3697,8 @@ function toggleAddl(si){ADDL_OPEN[si]=!ADDL_OPEN[si];const e=document.getElement
 function openAddl(si,cid){ADDL_OPEN[si]=true;go('#/c/'+cid+'/'+si);setTimeout(()=>{const e=document.getElementById('addl');if(e)e.scrollIntoView({behavior:'smooth',block:'start'})},160)}
 const esc=s=>s.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
 const go=h=>location.hash=h;
-/* ---------- Learning history (lessons opened, marked done, quizzes finished; last 50, kept on this device) ---------- */
-const HK='ls_hist_v1',HMAX=50;let hFilter='all',hCleared=null;
+/* ---------- Learning history (lessons opened, marked done, quizzes finished; last 100, kept on this device) ---------- */
+const HK='ls_hist_v1',HMAX=100;let hFilter='all',hCleared=null;
 const hLoad=()=>{try{const a=JSON.parse(localStorage.getItem(HK));return Array.isArray(a)?a.filter(x=>x&&x.id&&x.ts&&x.cid):[]}catch(e){return[]}};
 const hSave=a=>{try{localStorage.setItem(HK,JSON.stringify(a.slice(0,HMAX)))}catch(e){}};
 function recHist(type,c,si,li,extra){
@@ -3898,7 +3898,7 @@ function vCourses(){
  let h=`<h1>Learn by course.<br><span style="color:var(--accent)">Pick up where you stopped.</span></h1><p class="sub">Structured, bite-sized lessons with progress saved on this device.</p>`;
  if(live){const n=nextUp(live),L=live.sections[n[0]].l[n[1]];
   h+=`<div class="hero" style="--c:${live.color}"><div class="ring" style="--p:${pct(live)}"><span>${pct(live)}%</span></div><div class="tx"><span class="chip live">● CONTINUE</span><h3 style="margin:10px 0 2px;font-size:22px">${live.name}</h3><div style="color:var(--mut)">Up next: ${esc(L[0])}</div><div class="row"><button class="btn" onclick="go('#/c/${live.id}/${n[0]}')">Resume ▸</button></div></div></div>`}
- h+=`<div class="h2row"><h2>Courses</h2><button class="dens${isCompact()?' on':''}" id="dens" onclick="toggleDensity()" title="${isCompact()?'Switch to expanded cards':'Switch to compact cards'}" aria-label="Toggle compact cards" aria-pressed="${isCompact()}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1.2"/><rect x="3" y="10" width="18" height="4" rx="1.2"/><rect x="3" y="16" width="18" height="4" rx="1.2"/></svg></button></div><div class="grid courses">`+COURSES.filter(c=>!c.parent).map((c,i)=>{const sb=!!c.subs,on=(c.sections.length||sb)&&!c.hold,N=sb?aCnt(c):cnt(c),D=sb?aDn(c):dn(c),Pc=sb?aPct(c):pct(c);
+ h+=`<div class="h2row"><h2>Courses</h2><button class="dens${isCompact()?' on':''}" id="dens" onclick="toggleDensity()" title="${isCompact()?'Switch to expanded cards':'Switch to compact cards'}" aria-label="Toggle compact cards" aria-pressed="${isCompact()}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1.2"/><rect x="3" y="10" width="18" height="4" rx="1.2"/><rect x="3" y="16" width="18" height="4" rx="1.2"/></svg></button></div><div class="grid courses">`+(avail=>[...avail.filter(c=>(c.sections.length||c.subs)&&!c.hold),...avail.filter(c=>!((c.sections.length||c.subs)&&!c.hold))])(COURSES.filter(c=>!c.parent)).map((c,i)=>{const sb=!!c.subs,on=(c.sections.length||sb)&&!c.hold,N=sb?aCnt(c):cnt(c),D=sb?aDn(c):dn(c),Pc=sb?aPct(c):pct(c);
   return `<div class="card ${on?'':'off'}" style="--c:${c.color};animation-delay:${i*70}ms" ${on?`onclick="go('#/c/${c.id}')"`:''}><div class="ico">${c.tag}</div><h3>${c.name}</h3><p>${c.blurb}</p>
   <div class="meta">${on?(sb?`<span class="chip">${c.subs.length} sub-courses</span>`:`<span class="chip">${c.sections.length} sections</span>`)+`<span class="chip">${N} lectures</span>`:`<span class="chip">Curriculum coming soon</span>`}</div>
   ${on?`<div class="bt"><b style="width:${Pc}%"></b></div><div class="pct"><span>${D}/${N} done</span><span>${Pc}%</span></div>`:''}</div>`}).join('')+`</div>`;
