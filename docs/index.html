@@ -3724,7 +3724,15 @@ function renderHist(){
 function openHist(){hFilter='all';document.getElementById('histM').classList.add('open');renderHist()}
 function closeHist(){document.getElementById('histM').classList.remove('open')}
 function goHist(id){const e=hLoad().find(x=>x.id===id);if(!e)return;closeHist();go(hHref(e))}
-function clearHist(){hCleared=hLoad();hSave([]);renderHist();
+function confirmBox(title,msg,okLabel,onOk){
+ const o=document.createElement('div');o.className='hm open';o.style.zIndex=60;o.style.alignItems='center';
+ o.innerHTML=`<div class="hd" role="alertdialog" aria-modal="true" style="width:min(380px,100%);max-height:none"><h2 style="margin:0 0 8px;font:700 18px var(--sans);text-transform:none;color:var(--tx)">${esc(title)}</h2><p class="sub" style="margin:0 0 18px">${esc(msg)}</p><div class="row" style="margin:0;justify-content:flex-end"><button type="button" class="btn ghost" data-a="no">Cancel</button><button type="button" class="btn" data-a="ok" style="background:#ff4d6d;color:#fff">${esc(okLabel)}</button></div></div>`;
+ const close=()=>{o.remove();document.removeEventListener('keydown',key,true)};
+ const key=e=>{if(e.key==='Escape'){e.stopPropagation();close()}};
+ o.addEventListener('click',e=>{if(e.target===o)close();const a=e.target.closest&&e.target.closest('[data-a]');if(!a)return;close();if(a.dataset.a==='ok')onOk()});
+ document.addEventListener('keydown',key,true);document.body.appendChild(o);o.querySelector('[data-a=no]').focus()}
+function clearHist(){if(!hLoad().length)return;confirmBox('Clear learning history?','This removes all '+hLoad().length+' recorded activities from this device. You can undo for a few seconds afterwards.','Clear history',doClearHist)}
+function doClearHist(){hCleared=hLoad();hSave([]);renderHist();
  const o=document.getElementById('hundo');if(o)o.remove();
  const u=document.createElement('div');u.className='hundo';u.id='hundo';u.innerHTML='<span>History cleared</span><button>Undo</button>';
  u.querySelector('button').onclick=()=>{if(hCleared){hSave(hCleared);hCleared=null;renderHist()}u.remove()};
