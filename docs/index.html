@@ -237,7 +237,7 @@ html[data-tbl="collapse"] .tw tr.open td:not(:first-child){display:block}
 html[data-tbl="compact"] .tw tr{display:block;padding:9px 2px;border-bottom:1px solid var(--line)}
 html[data-tbl="compact"] .tw tr:last-child{border-bottom:0}
 html[data-tbl="compact"] .tw td:first-child{display:block;font-weight:700;padding:0 0 2px}
-html[data-tbl="compact"] .tw td:not(:first-child){display:inline;padding:0 12px 0 0;font-size:.94em}
+html[data-tbl="compact"] .tw td:not(:first-child){display:block;padding:1px 0;font-size:.94em}
 html[data-tbl="compact"] .tw td:not(:first-child):before{content:attr(data-l) ": ";font:600 11px var(--mono);color:var(--mut)}
 /* pinned first column: keeps the table, the left column stays while the rest scrolls sideways */
 html[data-tbl="pinned"] .tw table{min-width:620px}
@@ -4101,6 +4101,7 @@ function ensure(id,si){const k=id+':'+si;if(_ld[k])return _ld[k];
  return _ld[k]=LAZY[id](si).reduce((p,f)=>p.then(()=>one(f)),Promise.resolve()).then(()=>{_rdy[k]=1})}
 /* Oracle quick references: one data file per sub-course, loaded when the reference is opened (window.QREF['ora-core'] ...) */
 const REFLAZY={};['core','bkp','perf','sec','upg','rac','exa','dg','gg'].forEach(s=>REFLAZY['ora-'+s]='ora-ref-'+s+'.js');
+REFLAZY.rs='rs-ref.js';
 function refEnsure(id){const f=REFLAZY[id];if(!f||(window.QREF||{})[id])return Promise.resolve();
  return _ld[f]||(_ld[f]=new Promise(r=>{const s=document.createElement('script');s.src=f;s.onload=s.onerror=()=>r();document.head.appendChild(s)}))}
 /* ---------- QUIZZES (data in pg-quiz.js: window.QUIZZES['<course>:<section>']) ---------- */
