@@ -81,6 +81,13 @@ body.compact .grid.courses{gap:8px}
 .ib{position:relative}
 .sq{width:100%;margin:14px 0 6px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;color:var(--tx);font:15px var(--sans);outline:none}
 .sq:focus{border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}
+.sq-seg{display:flex;flex-direction:column;gap:8px;margin:6px 0 4px}
+.seg{display:grid;grid-template-columns:1fr 1fr;width:100%;padding:3px;gap:3px;background:var(--panel2);border:1px solid var(--line);border-radius:12px}
+.seg button{min-width:0;padding:9px 8px;border-radius:9px;font:600 12px var(--mono);color:var(--mut);text-align:center;line-height:1.25;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s}
+.seg button:hover{color:var(--tx)}
+.seg button.on{background:color-mix(in srgb,var(--accent) 16%,var(--panel));color:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 40%,var(--line))}
+@media(max-width:380px){.seg button{font-size:11px;padding:9px 4px}}
+.sq-snip{font-size:12.5px;color:var(--mut);margin-top:6px;line-height:1.45;word-break:break-word}
 .sq-scope{font:600 11px var(--mono);color:var(--mut);margin:0 0 10px}
 .sq-scope b{color:var(--accent)}
 .hc mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;border-radius:3px;padding:0 1px}
@@ -200,6 +207,7 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 <div class="hm" id="srchM" onclick="if(event.target===this)closeSearch()"><div class="hd" role="dialog" aria-modal="true" aria-label="Search">
  <div class="hd-top"><div><h2>🔍 Search</h2></div><button class="ib" aria-label="Close" onclick="closeSearch()">×</button></div>
  <input class="sq" id="sqIn" type="search" placeholder="Search lectures…" autocomplete="off" oninput="renderSearch()">
+ <div class="sq-seg" id="sqMode"></div>
  <div class="sq-scope" id="sqScope"></div>
  <div class="hl" id="sqL"></div></div></div>
 <div class="hm" id="histM" onclick="if(event.target===this)closeHist()"><div class="hd" role="dialog" aria-modal="true" aria-labelledby="histT">
@@ -3651,7 +3659,7 @@ function clearHist(){hCleared=hLoad();hSave([]);renderHist();
  u.querySelector('button').onclick=()=>{if(hCleared){hSave(hCleared);hCleared=null;renderHist()}u.remove()};
  document.body.appendChild(u);setTimeout(()=>{u.remove();hCleared=null},6000)}
 /* ---------- Search (scoped to where it was opened: home -> all courses, course -> that course, section -> that section) ---------- */
-let SQ=null;
+let SQ=null,SQmode='title',SQtok=0;
 function sqScope(){
  const[,r,id,si]=location.hash.split('/');
  const live=x=>x&&!x.hold&&(x.sections.length||x.subs);
@@ -3662,29 +3670,73 @@ function sqScope(){
  return{label:c.name,cs:[c],kind:'course'};
 }
 function openSearch(){
- SQ=sqScope();const inp=document.getElementById('sqIn');inp.value='';
+ SQ=sqScope();SQmode='title';SQexact=false;const inp=document.getElementById('sqIn');inp.value='';
  document.getElementById('sqScope').innerHTML='Searching in <b>'+esc(SQ.label)+'</b>'+(SQ.sub?' \u00b7 '+esc(SQ.sub):'');
  inp.placeholder=SQ.kind==='all'?'Search all courses\u2026':SQ.kind==='course'?'Search this course\u2026':'Search this section\u2026';
  document.getElementById('srchM').classList.add('open');renderSearch();setTimeout(()=>inp.focus(),30)}
 function closeSearch(){document.getElementById('srchM').classList.remove('open')}
-const sqHi=(t,ws)=>{let h=esc(t);ws.forEach(w=>{h=h.replace(new RegExp('('+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')(?![^<]*>)','ig'),'<mark>$1</mark>')});return h};
-function renderSearch(){
- const L=document.getElementById('sqL'),q=document.getElementById('sqIn').value.trim().toLowerCase();
- if(!q){L.innerHTML='<div class="hempty">\U0001F50D<b>Type to search</b>Matches lecture titles, descriptions and section names.</div>';return}
+let SQexact=false;
+const sqEsc=w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const sqRe=(w,g)=>new RegExp((SQexact?'(?<![a-z0-9_])':'')+'('+sqEsc(w)+')'+(SQexact?'(?![a-z0-9_])':'')+(g?'(?![^<]*>)':''),g?'ig':'i');
+const sqHas=(t,w)=>SQexact?sqRe(w).test(t):t.includes(w);
+const sqIdx=(t,w)=>{if(!SQexact)return t.indexOf(w);const m=sqRe(w).exec(t);return m?m.index:-1};
+const sqHi=(t,ws)=>{let h=esc(t);ws.forEach(w=>{h=h.replace(sqRe(w,1),'<mark>$1</mark>')});return h};
+const sqBodyCache={};
+function sqBlockText(b){
+ if(b.p)return b.p;if(b.h)return b.h;if(b.ul)return b.ul.join(' ');if(b.t)return b.t.map(r=>r.join(' ')).join(' ');
+ if(b.flow)return b.flow.join(' ');if(b.code)return b.code;if(b.note)return b.note;return''}
+function sqBody(c,si,li){const k=c.id+':'+si+':'+li;if(k in sqBodyCache)return sqBodyCache[k];
+ const L=LS()[k];if(!L)return null;return sqBodyCache[k]=L.blocks.map(sqBlockText).join(' \n').replace(/[`*]/g,'')}
+function sqSnippet(body,ws){
+ const lo=body.toLowerCase();let at=-1;
+ for(const w of ws){const i=sqIdx(lo,w);if(i>=0&&(at<0||i<at))at=i}
+ if(at<0)return'';
+ const a=Math.max(0,at-50),z=Math.min(body.length,at+110);
+ return(a>0?'\u2026':'')+body.slice(a,z).replace(/\s+/g,' ').trim()+(z<body.length?'\u2026':'')}
+function sqModeUI(){
+ const seg=(items,cur,fn)=>`<div class="seg" role="group">${items.map(m=>`<button type="button" class="${cur===m[0]?'on':''}" aria-pressed="${cur===m[0]}" onclick="${fn(m[0])}">${m[1]}</button>`).join('')}</div>`;
+ document.getElementById('sqMode').innerHTML=
+  seg([['title','Titles & descriptions'],['body','Lesson content']],SQmode,v=>`SQmode='${v}';sqModeUI();renderSearch()`)
+  +seg([[false,'Partial match'],[true,'Exact word']],SQexact,v=>`SQexact=${v};sqModeUI();renderSearch()`)}
+function sqPending(){
+ const t=[];if(SQ.kind==='all')return t;
+ SQ.cs.forEach(c=>{if(!LAZY[c.id])return;c.sections.forEach((s,si)=>{
+  if(SQ.si!==undefined&&si!==SQ.si)return;if(!_rdy[c.id+':'+si])t.push([c.id,si])})});
+ return t}
+async function renderSearch(){
+ const tok=++SQtok,L=document.getElementById('sqL'),q=document.getElementById('sqIn').value.trim().toLowerCase();
+ sqModeUI();
+ if(!q){L.innerHTML='<div class="hempty">🔍<b>Type to search</b>'+(SQmode==='body'?'Matches lesson text, plus titles and section names.':'Matches lecture titles, descriptions and section names.')+'</div>';return}
+ const body=SQmode==='body';
+ if(body){
+  const pend=sqPending();
+  if(pend.length){
+   let n=0;const tot=pend.length;
+   L.innerHTML=`<div class="hempty">\u23F3<b>Loading lessons\u2026</b><span id="sqProg">0 / ${tot}</span></div>`;
+   const q2=pend.slice();
+   const worker=async()=>{while(q2.length){const[id,si]=q2.shift();await ensure(id,si);n++;const e=document.getElementById('sqProg');if(e&&tok===SQtok)e.textContent=n+' / '+tot}};
+   await Promise.all([worker(),worker(),worker()]);
+   if(tok!==SQtok)return}}
  const ws=q.split(/\s+/).filter(Boolean),out=[];
- const sc=(txt,desc)=>{const t=txt.toLowerCase(),d=(desc||'').toLowerCase();
-  if(!ws.every(w=>t.includes(w)||d.includes(w)))return 0;
-  let n=1;if(t.includes(q))n+=6;if(t.startsWith(q))n+=3;ws.forEach(w=>{if(t.includes(w))n+=2});return n};
+ const sc=(txt,desc,bod)=>{const t=txt.toLowerCase(),d=(desc||'').toLowerCase(),b=bod?bod.toLowerCase():'';
+  if(!ws.every(w=>sqHas(t,w)||sqHas(d,w)||sqHas(b,w)))return 0;
+  let n=1;if(sqHas(t,q))n+=6;if(t.startsWith(q))n+=3;ws.forEach(w=>{if(sqHas(t,w))n+=2;else if(sqHas(d,w))n+=1});return n};
  SQ.cs.forEach(c=>{
-  if(SQ.kind!=='section'){const n=sc(c.name,c.blurb);if(n&&SQ.kind==='all')out.push({n:n+4,t:c.name,s:c.blurb||'',tag:'Course',href:'#/c/'+c.id,col:c.color})}
+  if(SQ.kind==='all'){const n=sc(c.name,c.blurb);if(n)out.push({k:0,n:n+4,t:c.name,s:c.blurb||'',tag:'Course',href:'#/c/'+c.id,col:c.color})}
   c.sections.forEach((s,si)=>{
    if(SQ.si!==undefined&&si!==SQ.si)return;
-   if(SQ.kind!=='section'){const n=sc(s.t,'');if(n)out.push({n:n+2,t:s.t,s:c.name,tag:'Section',href:'#/c/'+c.id+'/'+si,col:c.color})}
-   s.l.forEach((x,li)=>{const n=sc(x[0],x[2]);if(n)out.push({n,t:x[0],s:c.name+' \u203a '+s.t,tag:isX(x)?'Additional':'Lecture',href:'#/c/'+c.id+'/'+si+'/'+li,col:c.color,d:x[2]})})})});
- out.sort((a,b)=>b.n-a.n);
- if(!out.length){L.innerHTML='<div class="hempty">\U0001F937<b>No matches</b>Nothing in '+esc(SQ.label)+' matches \u201c'+esc(q)+'\u201d.</div>';return}
+   if(SQ.kind!=='section'){const n=sc(s.t,'');if(n)out.push({k:1,n:n+2,t:s.t,s:c.name,tag:'Section',href:'#/c/'+c.id+'/'+si,col:c.color})}
+   s.l.forEach((x,li)=>{
+    const bod=body?sqBody(c,si,li):null,n=sc(x[0],x[2],bod);
+    if(!n)return;
+    const tl=x[0].toLowerCase(),inMeta=ws.every(w=>sqHas(tl,w)||sqHas((x[2]||'').toLowerCase(),w));
+    out.push({k:(body&&bod&&!inMeta)?3:2,n,t:x[0],s:c.name+' \u203a '+s.t,tag:isX(x)?'Additional':'Lecture',href:'#/c/'+c.id+'/'+si+'/'+li,col:c.color,
+     snip:body&&bod?sqSnippet(bod,ws):'',inBody:body&&bod&&!inMeta})})})});
+ out.sort((a,b)=>a.k-b.k||b.n-a.n);
+ const hint=body&&SQ.kind==='all'?'<div class="sq-scope">Home searches only lessons already loaded \u2014 open a course to search all of its lesson content.</div>':'';
+ if(!out.length){L.innerHTML=hint+'<div class="hempty">🤷<b>No matches</b>Nothing in '+esc(SQ.label)+' matches \u201c'+esc(q)+'\u201d.</div>';return}
  const shown=out.slice(0,60);
- L.innerHTML=shown.map((e,i)=>`<div class="hi" style="--c:${e.col||'var(--accent)'}"><div class="hr"><span class="hdot"></span></div><div class="hc" data-i="${i}"><div class="hc-t">${sqHi(e.t,ws)}</div><div class="hc-s">${sqHi(e.s,ws)}</div><div class="hc-tags"><span class="chip">${e.tag}</span></div></div></div>`).join('')+(out.length>60?`<div class="hempty" style="padding:8px">Showing 60 of ${out.length} \u2014 refine your search.</div>`:'');
+ L.innerHTML=hint+shown.map((e,i)=>`<div class="hi" style="--c:${e.col||'var(--accent)'}"><div class="hr"><span class="hdot"></span></div><div class="hc" data-i="${i}"><div class="hc-t">${sqHi(e.t,ws)}</div><div class="hc-s">${sqHi(e.s,ws)}</div>${e.snip?`<div class="sq-snip">${sqHi(e.snip,ws)}</div>`:''}<div class="hc-tags"><span class="chip">${e.tag}</span>${e.inBody?'<span class="chip live">in lesson</span>':''}</div></div></div>`).join('')+(out.length>60?`<div class="hempty" style="padding:8px">Showing 60 of ${out.length} \u2014 refine your search.</div>`:'');
  L.querySelectorAll('.hc').forEach(el=>el.onclick=()=>{const e=shown[+el.dataset.i];closeSearch();go(e.href)})}
 addEventListener('keydown',e=>{if(e.key==='Escape'){closeHist();closeSearch()}});
 
