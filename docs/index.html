@@ -94,6 +94,16 @@ h2{font-size:14px;font:600 12px var(--mono);letter-spacing:.8px;text-transform:u
 .dens{width:32px;height:32px;border-radius:10px;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center;color:var(--mut)}
 .dens svg{width:14px;height:14px}.dens:hover,.dens.on{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
 .dens.on{background:color-mix(in srgb,var(--accent) 10%,var(--panel))}
+body.compact .grid.secs{gap:8px}
+body.compact .grid.secs .card{padding:10px 12px;animation:none}
+body.compact .grid.secs .card:hover{transform:none}
+body.compact .grid.secs .sec{align-items:center;gap:12px}
+body.compact .grid.secs .sec h3{margin:0;font-size:15px}
+body.compact .grid.secs .sec p,body.compact .grid.secs .pct{display:none}
+body.compact .grid.secs .bt{position:absolute;left:0;right:0;bottom:0;margin:0;height:3px;border-radius:0}
+body.compact .lec{margin-bottom:6px;border-radius:11px}
+body.compact .lec .lh{padding:8px 12px}
+body.compact .lec .lh .t{font-size:14px}
 body.compact .grid.courses{gap:8px}
 .ib{position:relative}
 /* Tappable UI is not selectable text: stops mobile Chrome's "Tap to search" panel / word highlight when navigating */
@@ -4051,6 +4061,7 @@ function importDialog(sum,go2){
 /* ---------- Home card density (expanded / compact) ---------- */
 const isCompact=()=>document.body.classList.contains('compact');
 (function(){try{if(localStorage.getItem('ls_dens')==='compact')document.body.classList.add('compact')}catch(e){}})();
+const h2row=t=>`<div class="h2row"><h2>${t}</h2><button class="dens${isCompact()?' on':''}" id="dens" onclick="toggleDensity()" title="${isCompact()?'Switch to expanded cards':'Switch to compact cards'}" aria-label="Toggle compact cards" aria-pressed="${isCompact()}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1.2"/><rect x="3" y="10" width="18" height="4" rx="1.2"/><rect x="3" y="16" width="18" height="4" rx="1.2"/></svg></button></div>`;
 function toggleDensity(){const on=document.body.classList.toggle('compact');try{localStorage.setItem('ls_dens',on?'compact':'expanded')}catch(e){}
  const b=document.getElementById('dens');if(b){b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);b.title=on?'Switch to expanded cards':'Switch to compact cards'}}
 /* ---------- VIEWS ---------- */
@@ -4069,7 +4080,7 @@ function vSubCourses(c){
  const L=subsOf(c),N=aCnt(c),D=aDn(c),Pc=aPct(c),X=L.reduce((a,x)=>a+cntX(x),0),S=L.reduce((a,x)=>a+x.sections.length,0);
  let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›<span>${c.name}</span></div>
  <div class="hero course" style="--c:${c.color}"><div class="tx"><span class="chip">${c.level}</span><h1 style="margin:10px 0 6px">${c.name}</h1><div class="stats"><div><b>${L.length}</b>sub-courses</div><div><b>${S}</b>sections</div><div><b>${N}</b>lectures</div><div><b>${X}</b>additional</div></div></div><div class="ring" style="--p:${Pc}"><span>${Pc}%</span></div></div>
- <p class="sub">Pick a sub-course. Each has its own sections, lectures, quizzes and progress. ${c.start||''}</p>${(c.subs||[]).some(x=>REFLAZY[x])?`<div class="tools" style="margin:0 0 18px"><a class="refbtn" onclick="go('#/c/${c.subs.find(x=>REFLAZY[x])}/ref/0')">&#9889; <b>Quick reference</b> &middot; choose a sub-course</a></div>`:''}<h2>Sub-courses</h2><div class="grid">`;
+ <p class="sub">Pick a sub-course. Each has its own sections, lectures, quizzes and progress. ${c.start||''}</p>${(c.subs||[]).some(x=>REFLAZY[x])?`<div class="tools" style="margin:0 0 18px"><a class="refbtn" onclick="go('#/c/${c.subs.find(x=>REFLAZY[x])}/ref/0')">&#9889; <b>Quick reference</b> &middot; choose a sub-course</a></div>`:''}${h2row('Sub-courses')}<div class="grid courses">`;
  h+=L.map((x,i)=>`<div class="card" style="--c:${x.color};animation-delay:${i*45}ms" onclick="go('#/c/${x.id}')"><div class="ico">${x.tag}</div><h3>${esc(x.name)}</h3><p>${x.blurb}</p><div class="meta"><span class="chip">${x.sections.length} sections</span><span class="chip">${cnt(x)} lectures</span><span class="chip">+${cntX(x)} additional</span></div><div class="bt"><b style="width:${pct(x)}%"></b></div><div class="pct"><span>${dn(x)}/${cnt(x)} done</span><span>${pct(x)}%</span></div></div>`).join('');
  h+=(c.soon?`<div class="card off" style="--c:${c.color}"><div class="ico">${c.soon.ico}</div><h3>${c.soon.name}</h3><p>${c.soon.blurb}</p><div class="meta"><span class="chip">Curriculum coming soon</span></div></div>`:'')+`</div>`;
  return h}
@@ -4079,7 +4090,7 @@ function vTopics(c){
  <div class="hero course" style="--c:${c.color}"><div class="tx"><span class="chip">${c.level}</span><h1 style="margin:10px 0 6px">${c.name}</h1> <div class="stats"><div><b>${c.sections.length}</b>sections</div><div><b>${cnt(c)}</b>lectures</div>${cntX(c)?`<div><b>${cntX(c)}</b>additional</div>`:''}</div>
  <div class="row">${n?`<button class="btn" onclick="go('#/c/${c.id}/${n[0]}')">${dn(c)?'Resume':'Start course'} ▸</button>`:`<span class="chip live">✓ Course complete</span>`}</div><div class="tools">${autoBox(c.id,1)}${refBtn(c)}</div></div>
  <div class="ring" style="--p:${pct(c)}"><span>${pct(c)}%</span></div></div>
- ${c.outcomes&&c.outcomes.length?`<details class="outc" style="--c:${c.color}"><summary><span>What you'll learn</span><small>${c.outcomes.length}</small><span class="oc-ch">▾</span></summary><div class="oc-b">${c.outcomes.map(o=>`<span class="chip">✓ ${o}</span>`).join('')}</div></details>`:''}<h2>Topics</h2><div class="grid">`;
+ ${c.outcomes&&c.outcomes.length?`<details class="outc" style="--c:${c.color}"><summary><span>What you'll learn</span><small>${c.outcomes.length}</small><span class="oc-ch">▾</span></summary><div class="oc-b">${c.outcomes.map(o=>`<span class="chip">✓ ${o}</span>`).join('')}</div></details>`:''}${h2row('Topics')}<div class="grid secs">`;
  h+=c.sections.map((s,si)=>{const d=secDone(c,si),n=coreIdx(s).length,m=xIdx(s).length,p=n?Math.round(d/n*100):0;
   return `<div class="card" style="--c:${c.color};animation-delay:${si*45}ms" onclick="go('#/c/${c.id}/${si}')"><div class="sec"><span class="num">${String(si+1).padStart(2,'0')}</span><div style="flex:1"><h3>${esc(s.t)}</h3><p>${n} lectures${m?` · +${m} additional`:''}</p></div>${p==100?'<span style="color:var(--accent)">✓</span>':''}</div>
   <div class="bt"><b style="width:${p}%"></b></div><div class="pct"><span>${d}/${n}</span><span>${p}%</span></div></div>`}).join('')+`</div>`;
@@ -4092,6 +4103,7 @@ function vSub(c,si){
  let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›${par(c)}<a onclick="go('#/c/${c.id}')">${c.name}</a>›<span>Section ${si+1}</span></div>
  <h1>${esc(s.t)}</h1><p class="sub">${ci.length} lectures · ${d} completed${xi.length?` · ${xi.length} additional`:''}</p><div class="bt" style="--c:${c.color};margin:-6px 0 22px"><b style="width:${p}%"></b></div>`;
  if(s.cka)h+=`<div class="meta" style="margin:-10px 0 18px"><span class="chip">${esc(s.cka)}</span></div>`;
+ h+=h2row('Lectures');
  h+=ci.map(row).join('');
  h+=qData(c,si)?(()=>{const b=qBest(c,si),p=b>=QPASS;return `<div class="lec quiz ready"><div class="lh" onclick="go('#/c/${c.id}/${si}/quiz')"><span class="chk" style="color:${p?'var(--accent)':'var(--mut)'}">${p?'✓':'?'}</span><span class="t">${esc(s.q)}</span><small>QUIZ${b>=0?' · '+b+'%':''}</small></div></div>`})():`<div class="lec quiz"><div class="lh"><span class="chk" style="color:var(--mut)">?</span><span class="t">${esc(s.q)}</span><small>QUIZ</small></div></div>`;
  if(xi.length){const op=!!ADDL_OPEN[si];
