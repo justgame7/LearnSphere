@@ -4154,6 +4154,7 @@ const LAZY={rs:si=>{const n=String(si+1).padStart(2,'0');return['rs-common.js','
 for(const sub of['bkp','perf','sec','upg','rac','exa','dg','gg'])LAZY['ora-'+sub]=si=>{const n=String(si+1).padStart(2,'0');return['ora-common.js','ora-'+sub+'-s'+n+'.js','ora-'+sub+'-q'+n+'.js']};
 LAZY.mongo=si=>{const n=String(si+1).padStart(2,'0');return['mongo-common.js','mongo-s'+n+'.js','mongo-q'+n+'.js']};
 LAZY.prom=si=>{const n=String(si+1).padStart(2,'0');return['prom-common.js','prom-s'+n+'.js','prom-q'+n+'.js']};
+LAZY.ansible=si=>{const n=String(si+1).padStart(2,'0');return['ansible-common.js','ansible-s'+n+'.js','ansible-q'+n+'.js']};
 for(const sub of['core','bkp','perf','sec','ha','upg','ops','az'])LAZY['mss-'+sub]=si=>{const n=String(si+1).padStart(2,'0');return['mss-common.js','mss-'+sub+'-s'+n+'.js','mss-'+sub+'-q'+n+'.js']};
 const _ld={},_rdy={};
 function ensure(id,si){const k=id+':'+si;if(_ld[k])return _ld[k];
