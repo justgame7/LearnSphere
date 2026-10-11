@@ -4147,6 +4147,7 @@ function ensure(id,si){const k=id+':'+si;if(_ld[k])return _ld[k];
 /* Oracle quick references: one data file per sub-course, loaded when the reference is opened (window.QREF['ora-core'] ...) */
 const REFLAZY={};['core','bkp','perf','sec','upg','rac','exa','dg','gg'].forEach(s=>REFLAZY['ora-'+s]='ora-ref-'+s+'.js');
 REFLAZY.rs='rs-ref.js';
+REFLAZY.mongo='mongo-ref.js';
 function refEnsure(id){const f=REFLAZY[id];if(!f||(window.QREF||{})[id])return Promise.resolve();
  return _ld[f]||(_ld[f]=new Promise(r=>{const s=document.createElement('script');s.src=f;s.onload=s.onerror=()=>r();document.head.appendChild(s)}))}
 /* ---------- QUIZZES (data in pg-quiz.js: window.QUIZZES['<course>:<section>']) ---------- */
