@@ -1,0 +1,35 @@
+/* LearnSphere - SQL Server Backup, Restore & Recovery quiz, Section 8: Backup Security.
+   Format: see pg-quiz.js. window.QUIZZES['mss-bkp:7']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-bkp:7']={qs:[
+{q:'Which clause encrypts a backup?',
+ o:['WITH ENCRYPTION (ALGORITHM = AES_256, SERVER CERTIFICATE = ...)','WITH SECURE','WITH PASSWORD only','WITH LOCK'],
+ a:0,why:'BACKUP ... WITH ENCRYPTION uses an algorithm and a certificate or asymmetric key.',lec:0},
+{q:'What must exist in **master** before you can encrypt a backup with a certificate?',
+ o:['A database master key and a certificate','A login named backup','A linked server','A job'],
+ a:0,why:'The certificate is protected by the database master key in master.',lec:0},
+{q:'What must be **stored apart** from the backups?',
+ o:['The certificate, private key and their passwords','The log file','The error log','Statistics'],
+ a:0,why:'Keys stored with the backups give no protection if the storage is stolen.',lec:0},
+{q:'Does TDE encrypt **backups** of the database?',
+ o:['Yes, backups of a TDE database are encrypted','No, never','Only differential backups','Only on Express'],
+ a:0,why:'Backups of a TDE-protected database contain encrypted data pages.',lec:1},
+{q:'Which command **backs up a certificate with its private key**?',
+ o:['BACKUP CERTIFICATE ... WITH PRIVATE KEY','EXPORT CERT','BACKUP KEY CERT','COPY CERTIFICATE'],
+ a:0,why:'BACKUP CERTIFICATE ... TO FILE WITH PRIVATE KEY writes both parts, protected by a password.',lec:1},
+{q:'What does **pvt_key_last_backup_date = NULL** tell you?',
+ o:['The private key has not been backed up','The certificate expired','TDE is off','The database is offline'],
+ a:0,why:'NULL means no backup of the private key has been recorded. Back it up now.',lec:1},
+{q:'What must be created on the **target** before restoring a TDE backup?',
+ o:['The same certificate with its private key','A new empty certificate','A login for the user','A new tempdb'],
+ a:0,why:'The restore needs the certificate used to protect the database encryption key.',lec:2},
+{q:'What happens if there is **no certificate backup** for a TDE database?',
+ o:['The data cannot be recovered','The backup still restores','SQL Server creates a new certificate','The restore is slower'],
+ a:0,why:'Without the certificate and key the encrypted data cannot be read.',lec:2},
+{q:'Which are **good controls** for backup files?',
+ o:['Limit NTFS permissions','Encrypt the backups','Keep an immutable off-site copy','Share the folder with Everyone'],
+ a:[0,1,2],why:'Open shares expose all data. The other three reduce risk.',lec:3},
+{q:'A developer wants a **production backup** on a laptop. What should you do?',
+ o:['Provide a masked or subset copy instead','Copy it as is','Email it','Put it on a public share'],
+ a:0,why:'Production data must not leave controlled systems unmasked.',lec:3}
+]};

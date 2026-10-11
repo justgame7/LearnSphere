@@ -1,0 +1,35 @@
+/* LearnSphere - SQL Server Backup, Restore & Recovery quiz, Section 7: Backup to Cloud.
+   Format: see pg-quiz.js. window.QUIZZES['mss-bkp:6']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-bkp:6']={qs:[
+{q:'Which clause sends a backup directly to **Azure Blob Storage**?',
+ o:['TO URL','TO CLOUD','TO BLOB DISK','TO AZURE FILE'],
+ a:0,why:'BACKUP DATABASE ... TO URL = https://... writes to Azure Blob Storage.',lec:0},
+{q:'Which are good practices for **backup to URL**?',
+ o:['Use COMPRESSION and CHECKSUM','Stripe very large backups over several URLs','Use geo-redundant storage for DR','Check secrets into source control'],
+ a:[0,1,2],why:'Secrets must not be in source control. The other three are recommended.',lec:0},
+{q:'What protects cloud backups from **deletion or ransomware**?',
+ o:['Immutable (WORM) blob storage policies','Longer file names','More compression','A larger SAS'],
+ a:0,why:'Immutability prevents deletion or modification for a set period.',lec:0},
+{q:'From which SQL Server version is **S3-compatible** backup supported?',
+ o:['2022','2016','2019','2012'],
+ a:0,why:'S3-compatible object storage support for BACKUP TO URL was introduced in SQL Server 2022.',lec:1},
+{q:'What is the **credential identity** for an S3 endpoint?',
+ o:['S3 Access Key','SHARED ACCESS SIGNATURE','Windows','sa'],
+ a:0,why:'S3 credentials use the S3 Access Key identity with an access key and secret.',lec:1},
+{q:'Which **protocol** is required for S3-compatible backups?',
+ o:['HTTPS','FTP','SMB 1','Telnet'],
+ a:0,why:'S3 backup requires HTTPS with a trusted certificate.',lec:1},
+{q:'Which credential type is **preferred** for Azure Blob backups?',
+ o:['SAS scoped to a container','Storage account key','Shared password in a script','Anonymous access'],
+ a:0,why:'A container-scoped, time-limited SAS follows least privilege.',lec:2},
+{q:'Cloud backups suddenly **all fail**. What is a likely cause?',
+ o:['The SAS token expired','The table is locked','tempdb is full','Statistics are stale'],
+ a:0,why:'An expired SAS gives authorization errors for every job.',lec:2},
+{q:'What does **SQL Server Managed Backup** do?',
+ o:['Decides when to take backups based on a retention policy','Replaces CHECKDB','Encrypts the log','Moves databases to Azure'],
+ a:0,why:'The service schedules full and log backups to meet retention and recovery goals.',lec:3},
+{q:'Does managed backup remove the need for **test restores**?',
+ o:['No','Yes','Only for system databases','Only in SIMPLE'],
+ a:0,why:'You must still verify that backups restore and that failures raise alerts.',lec:3}
+]};

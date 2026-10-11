@@ -1,0 +1,38 @@
+/* LearnSphere - SQL Server Performance & Tuning quiz, Section 10: Extended Events & Monitoring.
+   Format: see pg-quiz.js. window.QUIZZES['mss-perf:9']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-perf:9']={qs:[
+{q:'What replaces **SQL Trace and Profiler**?',
+ o:['Extended Events','Resource Governor','Policy-Based Management','Database Mail'],
+ a:0,why:'Extended Events is the supported, lower-overhead tracing system.',lec:0},
+{q:'Which part of an XE session **filters** events before they are stored?',
+ o:['Predicate','Target','Package','Action'],
+ a:0,why:'Predicates are evaluated early, so unwanted events are not collected.',lec:0},
+{q:'Which XE target is **memory only** and can lose data?',
+ o:['ring_buffer','event_file','etw_classic_sync_target','file_target'],
+ a:0,why:'The ring buffer keeps recent events in memory and wraps around.',lec:0},
+{q:'Is the **system_health** session always running?',
+ o:['Yes, by default','No, you must create it','Only on Enterprise','Only in 2022'],
+ a:0,why:'system_health starts with the instance.',lec:1},
+{q:'What does system_health capture?',
+ o:['Deadlock reports','Serious errors','Long waits','Every SELECT statement'],
+ a:[0,1,2],why:'It captures problem events, not all statements.',lec:1},
+{q:'Which target is best for keeping events for later analysis?',
+ o:['event_file','ring_buffer','event_counter','histogram'],
+ a:0,why:'event_file stores events on disk and can be read later.',lec:2},
+{q:'What is important when creating a session on a busy server?',
+ o:['Use a predicate such as duration or database','Capture everything','Never stop it','Use unlimited file size'],
+ a:0,why:'Filtering limits overhead and file size.',lec:2},
+{q:'Which function reads **.xel files** with T-SQL?',
+ o:['sys.fn_xe_file_target_read_file','sys.fn_get_audit_file','fn_dblog','OPENROWSET only'],
+ a:0,why:'It returns the event_data XML of each event.',lec:3},
+{q:'In what format is XE **event_data** returned?',
+ o:['XML','JSON','CSV','Binary only'],
+ a:0,why:'event_data is XML, which you shred with XQuery.',lec:3},
+{q:'Which XE event replaces the Profiler **SQL:BatchCompleted**?',
+ o:['sql_batch_completed','rpc_starting','lock_escalation','xml_deadlock_report'],
+ a:0,why:'sql_batch_completed is the equivalent event.',lec:4},
+{q:'What is **XEvent Profiler** in SSMS for?',
+ o:['A quick live view of standard sessions','Permanent capture','Backups','Index maintenance'],
+ a:0,why:'It is a convenient way to watch activity briefly. Use named sessions for longer captures.',lec:4}
+]};

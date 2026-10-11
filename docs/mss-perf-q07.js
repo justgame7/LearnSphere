@@ -1,0 +1,38 @@
+/* LearnSphere - SQL Server Performance & Tuning quiz, Section 7: Intelligent Query Processing.
+   Format: see pg-quiz.js. window.QUIZZES['mss-perf:6']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-perf:6']={qs:[
+{q:'What turns on most **IQP features**?',
+ o:['The database compatibility level','A trace flag only','Edition upgrade','A reboot'],
+ a:0,why:'IQP features follow the compatibility level of the database.',lec:0},
+{q:'Which compatibility level goes with **SQL Server 2022**?',
+ o:['160','150','140','130'],
+ a:0,why:'2022 uses 160. 2019 is 150 and 2017 is 140.',lec:0},
+{q:'What can you do to turn off **one IQP feature** without lowering the level?',
+ o:['A database scoped configuration option','Drop the database','Disable Query Store','Delete the plan cache'],
+ a:0,why:'Options such as BATCH_MODE_ON_ROWSTORE can be turned off individually.',lec:0},
+{q:'What does an **adaptive join** do?',
+ o:['Chooses between nested loops and hash at run time','Always uses merge join','Disables joins','Forces parallelism'],
+ a:0,why:'It decides after seeing the actual input size.',lec:1},
+{q:'What does **memory grant feedback** adjust?',
+ o:['The memory granted to a repeated query','The log size','The number of indexes','The collation'],
+ a:0,why:'It compares used and granted memory and corrects the grant on the next execution.',lec:1},
+{q:'From which compat level can **batch mode** run on rowstore tables?',
+ o:['150','110','120','130'],
+ a:0,why:'Batch mode on rowstore arrived with compatibility level 150 (SQL Server 2019).',lec:2},
+{q:'Batch mode mainly helps:',
+ o:['Analytical queries with many rows','Single row lookups','Tiny queries','Log backups'],
+ a:0,why:'Processing rows in batches cuts CPU for large scans and aggregates.',lec:2},
+{q:'What did **table variable deferred compilation** fix?',
+ o:['The estimate of one row for table variables','Log growth','Backup speed','Deadlocks'],
+ a:0,why:'The first compile now uses the actual row count.',lec:3},
+{q:'Which feature turns simple **scalar functions** into set-based expressions?',
+ o:['Scalar UDF inlining','Adaptive join','Plan forcing','Partitioning'],
+ a:0,why:'Scalar UDF inlining removes the per-row call overhead.',lec:3},
+{q:'In a **safe compatibility level upgrade**, what comes first?',
+ o:['Keep the old level and capture a baseline in Query Store','Raise level in production at once','Delete Query Store','Disable statistics'],
+ a:0,why:'A baseline lets you compare and force old plans if needed.',lec:4},
+{q:'Why change the compat level **separately** from the engine upgrade?',
+ o:['To know which change caused a difference','To save licensing','It is required by Setup','To skip testing'],
+ a:0,why:'Separating the two changes keeps cause and effect clear.',lec:4}
+]};

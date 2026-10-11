@@ -1,0 +1,38 @@
+/* LearnSphere - SQL Server Backup, Restore & Recovery quiz, Section 10: Recovery Drills.
+   Format: see pg-quiz.js. window.QUIZZES['mss-bkp:9']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-bkp:9']={qs:[
+{q:'Where should recovery drills be run?',
+ o:['In a lab or test environment','On production at peak time','On a colleague laptop with production data','Never'],
+ a:0,why:'Drills break things on purpose, so they belong in a safe environment.',lec:0},
+{q:'The **data drive is lost** but the log file survived. What is the **first** recovery step?',
+ o:['Take a tail-log backup','Run REPAIR_ALLOW_DATA_LOSS','Drop the database','Restart Windows'],
+ a:0,why:'The surviving log holds the latest transactions, so back it up before restoring.',lec:0},
+{q:'Why use **WITH MOVE** in the lost-drive drill?',
+ o:['The files must go to a new drive','To speed up the restore','To compress','To skip logs'],
+ a:0,why:'The original drive is gone, so files are placed on a new location.',lec:0},
+{q:'Which restore approach suits a **dropped table** with later good changes?',
+ o:['Side-by-side point-in-time restore, then copy the table back','Restore over production immediately','Run CHECKDB repair','Switch to SIMPLE'],
+ a:0,why:'A copy restored to just before the drop preserves later changes in production.',lec:1},
+{q:'SELECT INTO from the restored copy does **not** bring back:',
+ o:['Indexes, keys and permissions','Rows','Column names','Data types'],
+ a:0,why:'You must script and recreate indexes, constraints and permissions.',lec:1},
+{q:'A query returns **error 824**. What is a good next step?',
+ o:['Check suspect_pages and run CHECKDB','Restart the instance only','Ignore it','Delete the table'],
+ a:0,why:'Find which pages are damaged and the extent before choosing a repair route.',lec:2},
+{q:'Page restore needs which recovery model?',
+ o:['FULL or BULK_LOGGED','SIMPLE only','Any, with no logs','None'],
+ a:0,why:'The log chain is required to bring the restored pages up to date.',lec:2},
+{q:'A TDE restore fails with **cannot find server certificate**. What is the fix?',
+ o:['Create the certificate on the target from the backup files','Restart the Agent','Rebuild master','Switch to SIMPLE'],
+ a:0,why:'The certificate with its private key must exist on the server before the restore.',lec:3},
+{q:'There is **no certificate backup** for a TDE database. What does this mean?',
+ o:['The data cannot be recovered','You can use any new certificate','A rebuild brings the data back','CHECKDB can fix it'],
+ a:0,why:'Encryption keys cannot be recreated. Without them the data is unreadable.',lec:3},
+{q:'Which item belongs in a **recovery runbook**?',
+ o:['Exact commands and verification steps','Marketing material','Only a general idea','Developer passwords in plain text'],
+ a:0,why:'A runbook must be exact and verifiable so any DBA can follow it.',lec:4},
+{q:'How do you know a runbook is **good**?',
+ o:['Another person can follow it successfully','It is long','It uses many diagrams','It is approved without testing'],
+ a:0,why:'The test is that someone else can recover with it.',lec:4}
+]};

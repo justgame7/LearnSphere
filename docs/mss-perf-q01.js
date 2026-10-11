@@ -1,0 +1,35 @@
+/* LearnSphere - SQL Server Performance & Tuning quiz, Section 1: Performance Methodology.
+   Format: see pg-quiz.js. window.QUIZZES['mss-perf:0']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-perf:0']={qs:[
+{q:'What is the **right order** of the tuning method?',
+ o:['Define, measure, find, fix, verify','Fix, measure, define, verify','Verify, fix, find, measure','Measure, verify, define, fix'],
+ a:0,why:'Define the problem, measure, find the biggest bottleneck, make one change and verify with the same metric.',lec:0},
+{q:'Why make **one change at a time**?',
+ o:['You know which change had the effect','It is cheaper','It is a licensing rule','It avoids backups'],
+ a:0,why:'Several changes at once hide which one helped or hurt.',lec:0},
+{q:'Which question helps define a problem?',
+ o:['What is slow, since when and for whom','Which edition is installed','How many tables exist','What is the server name'],
+ a:0,why:'Scope, timing and audience narrow the cause.',lec:0},
+{q:'What is a **baseline**?',
+ o:['A record of normal performance','A kind of index','A backup type','A wait type'],
+ a:0,why:'A baseline lets you tell whether a number is unusual.',lec:1},
+{q:'Which counters are **cumulative** and need two samples?',
+ o:['Batch Requests/sec','Page life expectancy','Memory Grants Pending','Server name'],
+ a:0,why:'Per-second counters in sys.dm_os_performance_counters accumulate, so take two samples and divide.',lec:1},
+{q:'Which counter shows **queries waiting for workspace memory**?',
+ o:['Memory Grants Pending','User Connections','Lock Waits/sec','Full Scans/sec'],
+ a:0,why:'Memory Grants Pending counts requests waiting for a memory grant.',lec:1},
+{q:'What is **signal wait time**?',
+ o:['Time waiting for a CPU after the resource was ready','Time waiting for a lock','Time reading from disk','Network time'],
+ a:0,why:'A high signal wait share points to CPU pressure.',lec:2},
+{q:'Waits of type **LCK_M_*** point to:',
+ o:['Locking and blocking','Disk throughput','Memory grants','Network'],
+ a:0,why:'LCK_M waits are lock waits.',lec:2},
+{q:'Where do most database performance gains come from?',
+ o:['Queries and indexes','Bigger monitors','Operating system themes','Changing collation'],
+ a:0,why:'Fixing queries and indexes usually gives the biggest improvement.',lec:3},
+{q:'A query is slow **only after a release**. Which is a likely cause?',
+ o:['A changed query or plan','A full moon','A broken keyboard','Backup compression'],
+ a:0,why:'Changes in code, plans or compatibility level often explain post-release slowness.',lec:3}
+]};

@@ -1,0 +1,38 @@
+/* LearnSphere - SQL Server Security & Compliance quiz, Section 9: Hardening & Threat Detection.
+   Format: see pg-quiz.js. window.QUIZZES['mss-sec:8']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-sec:8']={qs:[
+{q:'Why **disable unused features** such as xp_cmdshell?',
+ o:['They reduce the attack surface','They speed up backups','They save licenses','They shrink the log'],
+ a:0,why:'Every enabled feature is something an attacker can try to use.',lec:0},
+{q:'Which are **surface area** items to review?',
+ o:['xp_cmdshell','Ole Automation Procedures','Ad hoc distributed queries','Table names'],
+ a:[0,1,2],why:'Table names are not an attack surface setting. The others are features to disable when unused.',lec:0},
+{q:'What is the **main fix** for SQL injection?',
+ o:['Parameterized queries','Longer passwords','Bigger servers','More indexes'],
+ a:0,why:'Parameters keep user input as data, never as SQL code.',lec:1},
+{q:'Which stored procedure runs **parameterized dynamic SQL**?',
+ o:['sp_executesql','xp_cmdshell','sp_who','sp_help'],
+ a:0,why:'sp_executesql accepts parameter definitions and values.',lec:1},
+{q:'Why does **least privilege** help with SQL injection?',
+ o:['An injected query can only do what the app login may do','It encrypts the query','It removes the vulnerability','It speeds up queries'],
+ a:0,why:'It limits the damage but does not remove the flaw.',lec:1},
+{q:'What does the **SSMS Vulnerability Assessment** do?',
+ o:['Scans configuration against best practice rules','Penetration tests the network','Encrypts data','Backs up the database'],
+ a:0,why:'It checks settings and permissions against a rule set and reports findings.',lec:2},
+{q:'A **baseline** in vulnerability assessment is used to:',
+ o:['Record accepted findings with a reason','Delete findings','Hide servers','Reset passwords'],
+ a:0,why:'Accepted exceptions are marked so future scans show only new problems.',lec:2},
+{q:'Why is **patching** a security control?',
+ o:['Known flaws have fixes that attackers exploit if you do not apply them','It increases compression','It reduces licenses','It speeds up logins'],
+ a:0,why:'Many attacks use known vulnerabilities that patches already fix.',lec:3},
+{q:'What happens to a version **past end of support**?',
+ o:['It no longer gets security fixes','It gets more fixes','It stops working','It is free'],
+ a:0,why:'After support ends no security updates are provided unless extended offers apply.',lec:3},
+{q:'What should happen to the **sa** account?',
+ o:['Rename and disable it, or at least use a long random password','Give it to developers','Use it for apps','Share the password'],
+ a:0,why:'sa is a well-known target for attacks.',lec:4},
+{q:'Why is **TRUSTWORTHY ON** risky?',
+ o:['It can let a db_owner escalate to sysadmin when the owner is privileged','It slows queries','It breaks backups','It stops auditing'],
+ a:0,why:'A privileged owner combined with TRUSTWORTHY allows escalation from the database to the server.',lec:4}
+]};

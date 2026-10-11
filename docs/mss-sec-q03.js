@@ -1,0 +1,35 @@
+/* LearnSphere - SQL Server Security & Compliance quiz, Section 3: Authorization & Least Privilege.
+   Format: see pg-quiz.js. window.QUIZZES['mss-sec:2']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-sec:2']={qs:[
+{q:'Which server role can do **everything** on the instance?',
+ o:['sysadmin','dbcreator','processadmin','public'],
+ a:0,why:'sysadmin bypasses all permission checks.',lec:0},
+{q:'Why create **custom database roles**?',
+ o:['To grant permissions per job function','Because fixed roles are slow','To skip auditing','To store data'],
+ a:0,why:'Custom roles express job functions and are easy to review.',lec:0},
+{q:'Which statement **removes** an earlier grant or deny?',
+ o:['REVOKE','DENY','GRANT','DROP'],
+ a:0,why:'REVOKE removes a previously given GRANT or DENY.',lec:1},
+{q:'A user is granted SELECT through a role but **denied** SELECT directly. Result?',
+ o:['Denied','Allowed','Depends on date','Error'],
+ a:0,why:'DENY wins over any GRANT.',lec:1},
+{q:'What does **ownership chaining** allow?',
+ o:['Calling a procedure without rights on the tables it uses, if owners match','Bypassing authentication','Skipping encryption','Replacing roles'],
+ a:0,why:'Permissions on underlying objects are not checked when the owner is the same.',lec:2},
+{q:'What **breaks** an ownership chain?',
+ o:['Dynamic SQL','Using schemas','Naming conventions','Using indexes'],
+ a:0,why:'Dynamic SQL runs in a different context, so the chain does not apply.',lec:2},
+{q:'What is a good **permission model** for an application?',
+ o:['EXECUTE on a schema of procedures','db_owner for ease','sysadmin','No permissions'],
+ a:0,why:'Procedures as an interface limit what the app can do directly.',lec:3},
+{q:'Which rights should a **monitoring** account have?',
+ o:['VIEW SERVER STATE and similar read-only rights','sysadmin','db_owner everywhere','CONTROL SERVER'],
+ a:0,why:'Monitoring needs read access to state, not administrative control.',lec:3},
+{q:'Which view lists **direct permissions** in a database?',
+ o:['sys.database_permissions','sys.databases','sys.objects','sys.configurations'],
+ a:0,why:'sys.database_permissions shows grants, denies and their grantees.',lec:4},
+{q:'How often should **sysadmin and db_owner** membership be reviewed?',
+ o:['Regularly, such as monthly or quarterly','Never','Only after a breach','Once at install'],
+ a:0,why:'Access drifts over time, so regular review removes stale rights.',lec:4}
+]};

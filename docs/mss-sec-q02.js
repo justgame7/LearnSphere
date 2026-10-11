@@ -1,0 +1,38 @@
+/* LearnSphere - SQL Server Security & Compliance quiz, Section 2: Authentication.
+   Format: see pg-quiz.js. window.QUIZZES['mss-sec:1']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-sec:1']={qs:[
+{q:'Which authentication method is **preferred** when possible?',
+ o:['Windows authentication','SQL authentication with shared sa','Anonymous','Mixed with weak passwords'],
+ a:0,why:'Windows authentication uses Active Directory, with no password stored in SQL Server.',lec:0},
+{q:'What happens to the **sa** login when you select Windows-only mode?',
+ o:['SQL logins including sa are disabled','sa gets more rights','sa is deleted','Nothing changes'],
+ a:0,why:'In Windows authentication mode SQL logins cannot be used.',lec:0},
+{q:'Why use **Windows groups** for logins?',
+ o:['Joiners and leavers are handled in Active Directory','They are faster','They are free','They bypass permissions'],
+ a:0,why:'Group membership changes in AD apply automatically.',lec:0},
+{q:'What is an **orphaned user**?',
+ o:['A database user whose SID has no matching login on the server','A user with no permissions','A deleted table','A locked account'],
+ a:0,why:'This happens after restoring a database to another server.',lec:1},
+{q:'Which statement **maps** an orphaned user to a login?',
+ o:['ALTER USER name WITH LOGIN = name','DROP USER name','GRANT CONNECT','ALTER LOGIN name ENABLE'],
+ a:0,why:'ALTER USER ... WITH LOGIN re-links the user to the login.',lec:1},
+{q:'What is a **contained database user**?',
+ o:['A user stored inside the database, not mapped to a login','A user with CONTROL','A user in master','A deleted login'],
+ a:0,why:'Contained users authenticate to the database directly, so the database is portable.',lec:2},
+{q:'Which instance option must be on for **contained database authentication**?',
+ o:['contained database authentication','clr enabled','xp_cmdshell','remote access'],
+ a:0,why:'sp_configure contained database authentication = 1.',lec:2},
+{q:'What does **Microsoft Entra ID** add to authentication?',
+ o:['MFA and Conditional Access','Faster backups','Larger databases','Bigger indexes'],
+ a:0,why:'Entra ID provides cloud identity features such as MFA and Conditional Access.',lec:3},
+{q:'Which is preferred for **applications** in Azure instead of stored passwords?',
+ o:['Managed identity','Shared sa','A password in the config','Anonymous'],
+ a:0,why:'Managed identities avoid storing secrets.',lec:3},
+{q:'Which option applies the Windows **password policy** to a SQL login?',
+ o:['CHECK_POLICY = ON','CHECK_EXPIRATION = OFF only','MUST_CHANGE only','NO_POLICY'],
+ a:0,why:'CHECK_POLICY enforces complexity and lockout rules from the operating system.',lec:4},
+{q:'Which function returns whether a login is **locked**?',
+ o:['LOGINPROPERTY(name, \'IsLocked\')','SUSER_SNAME()','IS_SRVROLEMEMBER()','USER_NAME()'],
+ a:0,why:'LOGINPROPERTY returns lockout status and bad password count.',lec:4}
+]};

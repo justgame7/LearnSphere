@@ -1,0 +1,38 @@
+/* LearnSphere - SQL Server Performance & Tuning quiz, Section 3: Query Store.
+   Format: see pg-quiz.js. window.QUIZZES['mss-perf:2']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-perf:2']={qs:[
+{q:'Where is **Query Store data** stored?',
+ o:['In the user database','In tempdb','In master','In the error log'],
+ a:0,why:'Query Store data lives inside each database, so it is kept across restarts and moves with backups.',lec:0},
+{q:'Which SQL Server version enables Query Store **by default** for new databases?',
+ o:['2022','2016','2017','2012'],
+ a:0,why:'SQL Server 2022 enables it by default for newly created databases.',lec:0},
+{q:'What does **actual_state_desc = READ_ONLY** mean?',
+ o:['Query Store stopped recording, often because it is full','It is working normally','It is disabled by choice only','It is encrypted'],
+ a:0,why:'READ_ONLY means no new data is captured. Check readonly_reason.',lec:0},
+{q:'Which metric finds **chatty small queries**?',
+ o:['Execution count with total CPU','Maximum memory grant only','Database size','File name'],
+ a:0,why:'Many cheap executions can add up to a large total.',lec:1},
+{q:'Why compare **totals** instead of single runs?',
+ o:['A cheap query run very often can cost the most','Totals are always smaller','Single runs are not stored','Totals are encrypted'],
+ a:0,why:'Impact is cost times frequency.',lec:1},
+{q:'Which procedure **forces a plan**?',
+ o:['sp_query_store_force_plan','sp_force_plan','sp_set_plan','DBCC FORCEPLAN'],
+ a:0,why:'sys.sp_query_store_force_plan takes a query id and a plan id.',lec:2},
+{q:'What should you do **after forcing a plan** as a quick fix?',
+ o:['Find the cause, fix it and unforce later','Leave it forever and never check','Delete Query Store','Restart the server'],
+ a:0,why:'A forced plan is a bridge. Review it, because it can fail after schema changes.',lec:2},
+{q:'Which report shows queries that **got worse** than before?',
+ o:['Regressed Queries','Overall Resource Consumption','Tracked Queries','Queries With Forced Plans'],
+ a:0,why:'The Regressed Queries report compares recent performance with an earlier period.',lec:3},
+{q:'Which report lets you check that **forced plans still work**?',
+ o:['Queries With Forced Plans','Top Resource Consuming Queries','Overall Resource Consumption','Regressed Queries'],
+ a:0,why:'It lists forced plans and any failures.',lec:3},
+{q:'Which **capture mode** is the right default?',
+ o:['AUTO','ALL','NONE','TRACE'],
+ a:0,why:'AUTO ignores insignificant queries and keeps the store small.',lec:4},
+{q:'Which setting removes old data when the store is **nearly full**?',
+ o:['SIZE_BASED_CLEANUP_MODE = AUTO','QUERY_CAPTURE_MODE = ALL','FLUSH_INTERVAL = 0','OPERATION_MODE = OFF'],
+ a:0,why:'Size-based cleanup removes the oldest and cheapest data as the cap approaches.',lec:4}
+]};

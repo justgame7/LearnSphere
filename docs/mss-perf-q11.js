@@ -1,0 +1,35 @@
+/* LearnSphere - SQL Server Performance & Tuning quiz, Section 11: Performance Drills.
+   Format: see pg-quiz.js. window.QUIZZES['mss-perf:10']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-perf:10']={qs:[
+{q:'A query is slow **after raising the compatibility level**. Which tool shows the plan change?',
+ o:['Query Store Regressed Queries report','The error log','The Agent history','Windows Event Viewer'],
+ a:0,why:'Query Store keeps plans and runtime stats from before and after the change.',lec:0},
+{q:'What is the **quick bridge** for a regressed query in Query Store?',
+ o:['Force the old plan','Delete the query','Restart the instance','Disable the optimizer'],
+ a:0,why:'Forcing the previous plan restores speed while you find the cause.',lec:0},
+{q:'In a **blocking storm**, what should you identify first?',
+ o:['The head blocker','The largest table','The disk model','The collation'],
+ a:0,why:'The head blocker holds the lock others wait for.',lec:1},
+{q:'Which setting prevents **readers from waiting on writers**?',
+ o:['READ_COMMITTED_SNAPSHOT','TABLOCK','NOLOCK in every query','MAXDOP 1'],
+ a:0,why:'RCSI uses row versions for reads.',lec:1},
+{q:'Which DMV shows **tempdb use per session**?',
+ o:['sys.dm_db_session_space_usage','sys.dm_os_wait_stats','sys.indexes','sys.dm_exec_cached_plans'],
+ a:0,why:'It reports allocated user and internal object pages per session.',lec:2},
+{q:'tempdb grows because of **huge sorts and spills**. What is the first fix?',
+ o:['Fix estimates, add an index or reduce columns','Add more logins','Rename tempdb','Disable auto-growth'],
+ a:0,why:'Reducing the work that spills removes the cause. Sizing only hides it.',lec:2},
+{q:'A procedure is fast for **small customers** and slow for a **large** one. Likely cause?',
+ o:['Parameter sniffing with skewed data','Corruption','Full log','Network latency'],
+ a:0,why:'The plan was compiled for typical values and does not fit the large one.',lec:3},
+{q:'Which fix gives a **correct plan for each call** at a small compile cost?',
+ o:['OPTION (RECOMPILE)','OPTIMIZE FOR UNKNOWN','NOLOCK','Forced parameterization'],
+ a:0,why:'Recompile builds a plan for the actual parameter values.',lec:3},
+{q:'In the capstone, how should changes be made?',
+ o:['One at a time with before/after numbers','All at once','Without measuring','On production first'],
+ a:0,why:'Single changes with measurements show what helped.',lec:4},
+{q:'What belongs in the **final report**?',
+ o:['Baseline, changes, results and rollback','Only opinions','Only screenshots of logins','Only hardware prices'],
+ a:0,why:'A tuning report must be evidence-based and reproducible.',lec:4}
+]};

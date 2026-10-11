@@ -1,0 +1,38 @@
+/* LearnSphere - SQL Server Performance & Tuning quiz, Section 9: Blocking & Deadlocks.
+   Format: see pg-quiz.js. window.QUIZZES['mss-perf:8']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-perf:8']={qs:[
+{q:'Which session in a blocking chain should you **investigate first**?',
+ o:['The head blocker','The last blocked session','A random session','The Agent session'],
+ a:0,why:'The head of the chain holds the lock that everyone else waits for.',lec:0},
+{q:'A head blocker is **sleeping with open_transaction_count > 0**. What does it mean?',
+ o:['The application started a transaction and is idle','The server is busy','The disk is full','tempdb is missing'],
+ a:0,why:'A sleeping session with an open transaction holds locks while doing nothing.',lec:0},
+{q:'What is the risk of **killing** the head blocker?',
+ o:['Rollback can take as long as the work did','None','It restarts the server','It deletes the table'],
+ a:0,why:'Killing triggers rollback of its changes, which may be long.',lec:0},
+{q:'Which Extended Events session records **deadlock graphs** by default?',
+ o:['system_health','default_trace','telemetry','blocked_process'],
+ a:0,why:'system_health captures xml_deadlock_report events.',lec:1},
+{q:'What does the **victim list** of a deadlock graph show?',
+ o:['The process that was rolled back','The slowest query','The login list','The index list'],
+ a:0,why:'The victim is the process SQL Server chose to roll back.',lec:1},
+{q:'Which change helps **readers not wait for writers**?',
+ o:['READ_COMMITTED_SNAPSHOT ON','NOLOCK everywhere','More tempdb files','Lower MAXDOP'],
+ a:0,why:'RCSI makes readers use row versions instead of shared locks.',lec:2},
+{q:'What is a good approach for **large updates**?',
+ o:['Do them in batches of a few thousand rows','One huge transaction','At peak hours','With TABLOCKX'],
+ a:0,why:'Small batches keep locks short and avoid escalation.',lec:2},
+{q:'At about how many locks does SQL Server consider **lock escalation**?',
+ o:['5,000','50','500,000','1'],
+ a:0,why:'Roughly 5,000 locks on one object by one statement can trigger escalation.',lec:3},
+{q:'Which table option controls **lock escalation** behavior?',
+ o:['LOCK_ESCALATION','LOCK_LEVEL','ESCALATE_MODE','ROW_LOCKS_ONLY'],
+ a:0,why:'ALTER TABLE ... SET (LOCK_ESCALATION = TABLE | AUTO | DISABLE).',lec:3},
+{q:'Why are **long transactions** a problem beyond blocking?',
+ o:['They keep the log from being reused and grow the version store','They speed up the log','They free memory','They improve statistics'],
+ a:0,why:'The log and version store cannot be cleaned up past the oldest open transaction.',lec:4},
+{q:'Which command shows the **oldest open transaction**?',
+ o:['DBCC OPENTRAN','DBCC SHOWCONTIG','DBCC FREEPROCCACHE','DBCC CHECKCATALOG'],
+ a:0,why:'DBCC OPENTRAN lists the oldest active transaction in the database.',lec:4}
+]};
