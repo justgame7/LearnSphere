@@ -1,5 +1,5 @@
 /* LearnSphere service worker. Bump VERSION on every release so installed apps update. */
-const VERSION = 'v51';
+const VERSION = 'v52';
 const SHELL = `ls-shell-${VERSION}`;
 const RUNTIME = `ls-runtime-${VERSION}`;
 const ASSETS = [
@@ -13,7 +13,7 @@ const ASSETS = [
   './ora-dg-s01.js', './ora-dg-q01.js', './ora-dg-s02.js', './ora-dg-q02.js', './ora-dg-s03.js', './ora-dg-q03.js', './ora-dg-s04.js', './ora-dg-q04.js', './ora-dg-s05.js', './ora-dg-q05.js', './ora-dg-s06.js', './ora-dg-q06.js', './ora-dg-s07.js', './ora-dg-q07.js', './ora-dg-s08.js', './ora-dg-q08.js', './ora-dg-s09.js', './ora-dg-q09.js', './ora-dg-s10.js', './ora-dg-q10.js', './ora-dg-s11.js', './ora-dg-q11.js', './ora-dg-s12.js', './ora-dg-q12.js',
   './ora-gg-s01.js', './ora-gg-q01.js', './ora-gg-s02.js', './ora-gg-q02.js', './ora-gg-s03.js', './ora-gg-q03.js', './ora-gg-s04.js', './ora-gg-q04.js', './ora-gg-s05.js', './ora-gg-q05.js', './ora-gg-s06.js', './ora-gg-q06.js', './ora-gg-s07.js', './ora-gg-q07.js', './ora-gg-s08.js', './ora-gg-q08.js', './ora-gg-s09.js', './ora-gg-q09.js', './ora-gg-s10.js', './ora-gg-q10.js', './ora-gg-s11.js', './ora-gg-q11.js', './ora-gg-s12.js', './ora-gg-q12.js', './ora-gg-s13.js', './ora-gg-q13.js',
   './ora-bkp-s01.js', './ora-bkp-q01.js', './ora-bkp-s02.js', './ora-bkp-q02.js', './ora-bkp-s03.js', './ora-bkp-q03.js', './ora-bkp-s04.js', './ora-bkp-q04.js', './ora-bkp-s05.js', './ora-bkp-q05.js', './ora-bkp-s06.js', './ora-bkp-q06.js', './ora-bkp-s07.js', './ora-bkp-q07.js', './ora-bkp-s08.js', './ora-bkp-q08.js', './ora-bkp-s09.js', './ora-bkp-q09.js', './ora-bkp-s10.js', './ora-bkp-q10.js', './ora-perf-s01.js', './ora-perf-q01.js', './ora-perf-s02.js', './ora-perf-q02.js', './ora-perf-s03.js', './ora-perf-q03.js', './ora-perf-s04.js', './ora-perf-q04.js', './ora-perf-s05.js', './ora-perf-q05.js', './ora-perf-s06.js', './ora-perf-q06.js', './ora-perf-s07.js', './ora-perf-q07.js', './ora-perf-s08.js', './ora-perf-q08.js', './ora-perf-s09.js', './ora-perf-q09.js', './ora-perf-s10.js', './ora-perf-q10.js', './ora-perf-s11.js', './ora-perf-q11.js', './ora-sec-s01.js', './ora-sec-q01.js', './ora-sec-s02.js', './ora-sec-q02.js', './ora-sec-s03.js', './ora-sec-q03.js', './ora-sec-s04.js', './ora-sec-q04.js', './ora-sec-s05.js', './ora-sec-q05.js', './ora-sec-s06.js', './ora-sec-q06.js', './ora-sec-s07.js', './ora-sec-q07.js', './ora-sec-s08.js', './ora-sec-q08.js', './ora-sec-s09.js', './ora-sec-q09.js', './ora-upg-s01.js', './ora-upg-q01.js', './ora-upg-s02.js', './ora-upg-q02.js', './ora-upg-s03.js', './ora-upg-q03.js', './ora-upg-s04.js', './ora-upg-q04.js', './ora-upg-s05.js', './ora-upg-q05.js', './ora-upg-s06.js', './ora-upg-q06.js', './ora-upg-s07.js', './ora-upg-q07.js',
-  './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png',
+  './manifest.webmanifest', './fonts/jetbrains-mono-400-latin-ext.woff2', './fonts/jetbrains-mono-400-latin.woff2', './fonts/jetbrains-mono-600-latin-ext.woff2', './fonts/jetbrains-mono-600-latin.woff2', './fonts/space-grotesk-400-latin-ext.woff2', './fonts/space-grotesk-400-latin.woff2', './fonts/space-grotesk-500-latin-ext.woff2', './fonts/space-grotesk-500-latin.woff2', './fonts/space-grotesk-700-latin-ext.woff2', './fonts/space-grotesk-700-latin.woff2', './icons/icon-192.png', './icons/icon-512.png',
   './icons/maskable-512.png', './icons/apple-touch-icon.png',
   './mss-common.js', './mss-core-s01.js', './mss-core-q01.js', './mss-core-s02.js', './mss-core-q02.js', './mss-core-s03.js', './mss-core-q03.js', './mss-core-s04.js', './mss-core-q04.js', './mss-core-s05.js', './mss-core-q05.js', './mss-core-s06.js', './mss-core-q06.js', './mss-core-s07.js', './mss-core-q07.js', './mss-core-s08.js', './mss-core-q08.js', './mss-core-s09.js', './mss-core-q09.js', './mss-core-s10.js', './mss-core-q10.js',
 ];
@@ -44,14 +44,12 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Same-origin files and Google Fonts: stale-while-revalidate.
-  const ok = url.origin === location.origin ||
-             url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
-  if (!ok) return;
+  // Same-origin files only: stale-while-revalidate. Third-party requests are never intercepted or cached.
+  if (url.origin !== location.origin) return;
   e.respondWith(
     caches.match(req).then(hit => {
       const net = fetch(req).then(r => {
-        if (r && (r.ok || r.type === 'opaque')) caches.open(RUNTIME).then(c => c.put(req, r.clone()));
+        if (r && r.ok && r.type === 'basic') caches.open(RUNTIME).then(c => c.put(req, r.clone()));
         return r;
       }).catch(() => hit);
       return hit || net;

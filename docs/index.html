@@ -2,6 +2,8 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0A0C10">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <script>(function(){var d=document.documentElement,t="dark",dk="",a="",au="";try{t=localStorage.getItem("ls_theme")||"dark";dk=localStorage.getItem("ls_dark")||"";a=localStorage.getItem("ls_accent")||"";au=localStorage.getItem("ls_nightauto")}catch(e){}
 if(t!=="light"&&t!=="tinted")t="dark";if(dk!=="tinted")dk="dark";
 if(au==="1"&&window.matchMedia)t=matchMedia("(prefers-color-scheme: light)").matches?"light":dk;
@@ -17,8 +19,18 @@ if(/^#[0-9a-f]{6}$/i.test(a))d.style.setProperty("--accent",a)})();</script>
 <meta name="apple-mobile-web-app-title" content="LearnSphere">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>LearnSphere</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
+/* Fonts are self-hosted (no third-party requests) */
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/jetbrains-mono-400-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/jetbrains-mono-400-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:600;font-display:swap;src:url(fonts/jetbrains-mono-600-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:600;font-display:swap;src:url(fonts/jetbrains-mono-600-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/space-grotesk-400-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:400;font-display:swap;src:url(fonts/space-grotesk-400-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:500;font-display:swap;src:url(fonts/space-grotesk-500-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:500;font-display:swap;src:url(fonts/space-grotesk-500-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:700;font-display:swap;src:url(fonts/space-grotesk-700-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:700;font-display:swap;src:url(fonts/space-grotesk-700-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
 :root{--bg:#0A0C10;--panel:#12151B;--panel2:#181C24;--line:#232832;--tx:#E8ECF2;--mut:#8A93A3;--accent:#35E0C0;--pg:#7AA7FF;--rs:#FF7A59;--k8s:#A78BFA;--dk:#38BDF8;--tf:#E879F9;--az:#FBBF24;--aws:#4ADE80;--do:#FB7185;--ora:#F2543D;--mss:#E5484D;--r:18px;
 --sans:'Space Grotesk',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;box-sizing:border-box}
 :root[data-theme=tinted]{--bg:#17212B;--panel:#1E2A36;--panel2:#253342;--line:#314154;--tx:#E6EDF4;--mut:#8EA2B5}
@@ -3746,11 +3758,25 @@ const subsOf=c=>(c.subs||[]).map(id=>COURSES.find(x=>x.id===id)).filter(Boolean)
 const aCnt=c=>subsOf(c).reduce((a,x)=>a+cnt(x),0),aDn=c=>subsOf(c).reduce((a,x)=>a+dn(x),0),aPct=c=>aCnt(c)?Math.round(aDn(c)/aCnt(c)*100):0;
 function toggleAddl(si){ADDL_OPEN[si]=!ADDL_OPEN[si];const e=document.getElementById('addl');if(e)e.classList.toggle('addl-open',!!ADDL_OPEN[si])}
 function openAddl(si,cid){ADDL_OPEN[si]=true;go('#/c/'+cid+'/'+si);setTimeout(()=>{const e=document.getElementById('addl');if(e)e.scrollIntoView({behavior:'smooth',block:'start'})},160)}
-const esc=s=>s.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+const esc=s=>String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const safeUrl=u=>/^https?:\/\//i.test(String(u))?esc(u):'#';
 const go=h=>location.hash=h;
+/* ---------- Sanitizers: anything read back from storage or an imported file is untrusted ---------- */
+const SAFE_COL=/^(var\(--[a-z0-9-]+\)|#[0-9a-f]{3,8})$/i,SAFE_ID=/^[\w.-]{1,40}$/;
+const sCol=c=>typeof c==='string'&&SAFE_COL.test(c)?c:'var(--accent)';
+const sTxt=(t,n)=>typeof t==='string'?t.slice(0,n):'';
+const sInt=(n,lo,hi)=>{n=Math.round(Number(n));return Number.isFinite(n)?Math.min(hi,Math.max(lo,n)):null};
+function sHist(x){if(!x||typeof x!=='object'||!SAFE_ID.test(String(x.id))||!SAFE_ID.test(String(x.cid)))return null;
+ const si=sInt(x.si,0,999),li=x.li===null||x.li===undefined?null:sInt(x.li,0,9999),ts=sInt(x.ts,1,9e15);
+ if(si===null||ts===null||(li===null&&x.type!=='quiz'))return null;
+ const type=['view','done','quiz'].includes(x.type)?x.type:'view',o={id:String(x.id),ts,type,cid:String(x.cid),cn:sTxt(x.cn,120),col:sCol(x.col),si,li,t:sTxt(x.t,200),st:sTxt(x.st,200)};
+ if(x.pct!==undefined&&x.pct!==null){const v=sInt(x.pct,0,100);if(v!==null)o.pct=v}return o}
+function sBm(x){if(!x||typeof x!=='object'||!SAFE_ID.test(String(x.cid)))return null;
+ const si=sInt(x.si,0,999),li=sInt(x.li,0,9999);if(si===null||li===null)return null;
+ return{cid:String(x.cid),si,li,t:sTxt(x.t,200),cn:sTxt(x.cn,120),st:sTxt(x.st,200),col:sCol(x.col),ts:sInt(x.ts,0,9e15)||0}}
 /* ---------- Learning history (lessons opened, marked done, quizzes finished; last 100, kept on this device) ---------- */
 const HK='ls_hist_v1',HMAX=100;let hFilter='all',hCleared=null;
-const hLoad=()=>{try{const a=JSON.parse(localStorage.getItem(HK));return Array.isArray(a)?a.filter(x=>x&&x.id&&x.ts&&x.cid):[]}catch(e){return[]}};
+const hLoad=()=>{try{const a=JSON.parse(localStorage.getItem(HK));return Array.isArray(a)?a.map(sHist).filter(Boolean):[]}catch(e){return[]}};
 const hSave=a=>{try{localStorage.setItem(HK,JSON.stringify(a.slice(0,HMAX)))}catch(e){}};
 function recHist(type,c,si,li,extra){
  try{const t=type==='quiz'?(c.sections[si].q||c.sections[si].t):c.sections[si].l[li][0];
@@ -3811,7 +3837,7 @@ const sqEsc=w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 const sqRe=(w,g)=>new RegExp((SQexact?'(?<![a-z0-9_])':'')+'('+sqEsc(w)+')'+(SQexact?'(?![a-z0-9_])':'')+(g?'(?![^<]*>)':''),g?'ig':'i');
 const sqHas=(t,w)=>SQexact?sqRe(w).test(t):t.includes(w);
 const sqIdx=(t,w)=>{if(!SQexact)return t.indexOf(w);const m=sqRe(w).exec(t);return m?m.index:-1};
-const sqHi=(t,ws)=>{let h=esc(t);ws.forEach(w=>{h=h.replace(sqRe(w,1),'<mark>$1</mark>')});return h};
+const sqHi=(t,ws)=>{let h=esc(t);ws.forEach(w=>{h=h.replace(sqRe(esc(w),1),'<mark>$1</mark>')});return h};
 const sqBodyCache={};
 function sqBlockText(b){
  if(b.p)return b.p;if(b.h)return b.h;if(b.ul)return b.ul.join(' ');if(b.t)return b.t.map(r=>r.join(' ')).join(' ');
@@ -3902,7 +3928,7 @@ addEventListener('scroll',readerBar,{passive:true});addEventListener('resize',re
 
 /* ---------- Bookmarks (lessons) ---------- */
 const BK='ls_bookmarks';
-const bmLoad=()=>{try{const a=JSON.parse(localStorage.getItem(BK));return Array.isArray(a)?a.filter(x=>x&&x.cid&&typeof x.si==='number'&&typeof x.li==='number'):[]}catch(e){return[]}};
+const bmLoad=()=>{try{const a=JSON.parse(localStorage.getItem(BK));return Array.isArray(a)?a.map(sBm).filter(Boolean):[]}catch(e){return[]}};
 const bmSave=a=>{try{localStorage.setItem(BK,JSON.stringify(a))}catch(e){}};
 const bmHas=(cid,si,li)=>bmLoad().some(x=>x.cid===cid&&x.si===si&&x.li===li);
 function bmToggle(cid,si,li){const c=COURSES.find(x=>x.id===cid);if(!c)return;
@@ -3961,6 +3987,7 @@ function exportProgress(){
  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
  toast('Progress exported')}
 const jp=v=>{try{return JSON.parse(v)}catch(e){return null}};
+const normMapKeys=(o,fn)=>{const r={};if(o&&typeof o==='object'&&!Array.isArray(o))Object.keys(o).forEach(k=>{if(/^[\w-]{1,24}$/.test(k))r[k]=fn(o[k])});return r};
 function importProgress(inp){
  const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
  if(f.size>3e6){toast('That file is too large to be a LearnSphere backup');return}
@@ -3969,7 +3996,23 @@ function importProgress(inp){
  rd.onload=()=>{
   const o=jp(rd.result);
   if(!o||o.app!=='LearnSphere'||!o.data||typeof o.data!=='object'){toast('Not a LearnSphere backup file');return}
-  const d={};BKEYS.concat(SKEYS).forEach(k=>{if(typeof o.data[k]==='string')d[k]=o.data[k]});
+  const d={};BKEYS.concat(SKEYS).forEach(k=>{if(typeof o.data[k]==='string'&&o.data[k].length<=1.5e6)d[k]=o.data[k]});
+ const normMap=(o,fn)=>{const r={};if(o&&typeof o==='object'&&!Array.isArray(o))Object.keys(o).forEach(k=>{if(SAFE_ID.test(k)){const v=fn(o[k]);if(v!==undefined)r[k]=v}});return r};
+ const KEY=/^[\w-]{1,24}$/;
+ if(d.ls_prog)d.ls_prog=JSON.stringify(normMap(jp(d.ls_prog),c=>normMapKeys(c,()=>1)));
+ if(d.ls_auto)d.ls_auto=JSON.stringify(normMap(jp(d.ls_auto),()=>1));
+ if(d.ls_quiz)d.ls_quiz=JSON.stringify(normMap(jp(d.ls_quiz),c=>{const r={};
+  if(c&&typeof c==='object')Object.keys(c).forEach(si=>{if(!/^\d{1,3}$/.test(si)||!c[si]||typeof c[si]!=='object')return;r[si]={};
+   Object.keys(c[si]).forEach(m=>{if(!KEY.test(m))return;const q=c[si][m]||{},b=sInt(q.best,0,100);if(b===null)return;
+    r[si][m]={best:b,att:sInt(q.att,0,9999)||0,last:sInt(q.last,0,100)||0}})});return r}));
+ if(d.ls_bookmarks){const a=jp(d.ls_bookmarks);d.ls_bookmarks=JSON.stringify((Array.isArray(a)?a:[]).map(sBm).filter(Boolean).slice(0,500))}
+ if(d.ls_hist_v1){const a=jp(d.ls_hist_v1);d.ls_hist_v1=JSON.stringify((Array.isArray(a)?a:[]).map(sHist).filter(Boolean).slice(0,HMAX))}
+ if('ls_theme' in d&&!['dark','light','tinted'].includes(d.ls_theme))delete d.ls_theme;
+ if('ls_dark' in d&&!['dark','tinted'].includes(d.ls_dark))delete d.ls_dark;
+ if('ls_nightauto' in d&&!['0','1'].includes(d.ls_nightauto))delete d.ls_nightauto;
+ if('ls_accent' in d&&!(d.ls_accent===''||/^#[0-9a-f]{6}$/i.test(d.ls_accent)))delete d.ls_accent;
+ if('ls_dens' in d&&!['compact','expanded'].includes(d.ls_dens))delete d.ls_dens;
+ if('ls_reader' in d){const r=jp(d.ls_reader),fs=r&&sInt(r.fs,0,5),w=r&&sInt(r.w,0,2);if(fs===null||w===null||!r)delete d.ls_reader;else d.ls_reader=JSON.stringify({fs,w})}
   const prog=jp(d.ls_prog)||{},quiz=jp(d.ls_quiz)||{},bm=jp(d.ls_bookmarks),hs=jp(d.ls_hist_v1);
   const lec=Object.values(prog).reduce((n,c)=>n+(c&&typeof c==='object'?Object.keys(c).length:0),0);
   const sum=`${lec} lectures completed, ${Object.keys(quiz).length} quiz course${Object.keys(quiz).length===1?'':'s'}, ${Array.isArray(bm)?bm.length:0} saved, ${Array.isArray(hs)?hs.length:0} history`;
@@ -4080,7 +4123,7 @@ function vLesson(c,si,li){
  const s=c.sections[si],x=s&&s.l[li];if(!x)return vSub(c,si);
  const L=LS()[c.id+':'+si+':'+li],pv=adj(c,si,li,-1),nx=adj(c,si,li,1),d=done(c,si,li);
  let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›${par(c)}<a onclick="go('#/c/${c.id}')">${c.name}</a>›<a onclick="go('#/c/${c.id}/${si}')">${esc(s.t)}</a></div><div class="ls" style="--c:${c.color}"><h1>${esc(x[0])}</h1><div class="meta" style="margin:0 0 22px">${isX(x)?`<span class="chip">Section ${si+1} · Additional ${xIdx(s).indexOf(li)+1}</span><span class="chip live">+ Optional</span>`:`<span class="chip">Section ${si+1} · Lecture ${coreIdx(s).indexOf(li)+1}</span>${x[1]==='0:00'?`<span class="chip live">★ Bonus lesson</span>`:''}`}</div>`;
- h+=L?L.blocks.map(blk).join('')+(L.src&&L.src.length?`<div class="srcs">SOURCES${L.src.map(r=>`<a href="${r[1]}" target="_blank" rel="noopener">${esc(r[0])} ↗</a>`).join('')}</div>`:''):`<p>${x[2]?esc(x[2]):'Lesson not available yet.'}</p>`;
+ h+=L?L.blocks.map(blk).join('')+(L.src&&L.src.length?`<div class="srcs">SOURCES${L.src.map(r=>`<a href="${safeUrl(r[1])}" target="_blank" rel="noopener noreferrer">${esc(r[0])} ↗</a>`).join('')}</div>`:''):`<p>${x[2]?esc(x[2]):'Lesson not available yet.'}</p>`;
  h+=`<div class="row" style="margin-top:26px"><button id="dnb" class="btn ${d?'ghost':''}" onclick="tog('${c.id}',${si},${li})">${d?'✓ Completed (undo)':'Mark as done'}</button>${!isX(x)&&xIdx(s).length&&coreIdx(s).slice(-1)[0]===li?`<button class="btn ghost" onclick="openAddl(${si},'${c.id}')">+ Additional content for this section ▸</button>`:''}</div>
  <div class="pn">${pv?`<button class="btn ghost" onclick="go('#/c/${c.id}/${pv[0]}/${pv[1]}')">◂ ${esc(c.sections[pv[0]].l[pv[1]][0])}</button>`:(isX(x)?`<button class="btn ghost" onclick="go('#/c/${c.id}/${si}')">◂ Back to section</button>`:'<span></span>')}${nx?`<button class="btn" onclick="go('#/c/${c.id}/${nx[0]}/${nx[1]}')">${esc(c.sections[nx[0]].l[nx[1]][0])} ▸</button>`:''}</div></div>`;
  return h}

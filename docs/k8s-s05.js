@@ -432,7 +432,7 @@ L['k8s:4:5']={blocks:[
 {p:'An image should be the same in every environment; **configuration** is what changes. Kubernetes separates the two with **ConfigMaps** (non-confidential settings) and **Secrets** (sensitive values). Both are namespaced API objects that Pods consume as environment variables or files. Getting the consumption method right matters, because it decides whether a change reaches a running application.'},
 {h:'Creating them'},
 {code:`kubectl create configmap app-config --from-literal=LOG_LEVEL=info --from-file=app.properties
-kubectl create secret generic db-cred --from-literal=username=app --from-literal=password='S3cr3t!'
+kubectl create secret generic db-cred --from-literal=username=app --from-literal=password='EXAMPLE_PASSWORD'
 kubectl create secret docker-registry regcred \\
   --docker-server=registry.example.com --docker-username=ci --docker-password="$REG_TOKEN"
 kubectl create secret tls web-tls --cert=tls.crt --key=tls.key
@@ -473,7 +473,7 @@ spec:
 {h:'Seeing it from inside the Pod'},
 {code:`$ kubectl exec app -- env | grep -E "LOG_LEVEL|DB_PASSWORD"
 LOG_LEVEL=info
-DB_PASSWORD=S3cr3t!                          # environment: visible in process info, crash dumps and 'describe' of the Pod spec reference
+DB_PASSWORD=EXAMPLE_PASSWORD                 # environment: visible in process info, crash dumps and 'describe' of the Pod spec reference
 $ kubectl exec app -- ls -l /etc/creds
 lrwxrwxrwx ... password -> ..data/password     # files are symlinks into a versioned directory, swapped atomically on update
 $ kubectl exec app -- cat /etc/app/app.properties`},

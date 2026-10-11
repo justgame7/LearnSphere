@@ -3390,7 +3390,7 @@ src:[["pg_dump",D+"app-pgdump.html"],["pg_restore",D+"app-pgrestore.html"],["pg_
 {t:[["Method","How","Assessment"],["`~/.pgpass`","One line per target: `host:port:database:user:password`. Wildcards `*` allowed. File must be mode `0600` or libpq ignores it. `PGPASSFILE` selects another file","**Recommended.** Not visible in process lists; works for `pg_dumpall`, which reconnects once per database"],["`pg_service.conf` and `PGSERVICE`","Named connection profiles (`[prod]` with host, port, dbname, user)","Good for many servers; combine with `.pgpass`"],["`PGPASSWORD` environment variable","`PGPASSWORD=secret pg_dump ...`","**Discouraged.** Can be seen by other users of the system on some platforms and ends up in shell history"],["Password inside the connection string","`\"host=db dbname=x password=...\"`","Avoid: visible in `ps` output"],["Peer or `trust` authentication on the local socket","`pg_hba.conf` rule `local all backup peer`, run the job as that OS user","Passwordless and safe if the OS account is protected (Section 07)"],["Client certificates","`sslmode=verify-full sslcert=... sslkey=...`","Strongest for remote jobs"]]},
 {code:`# ~/.pgpass  (chmod 0600)
 # hostname:port:database:username:password
-db1.example.com:5432:*:backup_user:S3cr3t-from-a-vault
+db1.example.com:5432:*:backup_user:EXAMPLE_PASSWORD
 localhost:5432:shopdb:backup_user:another-secret
 
 chmod 0600 ~/.pgpass
@@ -4634,7 +4634,7 @@ WHERE name IN ('wal_level','max_wal_senders','max_replication_slots','hot_standb
 {code:`sudo systemctl restart postgresql-18   # needed for listen_addresses and wal_log_hints`},
 {h:"Step 2: the replication role and pg_hba.conf"},
 {p:"Never replicate as `postgres`. Create a role whose only extra power is the **`REPLICATION`** attribute. It may open replication connections and run `pg_basebackup`, but it cannot read tables (Section 07, User Creation)."},
-{code:`CREATE ROLE replicator WITH LOGIN REPLICATION PASSWORD 'ChangeMe-LongRandomValue';
+{code:`CREATE ROLE replicator WITH LOGIN REPLICATION PASSWORD 'EXAMPLE_PASSWORD';
 -- better: CREATE ROLE replicator WITH LOGIN REPLICATION;  then  \\password replicator  in psql,
 -- so that the password is not written to the server log or to the shell history`},
 {p:"Then allow that role from the **standby's address only**, with SCRAM authentication. In `pg_hba.conf` the word **`replication`** in the database column is a keyword, not a database name: it matches **physical** replication connections (streaming and `pg_basebackup`). Logical replication connections specify a real database name and are matched against that name instead."},
@@ -4646,7 +4646,7 @@ host    replication  replicator  192.168.1.11/32    scram-sha-256
 sudo firewall-cmd --permanent --add-service=postgresql && sudo firewall-cmd --reload   # or restrict to the standby's IP with a rich rule
 
 # on the STANDBY: save the password for the OS user that will run PostgreSQL (database field = the word replication)
-echo '192.168.1.10:5432:replication:replicator:ChangeMe-LongRandomValue' | sudo -u postgres tee -a /var/lib/pgsql/.pgpass
+echo '192.168.1.10:5432:replication:replicator:EXAMPLE_PASSWORD' | sudo -u postgres tee -a /var/lib/pgsql/.pgpass
 sudo chmod 0600 /var/lib/pgsql/.pgpass; sudo chown postgres:postgres /var/lib/pgsql/.pgpass
 
 # test the replication protocol itself; IDENTIFY_SYSTEM returns the system identifier and timeline
@@ -6478,7 +6478,7 @@ psql -U postgres -h localhost -p 5432`},
 {h:"Unattended (silent) installation"},
 {p:"The installer supports a command-line mode for repeatable builds. Run the installer with `--help` to list all options for your exact version; the common ones are below."},
 {code:`postgresql-18.0-1-windows-x64.exe --mode unattended --unattendedmodeui none ^
-  --superpassword "ChangeMe-Long-Random" --serverport 5432 ^
+  --superpassword "EXAMPLE_PASSWORD" --serverport 5432 ^
   --prefix "C:\\Program Files\\PostgreSQL\\18" --datadir "D:\\pgdata\\18" ^
   --enable-components server,commandlinetools --disable-components pgAdmin,stackbuilder`},
 {p:"Do not leave the superuser password in shell history or a script in a shared folder. Pass it from a secret store or change it immediately after the install with `ALTER ROLE postgres PASSWORD ...`."},
@@ -6775,7 +6775,7 @@ N('pg:1:10',[
 {t:[["Concept","Meaning for PostgreSQL"],["Image","Read-only template: PostgreSQL binaries and an entrypoint script. Pick a tag such as `postgres:18` (Debian-based) or `postgres:18-alpine`"],["Container","A running instance of the image. Remove it and everything written inside it, outside a volume, is gone"],["Volume or bind mount","Storage managed by the runtime (volume) or a host directory (bind mount) holding `PGDATA`"],["Published port","`-p 5432:5432` maps a host port to the container's port; without it only other containers can connect"],["Entrypoint","Script that runs `initdb` on the first start if the data directory is empty, then starts the server"]]},
 {h:"First container"},
 {code:`docker run -d --name pg18 \\
-  -e POSTGRES_PASSWORD='ChangeMe-Long-Random' \\
+  -e POSTGRES_PASSWORD='EXAMPLE_PASSWORD' \\
   -p 5432:5432 \\
   -v pgdata18:/var/lib/postgresql \\
   postgres:18
@@ -6840,7 +6840,7 @@ volumes:
 {h:"Podman and rootless containers"},
 {t:[["Topic","Docker","Podman"],["Daemon","Central `dockerd`","Daemonless; each container is a child process"],["Run as non-root","Possible with extra setup","Default (rootless)"],["Command","`docker ...`","`podman ...` (almost the same options)"],["SELinux hosts","Usually works","Add `:Z` to a bind mount so the container may use it, for example `-v /data/pg:/var/lib/postgresql:Z`"],["Start at boot","`restart: unless-stopped`","Generate a systemd unit or use Quadlet files; `podman generate systemd` for older setups"],["Compose","`docker compose`","`podman compose` or `podman play kube`"]]},
 {code:`podman run -d --name pg18 \\
-  -e POSTGRES_PASSWORD='ChangeMe-Long-Random' -p 5432:5432 \\
+  -e POSTGRES_PASSWORD='EXAMPLE_PASSWORD' -p 5432:5432 \\
   -v pgdata18:/var/lib/postgresql:Z docker.io/library/postgres:18`},
 {h:"Operations"},
 {t:[["Task","Command"],["Logs","`docker logs --tail 100 pg18`"],["Shell","`docker exec -it pg18 bash`"],["Parameters in use","`docker exec pg18 psql -U postgres -Atc \"SHOW shared_buffers;\"`"],["Logical backup","`docker exec pg18 pg_dump -U postgres -Fc appdb > appdb.dump`"],["Restore","`docker exec -i pg18 pg_restore -U postgres -d appdb --clean < appdb.dump`"],["Volume location and size","`docker volume inspect pgdata18`; `docker system df -v`"],["Stop gracefully","`docker stop -t 120 pg18` (the image sends a signal that causes a fast shutdown; allow time for the checkpoint)"],["Health","`docker inspect --format '{{.State.Health.Status}}' pg18`"]]},

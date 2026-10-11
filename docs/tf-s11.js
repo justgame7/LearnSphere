@@ -35,7 +35,7 @@ L['tf:10:0']={blocks:[
 {h:'Bad vs better'},
 {code:`# BAD: a literal secret in code, ends up in Git and state
 resource "aws_db_instance" "main" {
-  password = "SuperSecret123!"
+  password = "EXAMPLE_PASSWORD"
 }
 
 # BETTER: the value comes from outside the code

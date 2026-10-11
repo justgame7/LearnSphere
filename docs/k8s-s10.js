@@ -128,11 +128,11 @@ L['k8s:9:2']={blocks:[
 {p:'Secrets are the most sensitive objects in a cluster: database passwords, API keys, TLS private keys, registry credentials. A common misunderstanding is that a Kubernetes Secret is "encrypted". **By default it is not**: the API server stores it in etcd as **base64-encoded** text. Anyone who can read etcd, its disk or a backup can recover every Secret. **Encryption at rest** makes the API server encrypt selected resources before writing them to etcd.'},
 {svg:enc},
 {h:'Proving the default'},
-{code:`$ kubectl create secret generic demo --from-literal=password=S3cr3t!
+{code:`$ kubectl create secret generic demo --from-literal=password=EXAMPLE_PASSWORD
 $ sudo ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 \\
     --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key \\
     get /registry/secrets/default/demo | strings | grep -i secret
-S3cr3t!                                         # readable straight from etcd`},
+EXAMPLE_PASSWORD                                # readable straight from etcd`},
 {h:'EncryptionConfiguration'},
 {code:`# /etc/kubernetes/enc/enc.yaml  (root only)
 apiVersion: apiserver.config.k8s.io/v1
