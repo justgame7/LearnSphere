@@ -1,0 +1,38 @@
+/* LearnSphere - SQL Server Operations, Monitoring & Automation quiz, Section 1: SQL Server Agent.
+   Format: see pg-quiz.js. window.QUIZZES['mss-ops:0']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-ops:0']={qs:[
+{q:'Which database stores **Agent jobs and history**?',
+ o:['msdb','master','model','tempdb'],
+ a:0,why:'Agent metadata and history live in msdb.',lec:0},
+{q:'Which edition has **no SQL Server Agent**?',
+ o:['Express','Standard','Enterprise','Developer'],
+ a:0,why:'Use OS scheduling with Express.',lec:0},
+{q:'Which are valid **job step types**?',
+ o:['T-SQL','PowerShell','CmdExec','Paint'],
+ a:[0,1,2],why:'Steps run subsystems such as T-SQL, PowerShell, CmdExec and SSIS.',lec:0},
+{q:'What does an **operator** represent?',
+ o:['A person or group to notify','A job step','A schedule','A backup'],
+ a:0,why:'Operators receive email or pager notifications.',lec:1},
+{q:'What is needed for Agent to **send email**?',
+ o:['Database Mail with a profile configured in Agent','Only SMTP on the client','A linked server','Replication'],
+ a:0,why:'Agent uses a Database Mail profile for notifications.',lec:1},
+{q:'What does a **proxy** allow?',
+ o:['A job step to run as a limited account','Faster jobs','Encryption of jobs','Remote backups'],
+ a:0,why:'Proxies map a credential to Agent subsystems for least privilege.',lec:2},
+{q:'Which msdb role lets a user **create and manage only their own jobs**?',
+ o:['SQLAgentUserRole','SQLAgentOperatorRole','sysadmin','db_owner'],
+ a:0,why:'SQLAgentUserRole is the least privileged Agent role.',lec:2},
+{q:'What does **run_status = 0** mean in job history?',
+ o:['Failed','Succeeded','Retry','Canceled'],
+ a:0,why:'0 failed, 1 succeeded, 2 retry, 3 canceled, 4 in progress.',lec:3},
+{q:'Where do you look **first** when a job fails?',
+ o:['Job history for the failed step and message','tempdb','The index list','Windows wallpaper'],
+ a:0,why:'History shows which step failed and the message.',lec:3},
+{q:'Why include **THROW** in a CATCH block of a job step?',
+ o:['So the step fails and the job reports failure','To slow the job','To roll back logins','To disable alerts'],
+ a:0,why:'Without re-raising, the step succeeds even though work failed.',lec:4},
+{q:'Which step setting handles **transient errors**?',
+ o:['Retry attempts and interval','Delay in logins','Compatibility level','Collation'],
+ a:0,why:'Retry settings re-run a step a few times before failing.',lec:4}
+]};

@@ -1,0 +1,35 @@
+/* LearnSphere - SQL Server Azure SQL & Hybrid quiz, Section 2: Azure SQL Database.
+   Format: see pg-quiz.js. window.QUIZZES['mss-az:1']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-az:1']={qs:[
+{q:'What is a **logical server** in Azure SQL Database?',
+ o:['A management and connection endpoint for databases','A virtual machine','A storage account','A cluster node'],
+ a:0,why:'It holds admin settings, firewall and a set of databases, but is not a VM.',lec:0},
+{q:'Which authentication setting is **preferred** for new servers?',
+ o:['Entra-only','SQL authentication only','Anonymous','Shared key'],
+ a:0,why:'Entra-only gives central control and MFA.',lec:0},
+{q:'What does **serverless** do when there is no activity?',
+ o:['Auto-pauses and stops billing compute','Keeps full compute','Deletes the database','Moves to another region'],
+ a:0,why:'Compute is paused after a delay and resumes on connection.',lec:1},
+{q:'Which option fits **SaaS** with many tenant databases of varied peaks?',
+ o:['Elastic pool','Single provisioned database each','Managed Instance only','Hyperscale only'],
+ a:0,why:'Pools share resources across databases.',lec:1},
+{q:'What are **page servers** in Hyperscale?',
+ o:['Nodes that own data pages and serve compute','Web servers','Backup tapes','Replication agents'],
+ a:0,why:'Page servers hold pages and cache them for compute.',lec:2},
+{q:'Why are Hyperscale **backups fast**?',
+ o:['They use storage snapshots','They skip data','They only copy log','They are disabled'],
+ a:0,why:'Snapshots avoid reading the whole database.',lec:2},
+{q:'Point-in-time restore in Azure SQL Database creates:',
+ o:['A new database','An overwrite of the original','A backup file','A pool'],
+ a:0,why:'You restore to a new database and then use it or swap.',lec:3},
+{q:'Which feature keeps backups for up to **10 years**?',
+ o:['Long-term retention','PITR','Geo-replication','Query Store'],
+ a:0,why:'LTR policies keep weekly, monthly or yearly backups.',lec:3},
+{q:'Which are **built-in monitoring** tools?',
+ o:['Query Store','Query Performance Insight','Automatic tuning','Profiler on the host'],
+ a:[0,1,2],why:'You have no host access for Profiler. The other three are built-in.',lec:4},
+{q:'What should applications implement to handle **scaling** operations?',
+ o:['Retry logic for transient connection drops','Nothing','A restart','A larger timeout only'],
+ a:0,why:'A brief connection drop can happen at the switch.',lec:4}
+]};

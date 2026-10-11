@@ -1,0 +1,35 @@
+/* LearnSphere - SQL Server Upgrade, Patching & Migration quiz, Section 1: Servicing Model & Patching.
+   Format: see pg-quiz.js. window.QUIZZES['mss-upg:0']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-upg:0']={qs:[
+{q:'What does a **GDR** contain?',
+ o:['Security fixes only','All fixes and features','Only new features','A full reinstall'],
+ a:0,why:'GDR is the security-only servicing track. CUs include fixes and security fixes.',lec:0},
+{q:'Can you move from the **CU track back to the GDR track**?',
+ o:['No','Yes, at any time','Only on Enterprise','Only on Linux'],
+ a:0,why:'You can move from GDR to CU, but not back.',lec:0},
+{q:'Are CUs **cumulative**?',
+ o:['Yes, the latest includes earlier fixes in that branch','No, each must be installed in order','Only for security','Only for Express'],
+ a:0,why:'The latest CU contains the fixes of earlier ones.',lec:0},
+{q:'Which property returns the **CU label**?',
+ o:['SERVERPROPERTY(\'ProductUpdateLevel\')','SERVERPROPERTY(\'Edition\')','SERVERPROPERTY(\'Collation\')','SERVERPROPERTY(\'InstanceName\')'],
+ a:0,why:'ProductUpdateLevel returns the CU level and ProductUpdateReference the KB number.',lec:1},
+{q:'Where do you read **what a CU fixes**?',
+ o:['The KB article of the update','The error log','A backup file','The Agent history'],
+ a:0,why:'Each CU has a KB article listing fixes, known issues and notes.',lec:1},
+{q:'What should you do **before** patching a standalone instance?',
+ o:['Read notes, take backups, test on a copy','Delete old logs','Disable backups','Change the collation'],
+ a:0,why:'Preparation limits risk and time.',lec:2},
+{q:'What happens at the **first start** after an update?',
+ o:['A script upgrade runs on system and user databases','Statistics are rebuilt','Indexes are dropped','Nothing'],
+ a:0,why:'The instance upgrades databases internally and logs completion.',lec:2},
+{q:'In a rolling AG patch, which replica is patched **first**?',
+ o:['Secondary replicas','The primary','All at once','None'],
+ a:0,why:'Patch secondaries first, fail over, then patch the former primary.',lec:3},
+{q:'Why set failover mode to **manual** during patching?',
+ o:['To avoid failing over to a half-updated replica','To speed up patching','To drop the listener','To save licenses'],
+ a:0,why:'Manual mode gives you control over when the primary moves.',lec:3},
+{q:'What makes a **rollback plan** credible?',
+ o:['It was tested and has a decision rule and time box','It is long','It is only in the head of the DBA','It uses no backups'],
+ a:0,why:'A tested plan with clear criteria is usable under pressure.',lec:4}
+]};

@@ -1,0 +1,35 @@
+/* LearnSphere - SQL Server Operations, Monitoring & Automation quiz, Section 3: Monitoring.
+   Format: see pg-quiz.js. window.QUIZZES['mss-ops:2']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-ops:2']={qs:[
+{q:'Which belong in **monitoring**?',
+ o:['Availability','Errors and job failures','Capacity','Table aliases'],
+ a:[0,1,2],why:'Monitoring covers availability, errors, jobs, capacity, performance, protection and security.',lec:0},
+{q:'Why keep **history** of measurements?',
+ o:['To see trends and compare with normal','To use disk','To slow the server','For licensing'],
+ a:0,why:'A single value has little meaning without history.',lec:0},
+{q:'Why store DMV samples in a **table**?',
+ o:['DMVs reset at restart','DMVs are encrypted','DMVs are slow','DMVs need a license'],
+ a:0,why:'Many DMV counters are lost at restart.',lec:1},
+{q:'Which DMV shows **I/O latency per file**?',
+ o:['sys.dm_io_virtual_file_stats','sys.dm_exec_sessions','sys.databases','sys.indexes'],
+ a:0,why:'It reports reads, writes and stalls per database file.',lec:1},
+{q:'Which XE session is **always on** and records deadlocks?',
+ o:['system_health','default_trace','telemetry','profiler'],
+ a:0,why:'system_health captures deadlock reports and severe errors.',lec:2},
+{q:'What should happen to **investigation** XE sessions?',
+ o:['Stop and drop them when finished','Run forever','Capture all events','Use ring buffer only'],
+ a:0,why:'Keep sessions small and temporary to limit overhead.',lec:2},
+{q:'Which counter shows **waiting for a memory grant**?',
+ o:['Memory Grants Pending','User Connections','Latch Waits','Full Scans/sec'],
+ a:0,why:'Pending grants above zero for long indicate workspace memory pressure.',lec:3},
+{q:'Which collection interval is a **common choice** for Perfmon baselines?',
+ o:['15 to 60 seconds','1 millisecond','24 hours','1 year'],
+ a:0,why:'This balances detail and volume.',lec:3},
+{q:'What makes an **alert** useful?',
+ o:['An owner and a runbook','Many repeats','No threshold','Sent to nobody'],
+ a:0,why:'Alerts need someone to act and a way to act.',lec:4},
+{q:'What is the difference between a **page** and a **ticket** alert?',
+ o:['Page needs action now, ticket can wait for working hours','Page is slower','Ticket needs a phone','No difference'],
+ a:0,why:'Urgency decides how the alert is routed.',lec:4}
+]};

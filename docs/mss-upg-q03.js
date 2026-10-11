@@ -1,0 +1,35 @@
+/* LearnSphere - SQL Server Upgrade, Patching & Migration quiz, Section 3: Migration Methods.
+   Format: see pg-quiz.js. window.QUIZZES['mss-upg:2']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-upg:2']={qs:[
+{q:'Which method has **the shortest downtime** for a large database without special features?',
+ o:['Log shipping or AG based cutover','Single full backup and restore','Detach and attach','Export to CSV'],
+ a:0,why:'The data is already on the target, so only the final log and redirect are needed.',lec:0},
+{q:'Can you **restore a backup from 2022 onto 2019**?',
+ o:['No','Yes','Only with REPLACE','Only on Linux'],
+ a:0,why:'Backups cannot be restored to an older version.',lec:0},
+{q:'During log shipping cutover, what is taken **first**?',
+ o:['A tail-log backup after stopping applications','A full backup','A statistics update','A CHECKDB'],
+ a:0,why:'The tail backup captures the last transactions.',lec:1},
+{q:'After cutover, what should you do on the new server?',
+ o:['Take a new full backup to start a fresh chain','Delete system databases','Disable Query Store','Restore the old log'],
+ a:0,why:'A new chain protects the new environment from day one.',lec:1},
+{q:'What is a **risk** of detach and attach?',
+ o:['The database is offline during the copy and rollback is weak','It is encrypted','It is slow on Linux only','It drops logins'],
+ a:0,why:'Once attached to a newer version you cannot attach back to the old one.',lec:2},
+{q:'What should you do **before** detaching?',
+ o:['Take a backup','Delete the log','Drop the logins','Disable the Agent'],
+ a:0,why:'A backup preserves your rollback option.',lec:2},
+{q:'Which objects are **outside the database** and must be migrated?',
+ o:['Logins','Agent jobs','Linked servers','Tables'],
+ a:[0,1,2],why:'Tables are in the database. Server-level objects must be moved separately.',lec:3},
+{q:'Why keep the **same SID** for SQL logins?',
+ o:['To avoid orphaned users after restore','To speed up logins','To compress data','To reduce licenses'],
+ a:0,why:'Users map to logins by SID.',lec:3},
+{q:'What should a **cutover plan** contain?',
+ o:['Steps with owners, timings, checks and a rollback point','Only the date','Only the server names','Only a diagram'],
+ a:0,why:'Each step must be checkable and reversible.',lec:4},
+{q:'How do you validate **data completeness** after cutover?',
+ o:['Row counts or checksums on key tables','Check the file size only','Restart the server','Update statistics'],
+ a:0,why:'Counts and checksums compare source and target data.',lec:4}
+]};

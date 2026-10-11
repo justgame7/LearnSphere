@@ -1,0 +1,35 @@
+/* LearnSphere - SQL Server High Availability & DR quiz, Section 8: Replication.
+   Format: see pg-quiz.js. window.QUIZZES['mss-ha:7']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-ha:7']={qs:[
+{q:'Which role **holds the distribution database**?',
+ o:['Distributor','Publisher','Subscriber','Listener'],
+ a:0,why:'The distributor stores metadata and commands waiting to be delivered.',lec:0},
+{q:'What is an **article**?',
+ o:['An object in a publication, such as a table','A subscriber','An agent','A log backup'],
+ a:0,why:'Articles are the objects replicated as part of a publication.',lec:0},
+{q:'Is replication primarily a **failover** feature?',
+ o:['No, it is a data distribution feature','Yes','Only with merge','Only for Linux'],
+ a:0,why:'Replication copies data to other systems. It does not provide automatic failover.',lec:0},
+{q:'Which agent **reads the transaction log** for transactional replication?',
+ o:['Log Reader Agent','Snapshot Agent','Merge Agent','Queue Reader'],
+ a:0,why:'The Log Reader Agent reads committed changes from the publisher log.',lec:1},
+{q:'What is required on tables in **transactional replication**?',
+ o:['A primary key','A clustered columnstore','A trigger','A full-text index'],
+ a:0,why:'Replicated tables need a primary key for row-level change delivery.',lec:1},
+{q:'Why does the publisher **log grow** when the Log Reader stops?',
+ o:['The log cannot be reused until changes are read','The disk fails','Backups run twice','Statistics are stale'],
+ a:0,why:'log_reuse_wait_desc shows REPLICATION until the reader catches up.',lec:1},
+{q:'Merge replication allows changes at:',
+ o:['Publisher and subscribers','Publisher only','Subscribers only','Distributor only'],
+ a:0,why:'Merge synchronizes changes from both sides and resolves conflicts.',lec:2},
+{q:'What does merge replication add to tables?',
+ o:['Tracking columns and triggers','New filegroups','Compression','Partitions'],
+ a:0,why:'Merge uses a rowguid column and triggers to track changes.',lec:2},
+{q:'What measures **end-to-end latency** in transactional replication?',
+ o:['Tracer tokens','DBCC CHECKDB','Query Store','Resource Governor'],
+ a:0,why:'A tracer token flows publisher to distributor to subscriber and reports times.',lec:3},
+{q:'Which tool shows **agent status and errors**?',
+ o:['Replication Monitor','Object Explorer only','Activity Monitor','Profiler only'],
+ a:0,why:'Replication Monitor displays publications, agents, latency and errors.',lec:3}
+]};

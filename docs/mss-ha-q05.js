@@ -1,0 +1,35 @@
+/* LearnSphere - SQL Server High Availability & DR quiz, Section 5: AG Operations & Troubleshooting.
+   Format: see pg-quiz.js. window.QUIZZES['mss-ha:4']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-ha:4']={qs:[
+{q:'Which failover type may **lose data**?',
+ o:['Forced failover','Planned manual failover','Automatic failover with synchronized replica','A restart'],
+ a:0,why:'Forced failover is allowed without a synchronized secondary, so unsent log can be lost.',lec:0},
+{q:'After a **forced failover**, secondary databases are:',
+ o:['Suspended until you resume them','Dropped','Online and writable','Encrypted'],
+ a:0,why:'You review the situation, then resume data movement.',lec:0},
+{q:'What does a **growing log_send_queue_size** mean?',
+ o:['Data that could be lost on failover is growing','Redo is slow','The listener is down','Backups failed'],
+ a:0,why:'The send queue is log not yet sent to the secondary.',lec:1},
+{q:'What does a **growing redo_queue_size** affect?',
+ o:['Time to recover after failover','Data loss only','Listener name','Certificates'],
+ a:0,why:'A large redo queue means more log to apply before the secondary is current.',lec:1},
+{q:'Which backups are allowed on a secondary (before 2025)?',
+ o:['Copy-only full and log backups','Regular full backups','Differential backups','No backups'],
+ a:0,why:'Regular full and differential backups run on the primary in earlier versions.',lec:2},
+{q:'Which function decides whether this replica should **take the backup**?',
+ o:['sys.fn_hadr_backup_is_preferred_replica','sys.fn_dblog','sys.fn_my_permissions','sys.fn_get_audit_file'],
+ a:0,why:'Backup scripts should call it, since preference is only a hint.',lec:2},
+{q:'Which objects are **not** copied by a standard AG?',
+ o:['Logins and Agent jobs','User databases','Tables','Indexes'],
+ a:0,why:'Server-level objects must be synchronized separately or by using a contained AG.',lec:3},
+{q:'Which statement adds a database to an existing AG?',
+ o:['ALTER AVAILABILITY GROUP ... ADD DATABASE','CREATE DATABASE ... AS AG','BACKUP DATABASE ... TO AG','ALTER DATABASE ... SET AG ON'],
+ a:0,why:'Use ALTER AVAILABILITY GROUP ag ADD DATABASE db on the primary.',lec:3},
+{q:'The primary log **cannot be truncated** and the wait is AVAILABILITY_REPLICA. Why?',
+ o:['A secondary has not applied the log yet','The disk is full','A backup is running','tempdb is full'],
+ a:0,why:'The log must be kept until all replicas have received it.',lec:4},
+{q:'What does **ALTER DATABASE ... SET HADR RESUME** do?',
+ o:['Resumes data movement for a suspended database','Starts a backup','Fails over','Drops the database'],
+ a:0,why:'It resumes synchronization after you resolve the reason for the suspension.',lec:4}
+]};

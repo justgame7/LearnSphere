@@ -1,0 +1,35 @@
+/* LearnSphere - SQL Server Upgrade, Patching & Migration quiz, Section 2: Upgrade Strategies.
+   Format: see pg-quiz.js. window.QUIZZES['mss-upg:1']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-upg:1']={qs:[
+{q:'Which approach keeps the **old instance** for rollback?',
+ o:['Side-by-side','In-place','Detach in place','Reinstall'],
+ a:0,why:'Side-by-side builds a new instance and leaves the old one intact.',lec:0},
+{q:'What is the **main risk** of an in-place upgrade?',
+ o:['Rollback is difficult','It is slow','It needs new licenses','It changes the server name'],
+ a:0,why:'Once upgraded, going back usually means restoring or rebuilding.',lec:0},
+{q:'Which best fits a **critical production** system moving to a new major version?',
+ o:['Side-by-side with a short cutover','In-place with no test','Uninstall and reinstall','Skip testing'],
+ a:0,why:'Side-by-side gives control and rollback.',lec:0},
+{q:'What does a pre-upgrade **assessment** report?',
+ o:['Breaking changes, behavior changes and deprecated features','Disk free space only','Backup size','User names'],
+ a:0,why:'It highlights items that may fail or behave differently.',lec:1},
+{q:'Is an assessment report **enough** to approve an upgrade?',
+ o:['No, you must test the real workload','Yes','Only for small databases','Only for Linux'],
+ a:0,why:'Tools find known patterns. Tests prove the application works.',lec:1},
+{q:'What happens to compatibility level after **restoring to a newer version**?',
+ o:['It stays at the old level until you change it','It is raised automatically','The restore fails','It is set to 100'],
+ a:0,why:'The level is kept, so you can upgrade the engine and the optimizer behavior separately.',lec:2},
+{q:'Which tool **compares plans** before and after a level change?',
+ o:['Query Store','sp_who','DBCC CHECKDB','Database Mail'],
+ a:0,why:'Query Store keeps history and lets you force plans.',lec:2},
+{q:'What does an **A/B test** compare?',
+ o:['The same workload on old and new versions','Two backups','Two logins','Two indexes only'],
+ a:0,why:'A/B testing replays workload on two targets and compares outcomes.',lec:3},
+{q:'Why use the **same data and hardware** on both targets?',
+ o:['So differences come from the version','To save money','To avoid logs','To reduce traffic'],
+ a:0,why:'Controlled conditions make the result meaningful.',lec:3},
+{q:'What should happen **after** a successful upgrade?',
+ o:['Verify, keep the old system for a hold period, then decommission','Delete old backups at once','Disable monitoring','Raise all settings'],
+ a:0,why:'A hold period keeps the rollback path open until the new system is proven.',lec:4}
+]};

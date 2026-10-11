@@ -1,0 +1,35 @@
+/* LearnSphere - SQL Server Operations, Monitoring & Automation quiz, Section 6: Troubleshooting & Support.
+   Format: see pg-quiz.js. window.QUIZZES['mss-ops:5']. lec = lecture index in the section. */
+window.QUIZZES=window.QUIZZES||{};
+window.QUIZZES['mss-ops:5']={qs:[
+{q:'What is the **first question** in most troubleshooting?',
+ o:['What changed?','Who is to blame?','Which edition?','What color is the dashboard?'],
+ a:0,why:'Most problems follow a change.',lec:0},
+{q:'Why collect data **before** making changes?',
+ o:['Changes can destroy evidence','It is a rule of Windows','It reduces CPU','It is required by Azure'],
+ a:0,why:'Logs and state may disappear after a restart or change.',lec:0},
+{q:'Which procedure **reads the error log**?',
+ o:['sp_readerrorlog','sp_who','sp_help','sp_lock'],
+ a:0,why:'sp_readerrorlog reads current and archived logs.',lec:1},
+{q:'Which severity range means **fatal errors**?',
+ o:['20 to 25','1 to 10','11 to 16','17 to 19 only'],
+ a:0,why:'Severity 20 to 25 are fatal.',lec:1},
+{q:'What is in a **memory dump** file?',
+ o:['Process memory, possibly data','Only logins','Only backups','Only errors'],
+ a:0,why:'Dumps include memory, so treat them as sensitive.',lec:2},
+{q:'What should you do with a dump file?',
+ o:['Collect with logs and send to support if needed','Edit it','Delete it unread always','Email it publicly'],
+ a:0,why:'Dumps are for analysis by support or product specialists.',lec:2},
+{q:'What is the **DAC** for?',
+ o:['Emergency connection when normal ones fail','Faster reporting','Backups','Replication'],
+ a:0,why:'The dedicated administrator connection is reserved for diagnosis.',lec:3},
+{q:'Which error suggests a **Kerberos SPN** problem?',
+ o:['Cannot generate SSPI context','Login failed for user','Database offline','Disk full'],
+ a:0,why:'This message usually relates to missing or duplicate SPNs.',lec:3},
+{q:'What information speeds up a **support case**?',
+ o:['Version, exact error, timeline and logs','Only "it is slow"','A phone photo','Nothing'],
+ a:0,why:'Good case data shortens diagnosis.',lec:4},
+{q:'Before uploading diagnostics you should:',
+ o:['Check for and protect sensitive data','Include all passwords','Skip the case','Delete logs'],
+ a:0,why:'Traces and dumps can contain sensitive data.',lec:4}
+]};
