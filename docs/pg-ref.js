@@ -230,6 +230,103 @@ SELECT name, default_version FROM pg_available_extensions ORDER BY 1 LIMIT 10;`,
 
 
 
+/* 0b ---------------------------------------------------------------- big-picture maps */
+{t:'Big-picture maps',d:'Four small maps that show how the parts fit together. Tap any box, or use the trace button to follow one action step by step.',see:[],b:[
+{p:'Each map is deliberately small. Tap a box to see what it is, why a DBA cares, one query to check it and the lesson behind it. Where a map has a **Trace** button, it walks one action through the boxes in order.'},
+
+{h:'1. How a server fits together'},
+{map:{title:'PostgreSQL server map',h:470,trace:'Trace an UPDATE',
+ hint:'Tap any box, or press Trace an UPDATE to follow one write through the server.',
+ groups:[{x:40,y:96,w:470,h:118,l:'Shared memory'},{x:40,y:246,w:600,h:108,l:'Disk'}],
+ lines:[[170,42,228,42],[370,42,428,42],[460,64,460,94],[150,190,150,282],[350,190,350,282],[426,312,448,312],[350,340,350,388],[520,155,512,155]],
+ nodes:[
+ {id:'client',x:40,y:20,w:130,h:44,c:'ext',t:'Client apps',d:'Applications, psql, pgAdmin or a pooler. Each opens a connection to the server, by default on port 5432.',why:'Thousands of idle clients cost real memory, so a pooler such as PgBouncer sits here.',chk:`SELECT usename, state, count(*) FROM pg_stat_activity GROUP BY 1, 2;`,see:[10,3,'Connection pooling with PgBouncer']},
+ {id:'postmaster',x:230,y:20,w:140,h:44,c:'proc',t:'Postmaster',d:'The parent of every server process. It reads the configuration, creates shared memory, starts the background processes and forks one backend per connection.',why:'It stays deliberately simple. If a child dies abnormally it resets shared memory and runs recovery, which clients see as a short disconnect.',chk:`head -1 $PGDATA/postmaster.pid`,see:[2,0,'The postmaster process']},
+ {id:'backend',x:430,y:20,w:140,h:44,c:'proc',t:'Backends',d:'One process per client connection. It parses, plans and executes statements, reads pages through shared buffers and writes WAL records for changes.',why:'Each backend uses its own work_mem for sorts and hashes, so memory use scales with connections.',chk:`SELECT pid, state, wait_event, left(query, 40) FROM pg_stat_activity WHERE backend_type = 'client backend';`,see:[2,1,'The backend process']},
+ {id:'sbuf',x:60,y:128,w:180,h:62,c:'mem',t:'Shared buffers',s:'8 KB page cache',d:'PostgreSQL page cache in shared memory. A backend reads a table page here; on a miss it is loaded from the data file, usually through the operating system cache.',why:'About a quarter of RAM is the usual start. The hit ratio tells you whether the working set fits.',chk:`SELECT round(100.0 * blks_hit / nullif(blks_hit + blks_read, 0), 2) AS hit_pct FROM pg_stat_database WHERE datname = current_database();`,see:[2,3,'Memory']},
+ {id:'wbuf',x:260,y:128,w:180,h:62,c:'mem',t:'WAL buffers',s:'Log not yet on disk',d:'A small shared area where backends place WAL records before they are flushed to the WAL files by the WAL writer or at commit.',why:'Commit speed depends on this flush reaching disk, not on data pages being written.',chk:`SELECT wal_records, wal_fpi, pg_size_pretty(wal_bytes) AS wal FROM pg_stat_wal;`,see:[2,4,'WAL']},
+ {id:'bg',x:522,y:96,w:118,h:118,c:'proc',t:'Background',s:'checkpoint, vacuum',d:'Checkpointer (writes dirty pages and records a checkpoint), background writer, WAL writer, autovacuum, archiver and the WAL senders for replication.',why:'They keep the system durable and clean. When one falls behind you see bloat, forced checkpoints or WAL piling up.',chk:`SELECT backend_type, count(*) FROM pg_stat_activity GROUP BY 1 ORDER BY 2 DESC;`,see:[2,2,'Background processes']},
+ {id:'data',x:60,y:282,w:170,h:58,c:'disk',t:'Data files',s:'base/, tables and indexes',d:'Tables and indexes as 8 KB pages under PGDATA/base, one folder per database. Pages are written here lazily by the checkpointer and background writer.',why:'They can lag behind the WAL. After a crash, WAL replay brings them up to date, which is why commits are safe.',chk:`SELECT pg_relation_filepath('orders');`,see:[2,6,'PGDATA layout']},
+ {id:'wal',x:260,y:282,w:166,h:58,c:'disk',t:'WAL segments',s:'pg_wal, 16 MB each',d:'The write-ahead log. A change is recorded here before its data page is written, and a commit waits for this flush.',why:'It powers crash recovery, point-in-time recovery and replication. A full pg_wal volume stops the database.',chk:`SELECT pg_current_wal_lsn(), pg_walfile_name(pg_current_wal_lsn());`,see:[7,0,'WAL format']},
+ {id:'archive',x:450,y:282,w:170,h:58,c:'disk',t:'WAL archive',s:'for PITR and standbys',d:'Completed WAL segments copied away by archive_command or an archive module. With a base backup it enables point-in-time recovery.',why:'If archiving fails, segments stay in pg_wal until it recovers, so watch it.',chk:`SELECT archived_count, failed_count, last_archived_wal FROM pg_stat_archiver;`,see:[8,11,'Point-in-time recovery']},
+ {id:'standby',x:250,y:390,w:200,h:58,c:'ext',t:'Standby server',s:'replays the same WAL',d:'Another server that receives the WAL stream through a WAL sender and WAL receiver and replays it. Hot standby also serves read-only queries.',why:'It is your failover target and read replica, but never a backup: a bad DELETE is replicated too.',chk:`SELECT application_name, state, sync_state, replay_lag FROM pg_stat_replication;`,see:[9,2,'Streaming replication setup']}],
+ steps:[
+ {ids:['backend'],t:'1. A backend receives UPDATE ... and finds the row. It needs the table page.'},
+ {ids:['backend','sbuf'],t:'2. The page is read through shared buffers (loaded from the data file on a miss). A new row version is written there, so the page is now dirty.'},
+ {ids:['sbuf','wbuf'],t:'3. A WAL record that describes the change is placed in the WAL buffers.'},
+ {ids:['wbuf','wal'],t:'4. At COMMIT the WAL is flushed to the WAL segments. Only now does the client get its COMMIT.'},
+ {ids:['bg','sbuf','data'],t:'5. Later the checkpointer and background writer write the dirty page to the data file.'},
+ {ids:['wal','archive','standby'],t:'6. The same WAL is archived and streamed to the standby, which replays it.'}]}},
+
+{h:'2. Replication and failover'},
+{map:{title:'Streaming replication map',h:470,trace:'Trace a commit',
+ hint:'Tap any box, or press Trace a commit to follow a transaction from the primary to a read on the standby.',
+ groups:[{x:20,y:40,w:300,h:310,l:'Primary server'},{x:360,y:40,w:300,h:310,l:'Standby server'}],
+ lines:[[150,106,178,106],[235,136,235,172],[190,136,110,172],[235,258,235,236],'M290 202 H340 V106 H388',[500,106,528,106],[585,136,585,172],[528,202,502,202],[95,234,95,378],[465,380,465,352]],
+ nodes:[
+ {id:'p-back',x:40,y:76,w:110,h:60,c:'proc',t:'Backends',s:'write, commit',d:'Client sessions on the primary. Every change is recorded as a WAL record, and a commit waits for the WAL flush.',why:'With synchronous replication a commit also waits for a standby to confirm, which is where replication affects latency.',chk:`SHOW synchronous_commit;`,see:[9,9,'Synchronous replication']},
+ {id:'p-wal',x:180,y:76,w:110,h:60,c:'disk',t:'WAL',s:'pg_wal',d:'The write-ahead log on the primary. It is the single source for replication, archiving and crash recovery.',why:'It is kept until the archiver, the standbys and the slots no longer need it, so a lagging or abandoned consumer fills the disk.',chk:`SELECT pg_current_wal_lsn();`,see:[7,6,'WAL lifecycle']},
+ {id:'p-arch',x:40,y:172,w:110,h:60,c:'proc',t:'Archiver',s:'archive_command',d:'Copies each full WAL segment to the archive.',why:'It lets a standby that fell too far behind catch up, and it is the base of point-in-time recovery.',chk:`SELECT last_archived_wal, last_failed_wal FROM pg_stat_archiver;`,see:[8,10,'Continuous archiving']},
+ {id:'p-send',x:180,y:172,w:110,h:60,c:'proc',t:'WAL sender',s:'one per standby',d:'Streams WAL records to a standby over a replication connection as they are written.',why:'Check lag here. max_wal_senders must allow one per standby plus backups.',chk:`SELECT application_name, state, sync_state, replay_lag FROM pg_stat_replication;`,see:[9,1,'Replication theory']},
+ {id:'p-slot',x:180,y:260,w:110,h:60,c:'warn',t:'Slot',s:'keeps the WAL',d:'A replication slot remembers how far a standby has read, so the primary does not recycle WAL it still needs.',why:'An abandoned slot is the most common cause of a full pg_wal. Limit it with max_slot_wal_keep_size.',chk:`SELECT slot_name, active, wal_status FROM pg_replication_slots;`,see:[9,7,'Replication slots']},
+ {id:'s-recv',x:390,y:76,w:110,h:60,c:'proc',t:'WAL receiver',s:'writes WAL',d:'Receives the stream, writes it to the standby WAL and tells the primary how far it got.',why:'It is the standby end of the connection defined by primary_conninfo.',chk:`SELECT status, received_lsn, latest_end_lsn FROM pg_stat_wal_receiver;`,see:[9,2,'Streaming replication setup']},
+ {id:'s-replay',x:530,y:76,w:110,h:60,c:'proc',t:'Startup',s:'replays WAL',d:'The startup process replays received WAL into the standby data files, continuously.',why:'Replay can be delayed by a conflicting query on a hot standby (see max_standby_streaming_delay).',chk:`SELECT pg_last_wal_replay_lsn(), now() - pg_last_xact_replay_timestamp() AS delay;`,see:[9,8,'Hot standby']},
+ {id:'s-data',x:530,y:172,w:110,h:60,c:'disk',t:'Data files',s:'same as primary',d:'The standby copy of the data files, kept up to date by replay.',why:'Physical replication copies the whole cluster, so versions, architecture and paths must match.',chk:`SELECT pg_is_in_recovery();`,see:[9,1,'Replication theory']},
+ {id:'s-read',x:390,y:172,w:110,h:60,c:'ext',t:'Read queries',s:'hot standby',d:'With hot_standby on, the standby answers read-only queries while it replays.',why:'A replica is a read scaler and a failover target, never a backup. A mistaken DELETE is replicated too.',chk:`SELECT datname, confl_snapshot, confl_lock FROM pg_stat_database_conflicts;`,see:[9,8,'Hot standby']},
+ {id:'archive',x:40,y:380,w:150,h:58,c:'disk',t:'WAL archive',s:'for PITR and catch-up',d:'Long-term store of WAL segments, with base backups it enables point-in-time recovery.',why:'Keep it on separate storage and monitor it.',chk:`ls -l /archive | tail`,see:[8,11,'Point-in-time recovery']},
+ {id:'manager',x:390,y:380,w:190,h:58,c:'ext',t:'Failover manager',s:'Patroni, repmgr, runbook',d:'PostgreSQL gives you promotion, timelines and pg_rewind but does not decide by itself that a primary is dead. A failover manager or a DBA following a runbook does.',why:'Fence the old primary before you promote, or you risk split brain.',chk:`SELECT pg_promote();`,see:[9,10,'Failover and switchover']}],
+ steps:[
+ {ids:['p-back'],t:'1. A backend commits a transaction on the primary.'},
+ {ids:['p-back','p-wal'],t:'2. The change is written to the WAL and flushed to disk.'},
+ {ids:['p-wal','p-send','p-slot'],t:'3. The WAL sender streams the new WAL to the standby. The slot remembers how far the standby has read.'},
+ {ids:['p-send','s-recv'],t:'4. The WAL receiver writes it to the standby WAL. With synchronous replication the primary waits for this confirmation before the commit returns.'},
+ {ids:['s-recv','s-replay','s-data'],t:'5. The startup process replays the record into the standby data files.'},
+ {ids:['s-data','s-read'],t:'6. A read-only query on the standby now sees the change. The gap between steps 2 and 5 is replication lag.'}]}},
+
+{h:'3. Backup and recovery'},
+{map:{title:'Backup and recovery map',h:490,trace:'Trace a recovery to 10:42',
+ hint:'Tap any box, or press Trace a recovery to follow a point-in-time recovery.',
+ groups:[],
+ lines:[[340,72,105,128],[340,72,340,128],[105,178,105,226],[340,178,340,226],'M410 46 H570 V226',[105,276,105,326],[340,276,340,326],'M570 276 V351 H417',[340,376,340,414],[105,376,105,414]],
+ nodes:[
+ {id:'cluster',x:270,y:20,w:140,h:52,c:'disk',t:'Running cluster',s:'your data',d:'The live PostgreSQL cluster that you want to protect.',why:'Plan from the recovery goal backwards: RPO is how much you may lose, RTO is how long you may be down.',chk:`SHOW data_directory;`,see:[8,8,'Backup strategy']},
+ {id:'dump',x:30,y:128,w:150,h:50,c:'proc',t:'pg_dump',s:'logical, per database',d:'Writes the definition and data of one database as SQL or an archive. Restores into the same or a newer major version.',why:'Portable and selective, but it cannot do point-in-time recovery.',chk:`pg_dump -Fd -j 4 -f /backup/appdb appdb`,see:[8,0,'Backup and restore']},
+ {id:'basebackup',x:265,y:128,w:150,h:50,c:'proc',t:'pg_basebackup',s:'physical, whole cluster',d:'Copies the data files of the whole cluster while it runs, with the WAL needed to make the copy consistent.',why:'Fast to restore and the base for PITR and standbys, but only for the same major version.',chk:`pg_basebackup -D /backup/base -X stream -P`,see:[8,7,'Physical backup']},
+ {id:'dumpfile',x:30,y:226,w:150,h:50,c:'disk',t:'Dump file',s:'SQL or archive',d:'The logical backup file or directory.',why:'Store a copy off the server and test that it restores.',chk:`file /backup/appdb`,see:[8,1,'Backup formats']},
+ {id:'basecopy',x:265,y:226,w:150,h:50,c:'disk',t:'Base backup',s:'a copy of PGDATA',d:'A consistent copy of the cluster at one moment in time, with a backup label.',why:'On its own it restores to the end of the backup. With archived WAL it restores to any later moment.',chk:`ls /backup/base`,see:[8,7,'Physical backup']},
+ {id:'archive',x:500,y:226,w:140,h:50,c:'disk',t:'WAL archive',s:'every WAL segment',d:'Every completed WAL segment, copied by archive_command as it fills.',why:'It must exist before the mistake. You cannot add history afterwards.',chk:`SELECT archived_count, failed_count FROM pg_stat_archiver;`,see:[8,10,'Continuous archiving']},
+ {id:'restore',x:30,y:326,w:150,h:50,c:'proc',t:'pg_restore',s:'or psql for plain dumps',d:'Replays a plain dump with psql or an archive dump with pg_restore, optionally in parallel.',why:'Restore into a new database created from template0, then run ANALYZE.',chk:`pg_restore -j 4 -d appdb_new /backup/appdb`,see:[8,3,'Restore']},
+ {id:'replay',x:265,y:326,w:150,h:50,c:'proc',t:'Recovery',s:'copy back, replay WAL',d:'Copy the base backup back, create recovery.signal, set restore_command and a recovery target, then start the server. It replays archived WAL up to the target.',why:'This is how you return to the moment before a bad DELETE or DROP.',chk:`SELECT pg_is_in_recovery();`,see:[8,11,'Point-in-time recovery']},
+ {id:'newdb',x:30,y:414,w:150,h:50,c:'mem',t:'Restored database',s:'to the dump moment',d:'The database as it was when the dump started.',why:'Anything after the dump is lost, which is the RPO of a logical backup.',chk:`SELECT count(*) FROM orders;`,see:[8,5,'Restore practicals']},
+ {id:'recovered',x:265,y:414,w:150,h:50,c:'mem',t:'Recovered cluster',s:'to the target time',d:'The whole cluster at the target you chose, running on a new timeline after promotion.',why:'Check the data before you promote and reopen it to applications.',chk:`SELECT pg_wal_replay_resume();`,see:[8,11,'Point-in-time recovery']}],
+ steps:[
+ {ids:['cluster','basebackup','basecopy','archive'],t:'Before the mistake: a base backup was taken and every WAL segment since then has been archived.'},
+ {ids:['basecopy','replay'],t:'1. A DELETE at 10:43 destroyed data. Copy the base backup back to a new data directory.'},
+ {ids:['replay','archive'],t:'2. Create recovery.signal and set restore_command and recovery_target_time = 10:42.'},
+ {ids:['replay','archive'],t:'3. Start the server. It replays archived WAL up to 10:42 and stops there.'},
+ {ids:['replay','recovered'],t:'4. Check the data, then promote. A new timeline begins, so the old history cannot be mixed in.'}]}},
+
+{h:'4. Life of a row: MVCC and vacuum'},
+{map:{title:'Life of a row map',h:330,trace:'Follow one row',
+ hint:'Tap any box, or press Follow one row to see what happens to a row over time.',
+ groups:[],
+ lines:[[170,60,188,60],[320,60,338,60],[470,60,488,60],[555,92,555,180],[405,210,405,92]],
+ nodes:[
+ {id:'insert',x:40,y:30,w:130,h:60,c:'mem',t:'INSERT',s:'row version v1',d:'A new row is written as version v1, stamped with the transaction that created it (xmin).',why:'The row is visible to transactions whose snapshot is later than that xmin.',chk:`SELECT ctid, xmin, xmax, * FROM orders LIMIT 3;`,see:[2,8,'MVCC internals']},
+ {id:'update',x:190,y:30,w:130,h:60,c:'mem',t:'UPDATE',s:'v2 added, v1 kept',d:'An update does not change v1. It writes a new version v2 and marks v1 as ended by this transaction (xmax).',why:'Readers that started earlier still see v1; nobody is blocked. Indexes may also get new entries unless the update is HOT.',chk:`SELECT n_tup_upd, n_tup_hot_upd FROM pg_stat_user_tables WHERE relname = 'orders';`,see:[4,9,'Table storage']},
+ {id:'dead',x:340,y:30,w:130,h:60,c:'warn',t:'Dead tuple',s:'v1, nobody needs it',d:'Once no running snapshot can see v1, it is a dead tuple. It still occupies space in the page and in the indexes.',why:'This is bloat in the making. Dead tuples cannot be removed while an older transaction might need them.',chk:`SELECT relname, n_dead_tup, last_autovacuum FROM pg_stat_user_tables ORDER BY n_dead_tup DESC LIMIT 5;`,see:[4,9,'Table storage and bloat']},
+ {id:'vacuum',x:490,y:30,w:130,h:60,c:'proc',t:'VACUUM',s:'cleans, freezes',d:'Removes dead tuples and their index entries, updates the free space and visibility maps and freezes old rows. Autovacuum starts it by thresholds.',why:'Plain VACUUM makes space reusable inside the table. It does not shrink the file; VACUUM FULL does but locks the table.',chk:`SELECT pid, relid::regclass, phase FROM pg_stat_progress_vacuum;`,see:[10,1,'Autovacuum and VACUUM']},
+ {id:'reuse',x:490,y:180,w:130,h:60,c:'mem',t:'Space reused',s:'by new row versions',d:'The cleaned space goes back to the free space map and new row versions are written into it.',why:'A healthy table stops growing once vacuum keeps up with updates.',chk:`SELECT pg_size_pretty(pg_relation_size('orders'));`,see:[10,1,'Autovacuum and VACUUM']},
+ {id:'blocker',x:330,y:210,w:150,h:60,c:'warn',t:'Blockers',s:'old transactions, slots',d:'A long-running transaction, an idle-in-transaction session, an abandoned replication slot or a standby with feedback holds back the oldest snapshot.',why:'While they exist vacuum cannot remove the dead tuples, so the table keeps growing. Find and end them first.',chk:`SELECT pid, state, now() - xact_start AS age FROM pg_stat_activity WHERE xact_start IS NOT NULL ORDER BY xact_start LIMIT 5;`,see:[10,1,'Autovacuum and VACUUM']}],
+ steps:[
+ {ids:['insert'],t:'1. INSERT writes row version v1.'},
+ {ids:['insert','update'],t:'2. UPDATE writes v2 and leaves v1 in place for older snapshots.'},
+ {ids:['update','dead'],t:'3. When no snapshot needs v1 any more it becomes a dead tuple.'},
+ {ids:['dead','blocker'],t:'Warning: an old transaction or slot can keep v1 alive, and the table keeps growing.'},
+ {ids:['dead','vacuum'],t:'4. VACUUM (usually autovacuum) removes v1 and its index entries.'},
+ {ids:['vacuum','reuse'],t:'5. The space is reused by new row versions.'}]}}
+]},
+
 /* 1 ---------------------------------------------------------------- processes */
 {t:'Server processes',d:'Every process in a running cluster, how it appears in pg_stat_activity and where to look when it misbehaves.',see:[[2,0,'Postmaster'],[2,2,'Background processes']],b:[
 {t:[['Process','`backend_type`','Job','Look here'],

@@ -234,6 +234,19 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 .rmode{display:flex;gap:6px;align-items:center;margin:0 0 10px;font-size:12px;color:var(--mute,#8A93A3)}.rmode button{padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--tx);font:inherit;font-size:12px;cursor:pointer}.rmode button.on{border-color:var(--accent);color:var(--accent);font-weight:700}
 .rlist{margin:0 0 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.rlist>summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;justify-content:space-between;gap:10px;align-items:center;font-weight:600}.rlist>summary::-webkit-details-marker{display:none}.rlist>summary span{font-size:12px;font-weight:500;color:var(--mute,#8A93A3)}.rlist>summary b{flex:1;text-align:right;color:var(--tx)}.rlist>summary:after{content:"▾";color:var(--accent)}.rlist[open]>summary:after{content:"▴"}
 .rlist .rl{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px;padding:0 10px 10px}.rlist .rl button{text-align:left;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--tx);font:inherit;font-size:13px;cursor:pointer}.rlist .rl button:hover{border-color:var(--accent)}.rlist .rl button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--panel2));font-weight:700}
+.bmap{margin:0 0 26px}
+.bmap svg{display:block;max-width:100%;height:auto}
+@media(max-width:640px){.bm-sv{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px}.bm-sv svg{max-width:none;min-width:560px}}
+.bm-nd{cursor:pointer;transition:opacity .2s;outline:none}
+.bm-nd:hover{opacity:.85}.bm-nd:focus-visible rect{stroke-width:2.5}
+.bm-nd.dim{opacity:.28}.bm-nd.sel rect{stroke-width:2.5}
+.bm-t{font:700 13px var(--sans);fill:var(--tx)}.bm-s{font:11px var(--sans);fill:var(--mut)}.bm-gl{font:600 11px var(--mono);fill:var(--mut)}
+.bm-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 0}
+.bm-sn{font:12px var(--mono);color:var(--mut)}
+.bm-info{margin-top:10px;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--panel);min-height:96px}
+.bm-info h5{margin:0 0 6px;font:700 15px var(--sans)}
+.bm-info p{margin:0 0 8px;line-height:1.6}
+.bm-info .cb{margin:8px 0 0}
 .accg{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:0 0 20px}
 details.acc{min-width:0;max-width:100%;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
 details.acc[open]{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
@@ -3869,7 +3882,8 @@ const sqBodyCache={};
 function sqBlockText(b){
  if(b.p)return b.p;if(b.h)return b.h;if(b.ul)return b.ul.join(' ');if(b.t)return b.t.map(r=>r.join(' ')).join(' ');
  if(b.flow)return b.flow.join(' ');if(b.code)return b.code;if(b.note)return b.note;
- if(b.acc)return b.acc.map(e=>[e.t,e.s,e.a,e.w,e.c].filter(Boolean).join(' ')).join(' ');return''}
+ if(b.acc)return b.acc.map(e=>[e.t,e.s,e.a,e.w,e.c].filter(Boolean).join(' ')).join(' ');
+ if(b.map)return b.map.nodes.map(n=>[n.t,n.s,n.d,n.why,n.chk].filter(Boolean).join(' ')).join(' ');return''}
 function sqBody(c,si,li){const k=c.id+':'+si+':'+li;if(k in sqBodyCache)return sqBodyCache[k];
  const L=LS()[k];if(!L)return null;return sqBodyCache[k]=L.blocks.map(sqBlockText).join(' \n').replace(/[`*]/g,'')}
 function sqSnippet(body,ws){
@@ -4139,6 +4153,7 @@ function blk(b){
  if(b.code)return `<div class="cb"><button onclick="cpy(this)">Copy</button><pre>${esc(b.code)}</pre></div>`;
  if(b.svg)return `<div class="dg">${b.svg}</div>`;
  if(b.note)return `<div class="nt">${fx(b.note)}</div>`;
+ if(b.map)return bmHtml(b.map);
  if(b.acc)return `<div class="accg">${b.acc.map(e=>`<details class="acc"><summary><span class="at">${fx(e.t)}</span>${e.s?`<span class="as">${fx(e.s)}</span>`:''}</summary><div class="ab"><p>${fx(e.a)}</p>${e.w?`<p class="aw"><b>Why it matters:</b> ${fx(e.w)}</p>`:''}${e.c?`<div class="accl">Check it</div>`+blk({code:e.c}):''}${e.see?`<p class="rsee"><a onclick="go('#/c/${window.QCUR||'pg'}/${e.see[0]}/${e.see[1]}')">Lesson: ${esc(e.see[2])} \u25B8</a></p>`:''}</div></details>`).join('')}</div>`;
  return ''}
 function cpy(b){const t=b.nextElementSibling.textContent;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{b.textContent='Copied'},()=>{b.textContent='Select & copy'});setTimeout(()=>b.textContent='Copy',1500)}
@@ -4250,6 +4265,42 @@ function vQuiz(c,si){
  <p class="qq">${fx(q.q)}</p>${q.multi?'<p class="sub" style="margin:-6px 0 10px">Select all that apply.</p>':''}<div class="qopts">${opts}</div>
  ${chk?`<div class="nt" style="margin-top:14px"><b>${r.ok?'✓ Correct.':'✗ Not quite.'}</b> ${fx(q.why)}<br><small>Lecture: ${qLink(c,si,q.lec)}</small></div>`:''}
  <div class="pn"><button class="btn ghost" onclick="QS=null;render(true)">Quit quiz</button>${chk?`<button class="btn" onclick="qNext()">${QS.i<t-1?'Next question ▸':'See results ▸'}</button>`:`<button class="btn" ${QS.sel.length?'':'disabled style="opacity:.5"'} onclick="qCheck()">Check answer</button>`}</div></div>`}
+/* ---------- Big-picture maps: data-driven SVG with clickable parts and a trace (block type: map) ---------- */
+const BMREG=[],BMST={};
+const BMC={proc:'#A78BFA',mem:'#35E0C0',disk:'#FBBF24',ext:'#8A93A3',warn:'#FB7185',net:'#38BDF8'};
+function bmHtml(m){
+ const uid=BMREG.push(m)-1,mk='bma'+uid;
+ let s=`<svg viewBox="0 0 680 ${m.h}" width="100%" role="img" aria-label="${esc(m.title||'Map')}"><defs><marker id="${mk}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>`;
+ (m.groups||[]).forEach(g=>{s+=`<rect x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="12" fill="none" stroke-width="1" stroke-dasharray="5 4" style="stroke:var(--mut);stroke-opacity:.55"/><text class="bm-gl" x="${g.x+14}" y="${g.y+20}">${esc(g.l)}</text>`});
+ (m.lines||[]).forEach(l=>{const st=`stroke="var(--mut)" stroke-width="1.5" marker-end="url(#${mk})"`;
+  s+=typeof l==='string'?`<path d="${l}" fill="none" ${st}/>`:`<line x1="${l[0]}" y1="${l[1]}" x2="${l[2]}" y2="${l[3]}" ${st}/>`});
+ m.nodes.forEach(n=>{const c=BMC[n.c]||BMC.ext,two=!!n.s,cx=n.x+n.w/2,cy=n.y+n.h/2;
+  s+=`<g class="bm-nd" id="bm${uid}-${n.id}" tabindex="0" role="button" aria-label="${esc(n.t)}" onclick="bmPick(${uid},'${n.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();bmPick(${uid},'${n.id}')}">`+
+   `<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="8" style="fill:color-mix(in srgb,${c} 16%,var(--panel));stroke:${c};stroke-width:1"/>`+
+   `<text class="bm-t" x="${cx}" y="${cy-(two?9:0)}" text-anchor="middle" dominant-baseline="central">${esc(n.t)}</text>`+
+   (two?`<text class="bm-s" x="${cx}" y="${cy+10}" text-anchor="middle" dominant-baseline="central">${esc(n.s)}</text>`:'')+`</g>`});
+ s+='</svg>';s='<div class="bm-sv">'+s+'</div>';
+ const txt=m.nodes.map(n=>[n.t,n.s,n.d,n.why,n.chk].filter(Boolean).join(' ')).join(' ').toLowerCase();
+ return `<div class="bmap" data-t="${esc(txt)}">${s}
+  <div class="bm-bar">${m.steps?`<button class="btn ghost" id="bmt${uid}" onclick="bmStart(${uid})">${esc(m.trace||'Trace it')}</button><button class="btn" id="bmn${uid}" style="display:none" onclick="bmNext(${uid})">Next step</button><button class="btn ghost" id="bmr${uid}" style="display:none" onclick="bmReset(${uid})">Reset</button><span class="bm-sn" id="bms${uid}"></span>`:''}</div>
+  <div class="bm-info" id="bmi${uid}"><p>${esc(m.hint||'Tap any box.')}</p></div></div>`}
+const bmEl=(u,id)=>document.getElementById('bm'+u+'-'+id);
+function bmClear(u){BMREG[u].nodes.forEach(n=>{const e=bmEl(u,n.id);if(e){e.classList.remove('dim');e.classList.remove('sel')}})}
+function bmPick(u,id){if(BMST[u]>=0)return;const m=BMREG[u],n=m.nodes.find(x=>x.id===id);if(!n)return;
+ bmClear(u);bmEl(u,id).classList.add('sel');
+ const i=document.getElementById('bmi'+u);
+ i.innerHTML=`<h5>${esc(n.t)}</h5><p>${fx(n.d)}</p><p><b>Why it matters:</b> ${fx(n.why)}</p>${n.chk?`<div class="accl">Check it</div>`+blk({code:n.chk}):''}${n.see?`<p class="rsee"><a onclick="go('#/c/${window.QCUR||'pg'}/${n.see[0]}/${n.see[1]}')">Lesson: ${esc(n.see[2])} \u25B8</a></p>`:''}`}
+function bmStep(u){const m=BMREG[u],s=m.steps[BMST[u]];bmClear(u);
+ m.nodes.forEach(n=>{if(s.ids.indexOf(n.id)<0)bmEl(u,n.id).classList.add('dim')});
+ document.getElementById('bms'+u).textContent='Step '+(BMST[u]+1)+' of '+m.steps.length;
+ document.getElementById('bmi'+u).innerHTML=`<p>${esc(s.t)}</p>`;
+ document.getElementById('bmn'+u).textContent=BMST[u]===m.steps.length-1?'Start again':'Next step'}
+function bmStart(u){BMST[u]=0;document.getElementById('bmt'+u).style.display='none';document.getElementById('bmn'+u).style.display='';document.getElementById('bmr'+u).style.display='';bmStep(u)}
+function bmNext(u){BMST[u]=(BMST[u]+1)%BMREG[u].steps.length;bmStep(u)}
+function bmReset(u){BMST[u]=-1;bmClear(u);
+ document.getElementById('bmt'+u).style.display='';document.getElementById('bmn'+u).style.display='none';document.getElementById('bmr'+u).style.display='none';
+ document.getElementById('bms'+u).textContent='';
+ document.getElementById('bmi'+u).innerHTML=`<p>${esc(BMREG[u].hint||'Tap any box.')}</p>`}
 /* ---------- QUICK REFERENCE (data in pg-ref.js: window.QREF['<course id>']) ---------- */
 const qrefOf=c=>(window.QREF||{})[c.id];
 const refBtn=c=>(qrefOf(c)||REFLAZY[c.id])?`<a class="refbtn" onclick="event.stopPropagation();go('#/c/${c.id}/ref/0')">&#9889; <b>Quick reference</b></a>`:'';
@@ -4281,8 +4332,9 @@ function refFilter(q){
  document.querySelectorAll('#refbody .tw tbody tr').forEach(r=>{const m=!q||r.textContent.toLowerCase().includes(q);r.style.display=m?'':'none';if(m)hit++});
  document.querySelectorAll('#refbody .tw').forEach(t=>{const any=[...t.querySelectorAll('tbody tr')].some(r=>r.style.display!=='none');t.style.display=any?'':'none'});
  document.querySelectorAll('#refbody details.acc').forEach(d=>{const m=!q||d.textContent.toLowerCase().includes(q);d.style.display=m?'':'none';if(q)d.open=m;else d.open=false;if(m)hit++});
+ document.querySelectorAll('#refbody .bmap').forEach(m=>{const ok=!q||(m.dataset.t||'').includes(q);m.style.display=ok?'':'none';if(ok)hit++});
  document.querySelectorAll('#refbody .accg').forEach(g=>{g.style.display=[...g.querySelectorAll('details.acc')].some(d=>d.style.display!=='none')?'':'none'});
- document.querySelectorAll('#refbody h4').forEach(h=>{const nx=h.nextElementSibling;h.style.display=(nx&&(nx.classList.contains('tw')||nx.classList.contains('accg'))&&nx.style.display==='none')?'none':''});
+ document.querySelectorAll('#refbody h4').forEach(h=>{const nx=h.nextElementSibling;h.style.display=(nx&&(nx.classList.contains('tw')||nx.classList.contains('accg')||nx.classList.contains('bmap'))&&nx.style.display==='none')?'none':''});
  const n=document.getElementById('rnone');if(n)n.style.display=(q&&!hit)?'block':'none'}
 function refToggleAll(open){document.querySelectorAll('#refbody details.acc').forEach(d=>{if(d.style.display!=='none')d.open=open})}
 function vRef(c,pi){
