@@ -234,6 +234,20 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 .rmode{display:flex;gap:6px;align-items:center;margin:0 0 10px;font-size:12px;color:var(--mute,#8A93A3)}.rmode button{padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--tx);font:inherit;font-size:12px;cursor:pointer}.rmode button.on{border-color:var(--accent);color:var(--accent);font-weight:700}
 .rlist{margin:0 0 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.rlist>summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;justify-content:space-between;gap:10px;align-items:center;font-weight:600}.rlist>summary::-webkit-details-marker{display:none}.rlist>summary span{font-size:12px;font-weight:500;color:var(--mute,#8A93A3)}.rlist>summary b{flex:1;text-align:right;color:var(--tx)}.rlist>summary:after{content:"▾";color:var(--accent)}.rlist[open]>summary:after{content:"▴"}
 .rlist .rl{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px;padding:0 10px 10px}.rlist .rl button{text-align:left;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--tx);font:inherit;font-size:13px;cursor:pointer}.rlist .rl button:hover{border-color:var(--accent)}.rlist .rl button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--panel2));font-weight:700}
+.accg{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:0 0 20px}
+details.acc{min-width:0;max-width:100%;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+details.acc[open]{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+details.acc summary{cursor:pointer;list-style:none;display:flex;flex-direction:column;gap:2px;padding:12px 40px 12px 14px;position:relative;-webkit-tap-highlight-color:transparent}
+details.acc summary::-webkit-details-marker{display:none}
+details.acc summary:after{content:"\25BE";position:absolute;right:14px;top:12px;color:var(--mut);transition:transform .15s}
+details.acc[open] summary:after{transform:rotate(180deg)}
+details.acc .at{font-weight:700}
+details.acc .as{color:var(--mut);font-size:.92em}
+details.acc .ab{padding:0 14px 14px;border-top:1px solid var(--line)}
+details.acc .ab p{margin:10px 0}
+details.acc .aw{color:var(--tx)}
+details.acc .accl{font:600 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:12px 0 6px}
+details.acc .cb{margin:0;max-width:100%}details.acc .ab{min-width:0;overflow-wrap:anywhere}details.acc .cb pre{white-space:pre-wrap;word-break:break-word}
 .rsee{margin:0 0 14px;color:var(--mut);font-size:13px}.rsee a{cursor:pointer;text-decoration:underline;margin-right:10px}.rnone{display:none;color:var(--mut)}
 /* table views: Settings (Aa) > Tables sets data-tbl on <html> (table, cards, collapse, compact, pinned), so every table in the app follows it */
 html[data-tbl="cards"] .tw,html[data-tbl="collapse"] .tw,html[data-tbl="compact"] .tw{overflow:visible;border:0;background:none;border-radius:0}
@@ -3854,7 +3868,8 @@ const sqHi=(t,ws)=>{let h=esc(t);ws.forEach(w=>{h=h.replace(sqRe(esc(w),1),'<mar
 const sqBodyCache={};
 function sqBlockText(b){
  if(b.p)return b.p;if(b.h)return b.h;if(b.ul)return b.ul.join(' ');if(b.t)return b.t.map(r=>r.join(' ')).join(' ');
- if(b.flow)return b.flow.join(' ');if(b.code)return b.code;if(b.note)return b.note;return''}
+ if(b.flow)return b.flow.join(' ');if(b.code)return b.code;if(b.note)return b.note;
+ if(b.acc)return b.acc.map(e=>[e.t,e.s,e.a,e.w,e.c].filter(Boolean).join(' ')).join(' ');return''}
 function sqBody(c,si,li){const k=c.id+':'+si+':'+li;if(k in sqBodyCache)return sqBodyCache[k];
  const L=LS()[k];if(!L)return null;return sqBodyCache[k]=L.blocks.map(sqBlockText).join(' \n').replace(/[`*]/g,'')}
 function sqSnippet(body,ws){
@@ -4124,6 +4139,7 @@ function blk(b){
  if(b.code)return `<div class="cb"><button onclick="cpy(this)">Copy</button><pre>${esc(b.code)}</pre></div>`;
  if(b.svg)return `<div class="dg">${b.svg}</div>`;
  if(b.note)return `<div class="nt">${fx(b.note)}</div>`;
+ if(b.acc)return `<div class="accg">${b.acc.map(e=>`<details class="acc"><summary><span class="at">${fx(e.t)}</span>${e.s?`<span class="as">${fx(e.s)}</span>`:''}</summary><div class="ab"><p>${fx(e.a)}</p>${e.w?`<p class="aw"><b>Why it matters:</b> ${fx(e.w)}</p>`:''}${e.c?`<div class="accl">Check it</div>`+blk({code:e.c}):''}${e.see?`<p class="rsee"><a onclick="go('#/c/${window.QCUR||'pg'}/${e.see[0]}/${e.see[1]}')">Lesson: ${esc(e.see[2])} \u25B8</a></p>`:''}</div></details>`).join('')}</div>`;
  return ''}
 function cpy(b){const t=b.nextElementSibling.textContent;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{b.textContent='Copied'},()=>{b.textContent='Select & copy'});setTimeout(()=>b.textContent='Copy',1500)}
 function adj(c,si,li,d){
@@ -4264,8 +4280,11 @@ function refFilter(q){
  q=q.trim().toLowerCase();let hit=0;
  document.querySelectorAll('#refbody .tw tbody tr').forEach(r=>{const m=!q||r.textContent.toLowerCase().includes(q);r.style.display=m?'':'none';if(m)hit++});
  document.querySelectorAll('#refbody .tw').forEach(t=>{const any=[...t.querySelectorAll('tbody tr')].some(r=>r.style.display!=='none');t.style.display=any?'':'none'});
- document.querySelectorAll('#refbody h4').forEach(h=>{const nx=h.nextElementSibling;h.style.display=(nx&&nx.classList.contains('tw')&&nx.style.display==='none')?'none':''});
+ document.querySelectorAll('#refbody details.acc').forEach(d=>{const m=!q||d.textContent.toLowerCase().includes(q);d.style.display=m?'':'none';if(q)d.open=m;else d.open=false;if(m)hit++});
+ document.querySelectorAll('#refbody .accg').forEach(g=>{g.style.display=[...g.querySelectorAll('details.acc')].some(d=>d.style.display!=='none')?'':'none'});
+ document.querySelectorAll('#refbody h4').forEach(h=>{const nx=h.nextElementSibling;h.style.display=(nx&&(nx.classList.contains('tw')||nx.classList.contains('accg'))&&nx.style.display==='none')?'none':''});
  const n=document.getElementById('rnone');if(n)n.style.display=(q&&!hit)?'block':'none'}
+function refToggleAll(open){document.querySelectorAll('#refbody details.acc').forEach(d=>{if(d.style.display!=='none')d.open=open})}
 function vRef(c,pi){
  const R=qrefOf(c);
  const crumbs=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›${par(c)}<a onclick="go('#/c/${c.id}')">${c.name}</a>›<span>Quick reference</span></div>`;
@@ -4276,9 +4295,11 @@ function vRef(c,pi){
  const subSel=sibs.length<2?'':lst('Sub-course',c.name,sibs.map(x=>[x.name,`refSub('${x.id}')`,x.id===c.id]));
  const pgSel=lst('Page',R.pages[n].t,R.pages.map((p,i)=>[p.t,`go('#/c/${c.id}/ref/${i}')`,i===n]));
  const tabs=subSel+pgSel;
- const p=R.pages[n];
+ const p=R.pages[n];window.QCUR=c.id;
+ const hasAcc=p.b.some(b=>b.acc);
  return crumbs+`<h1>${esc(p.t)}</h1><p class="sub">${esc(p.d)}</p>${tabs}
   <input class="rsearch" type="search" placeholder="Filter this page, for example ${esc(R.hint||'wal or autovacuum')}" oninput="refFilter(this.value)" aria-label="Filter rows">
+  ${hasAcc?`<p class="rsee"><a onclick="refToggleAll(true)">Expand all</a><a onclick="refToggleAll(false)">Collapse all</a></p>`:''}
   ${(p.see&&p.see.length)?`<p class="rsee">Learn more: ${p.see.map(s=>`<a onclick="go('#/c/${c.id}/${s[0]}/${s[1]}')">${esc(s[2])}</a>`).join('')}</p>`:''}
   <div id="refbody">${p.b.map(blk).join('')}<p class="rnone" id="rnone">No rows match.</p></div>
   <div class="pn">${n>0?`<button class="btn ghost" onclick="go('#/c/${c.id}/ref/${n-1}')">◂ ${esc(R.pages[n-1].t)}</button>`:`<button class="btn ghost" onclick="go('#/c/${c.id}')">◂ Back to course</button>`}${n<R.pages.length-1?`<button class="btn" onclick="go('#/c/${c.id}/ref/${n+1}')">${esc(R.pages[n+1].t)} ▸</button>`:`<button class="btn" onclick="go('#/c/${c.id}')">Back to course</button>`}</div>`}

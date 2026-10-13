@@ -5,6 +5,231 @@
 window.QREF=window.QREF||{};
 window.QREF.pg={title:'PostgreSQL Quick Reference',blurb:'Processes, files, locations, logs, parameters, views, tools and fixes on one page each. Use the search box to filter any page.',pages:[
 
+/* 0 ---------------------------------------------------------------- key concepts */
+{t:'Key concepts',d:'The ideas every DBA should be able to explain, grouped by area. Tap a concept to open it.',see:[],b:[
+{p:'Each concept opens to a short explanation, why it matters in day-to-day work, one query or command to check it, and a link to the lesson that teaches it in full. Use the filter box to find a concept by any word in it.'},
+
+{h:'Architecture'},
+{acc:[
+{t:'Process-per-connection',s:'One operating-system process serves each client.',
+ a:'The postmaster accepts a connection and forks a dedicated **backend** for it. Background processes (checkpointer, WAL writer, autovacuum) run beside the backends and share memory with them.',
+ w:'Every connection costs memory and scheduling time. Thousands of idle connections hurt, so put a pooler such as PgBouncer in front.',
+ c:`SELECT backend_type, count(*) FROM pg_stat_activity GROUP BY 1 ORDER BY 2 DESC;`,see:[2,1,'Backend process']},
+{t:'Shared buffers and the OS cache',s:'PostgreSQL has its own page cache, and the kernel keeps another.',
+ a:'Tables and indexes are read in 8 KB pages into `shared_buffers`. The operating system caches the same files too, so a page may exist twice. `effective_cache_size` only tells the planner how much caching to expect; it allocates nothing.',
+ w:'`shared_buffers` is usually about a quarter of RAM. The cache hit ratio tells you whether the working set fits.',
+ c:`SELECT round(100.0 * blks_hit / nullif(blks_hit + blks_read, 0), 2) AS hit_pct
+FROM pg_stat_database WHERE datname = current_database();`,see:[2,3,'Memory']},
+{t:'Cluster, database, schema',s:'The object hierarchy, and what is shared at each level.',
+ a:'A **cluster** is one data directory with one port and one WAL stream. It holds many **databases**, each isolated; a connection belongs to one database. A **schema** is a namespace inside a database. Roles and tablespaces belong to the whole cluster.',
+ w:'"Cluster" is not a group of servers. A role you create is visible in every database, but its privileges are granted per object.',
+ c:`SHOW data_directory;
+SELECT datname FROM pg_database;
+SELECT nspname FROM pg_namespace WHERE nspname !~ '^pg_';`,see:[4,3,'Cluster hierarchy']},
+{t:'Template databases',s:'The models that CREATE DATABASE copies.',
+ a:'`template1` is the editable default model: whatever you add to it appears in every new database. `template0` is a pristine copy that nobody may connect to; use it to create a database with a different encoding or locale.',
+ w:'Encoding and locale are fixed when a database is created. Keep `template1` clean and use a named custom template for standard objects.',
+ c:`SELECT datname, datistemplate, datallowconn FROM pg_database;`,see:[4,1,'DB creation and templates']}
+]},
+
+{h:'Storage and MVCC'},
+{acc:[
+{t:'MVCC',s:'Readers do not block writers.',
+ a:'An `UPDATE` does not change a row in place: it writes a **new row version** and keeps the old one until no snapshot needs it. Each transaction sees a consistent snapshot of the data as it was when the transaction (or statement) began.',
+ w:'Table growth, vacuum, long transactions, index-only scans and replication conflicts all follow from this one design choice.',
+ c:`SELECT ctid, xmin, xmax, * FROM orders LIMIT 5;   -- row version identifiers`,see:[2,8,'MVCC internals']},
+{t:'Dead tuples and bloat',s:'Space held by row versions nobody can see any more.',
+ a:'Old versions become **dead tuples** once no transaction needs them. Until vacuum reclaims the space, tables and indexes keep growing. That extra, unused space is **bloat**.',
+ w:'Bloat slows scans, wastes disk and pollutes the cache. A very high dead-tuple count usually means vacuum is blocked or too slow.',
+ c:`SELECT relname, n_live_tup, n_dead_tup, last_autovacuum
+FROM pg_stat_user_tables ORDER BY n_dead_tup DESC LIMIT 5;`,see:[4,9,'Table storage and bloat']},
+{t:'VACUUM and autovacuum',s:'Cleanup, statistics and freezing, mostly automatic.',
+ a:'`VACUUM` makes dead space reusable, updates the visibility and free space maps and freezes old rows. **Autovacuum** runs it by itself when a table crosses a threshold: `autovacuum_vacuum_threshold` + `autovacuum_vacuum_scale_factor` x rows (50 + 0.2 by default).',
+ w:'The default scale factor is far too lazy for very large tables, so tune it per table. Plain `VACUUM` does not shrink the file; `VACUUM FULL` does but locks the table.',
+ c:`SELECT pid, relid::regclass, phase, heap_blks_scanned, heap_blks_total FROM pg_stat_progress_vacuum;`,see:[10,1,'Autovacuum and VACUUM']},
+{t:'Transaction ID wraparound',s:'32-bit transaction ids must be frozen.',
+ a:'Transaction ids are 32-bit numbers compared in a circle, so a row older than about 2 billion transactions would look like it is from the future. **Freezing** marks old rows as visible to everyone. Anti-wraparound autovacuum is forced at `autovacuum_freeze_max_age` (200 million).',
+ w:'If freezing is blocked long enough, PostgreSQL stops accepting writes to protect the data. Watch `age(datfrozenxid)` and alert early.',
+ c:`SELECT datname, age(datfrozenxid) AS xid_age FROM pg_database ORDER BY 2 DESC;`,see:[10,1,'Autovacuum and VACUUM']},
+{t:'HOT updates and fillfactor',s:'Updates that leave the indexes alone.',
+ a:'If an update changes no indexed column and the page has free room, the new row version stays in the same page (a **heap-only tuple**), so no index entries are added. `fillfactor` below 100 leaves that room.',
+ w:'Lowering `fillfactor` (for example to 85) on update-heavy tables reduces index bloat and write work.',
+ c:`SELECT relname, n_tup_upd, n_tup_hot_upd FROM pg_stat_user_tables ORDER BY n_tup_upd DESC LIMIT 5;`,see:[4,9,'Table storage and bloat']},
+{t:'TOAST',s:'Large values are stored out of line.',
+ a:'A row must fit in an 8 KB page, so values over about 2 KB are compressed or moved to a separate **TOAST** table and replaced by a pointer. This is automatic.',
+ w:'Wide text or `jsonb` columns make `SELECT *` expensive and add to the table size. `pg_total_relation_size` includes TOAST; `pg_relation_size` does not.',
+ c:`SELECT pg_size_pretty(pg_relation_size('orders')) AS heap,
+       pg_size_pretty(pg_table_size('orders')) AS with_toast,
+       pg_size_pretty(pg_total_relation_size('orders')) AS with_indexes;`,see:[2,6,'PGDATA layout']}
+]},
+
+{h:'WAL and recovery'},
+{acc:[
+{t:'Write-ahead log (WAL)',s:'Record the change in the log first, write the data page later.',
+ a:'Every change is described in a WAL record that must reach disk before the changed data page does. Commit only waits for the sequential WAL flush, not for the scattered data-file writes.',
+ w:'One mechanism gives durability, crash recovery, point-in-time recovery and replication. A full WAL volume stops the database.',
+ c:`SELECT pg_current_wal_lsn(), pg_walfile_name(pg_current_wal_lsn());`,see:[2,4,'WAL']},
+{t:'Checkpoint',s:'The point where the data files catch up with the log.',
+ a:'The checkpointer writes all dirty buffers to the data files and records a checkpoint in WAL. It runs every `checkpoint_timeout` (5 minutes) or when WAL reaches `max_wal_size`.',
+ w:'Frequent forced checkpoints cause I/O spikes. Longer intervals smooth I/O but lengthen crash recovery.',
+ c:`SELECT num_timed, num_requested, write_time, sync_time FROM pg_stat_checkpointer;`,see:[5,6,'WAL and checkpoint parameters']},
+{t:'Crash recovery',s:'Replay the log from the last checkpoint.',
+ a:'After an unclean shutdown the startup process reads WAL from the last checkpoint and redoes every logged change. Committed work reappears; uncommitted work leaves no effect.',
+ w:'A fast or smart shutdown ends cleanly. An immediate shutdown, `kill -9` or a power cut forces recovery on the next start.',
+ c:`pg_controldata $PGDATA | grep -i "cluster state"`,see:[2,11,'Crash recovery and timelines']},
+{t:'Timelines',s:'Numbered branches of WAL history.',
+ a:'Each promotion or point-in-time recovery starts a new timeline, so the new history cannot be confused with the old one. The timeline id is the first part of every WAL file name, and `.history` files record where branches split.',
+ w:'Timelines matter for PITR targets, `pg_rewind` and rebuilding an old primary after a failover.',
+ c:`pg_controldata $PGDATA | grep -i timeline`,see:[8,11,'PITR and timelines']}
+]},
+
+{h:'Backup and recovery'},
+{acc:[
+{t:'Logical vs physical backup',s:'Objects as SQL, or the files themselves.',
+ a:'`pg_dump` writes the definition and data of one database (plain SQL or an archive) and restores into the same or a newer version. `pg_basebackup` copies the data files of the whole cluster, restores fast and is the base for PITR and standbys, but only to the same major version.',
+ w:'Use both: dumps for selective, portable restores; base backups plus WAL for fast and point-in-time recovery.',
+ c:`pg_dump -Fd -j 4 -f /backup/appdb appdb
+pg_basebackup -D /backup/base -X stream -P`,see:[8,0,'Backup and restore']},
+{t:'Point-in-time recovery (PITR)',s:'Restore a base backup, replay WAL to a chosen moment.',
+ a:'Take a base backup, archive every WAL segment, and later replay the archive up to a time, an LSN, a transaction or a named restore point. Recovery needs `recovery.signal`, a `restore_command` and a `recovery_target_*` setting.',
+ w:'It is the only way to return to the moment before a mistaken `DELETE` or `DROP`. Archiving must be running before the mistake.',
+ c:`SHOW archive_mode;
+SELECT archived_count, failed_count, last_archived_wal FROM pg_stat_archiver;`,see:[8,11,'Point-in-time recovery']},
+{t:'RPO and RTO',s:'How much data you may lose, and how long you may be down.',
+ a:'**RPO** (recovery point objective) is the data-loss target. **RTO** (recovery time objective) is the downtime target. A nightly dump gives an RPO up to a day; WAL archiving brings it to minutes; synchronous replication to about zero.',
+ w:'The two numbers decide the method, the frequency, the retention and the cost. A backup that has never been restored is not yet a strategy.',
+ c:`-- no query: write the targets down, then test a restore against them`,see:[8,8,'Backup strategy']},
+{t:'Incremental backup (17 and later)',s:'Copy only the blocks that changed.',
+ a:'With `summarize_wal` on, the server keeps WAL summaries. `pg_basebackup --incremental` then sends only changed blocks, and `pg_combinebackup` joins a chain into a normal full backup. Every backup has a manifest that `pg_verifybackup` checks.',
+ w:'Daily backups of large clusters become much smaller and faster.',
+ c:`SHOW summarize_wal;`,see:[8,12,'Incremental backups']}
+]},
+
+{h:'Replication and high availability'},
+{acc:[
+{t:'Physical vs logical replication',s:'A byte-for-byte copy, or row changes of chosen tables.',
+ a:'**Physical** (streaming) replication ships WAL, and the standby is an identical copy of the whole cluster at the same major version. **Logical** replication decodes row changes of selected tables into publish and subscribe, and can cross versions.',
+ w:'Use physical for high availability and read replicas, logical for selective copies and near-zero-downtime upgrades. A replica is never a backup.',
+ c:`SELECT application_name, state, sync_state FROM pg_stat_replication;
+SELECT * FROM pg_publication;`,see:[9,1,'Replication theory']},
+{t:'Replication slots',s:'The primary keeps WAL until the consumer confirms it.',
+ a:'A slot remembers how far a standby or subscriber has read, so the primary does not recycle WAL it still needs. `max_slot_wal_keep_size` limits how much an idle slot may hold.',
+ w:'An abandoned slot is the most common cause of a full `pg_wal` disk. Monitor `wal_status` and drop slots nobody uses.',
+ c:`SELECT slot_name, slot_type, active, wal_status,
+       pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS retained
+FROM pg_replication_slots;`,see:[9,7,'Replication slots']},
+{t:'Hot standby',s:'A standby that answers read-only queries.',
+ a:'With `hot_standby = on` the standby serves reads while it replays WAL. A replayed record can conflict with a running query; replay then waits up to `max_standby_streaming_delay` before the query is cancelled.',
+ w:'`hot_standby_feedback` reduces cancellations but lets a long standby query keep dead rows alive on the primary.',
+ c:`SELECT pg_is_in_recovery();
+SELECT datname, confl_snapshot, confl_lock FROM pg_stat_database_conflicts;`,see:[9,8,'Hot standby']},
+{t:'Synchronous commit',s:'Trade commit latency for durability.',
+ a:'By default replication is asynchronous: a commit is acknowledged once WAL is on the primary disk. With `synchronous_standby_names` set, commits wait for a standby, and `synchronous_commit` chooses how far (`local`, `remote_write`, `on`, `remote_apply`).',
+ w:'Asynchronous replication can lose the last few transactions on failover. Synchronous replication closes that gap at the cost of latency and a hard dependency on the standby.',
+ c:`SHOW synchronous_commit;
+SELECT application_name, sync_state FROM pg_stat_replication;`,see:[9,9,'Synchronous replication']},
+{t:'Switchover vs failover',s:'Planned role change, or emergency promotion.',
+ a:'A **switchover** is planned: clean shutdown of the old primary, no data loss, and it can rejoin as a standby almost at once. A **failover** is unplanned: a standby is promoted and unreplicated transactions may be lost. Promotion starts a new timeline.',
+ w:'PostgreSQL gives the building blocks; a failover manager (Patroni, repmgr) or a runbook decides when to use them.',
+ c:`SELECT pg_promote();   -- or: pg_ctl promote -D $PGDATA`,see:[9,10,'Failover and switchover']},
+{t:'Split brain and fencing',s:'Two primaries accepting writes.',
+ a:'If the old primary is still reachable after a failover, both servers may accept writes and the data diverges beyond automatic repair. **Fencing** (STONITH) makes sure the old primary cannot write: power it off, cut its network or stop the VM.',
+ w:'Fence first, then promote. Rebuild or `pg_rewind` the old primary before it rejoins.',
+ c:`SELECT pg_is_in_recovery();   -- run on both servers: only one may say false`,see:[9,15,'Unplanned failover and fencing']}
+]},
+
+{h:'Security'},
+{acc:[
+{t:'Roles',s:'One concept for users and groups.',
+ a:'A role can own objects and hold privileges. A "user" is a role with `LOGIN`; a "group" is a role that others are members of. Roles are cluster-wide, and names starting with `pg_` are reserved for predefined roles.',
+ w:'Applications should not use superusers. Give each duty a role with only the privileges it needs.',
+ c:`SELECT rolname, rolsuper, rolcanlogin, rolvaliduntil FROM pg_roles WHERE rolname !~ '^pg_';`,see:[6,0,'User management introduction']},
+{t:'pg_hba.conf',s:'Who may connect from where, and how they prove it.',
+ a:'Each line is `type database user address method`. Rules are checked from top to bottom and the **first match wins**. Methods include `scram-sha-256`, `peer`, `cert`, `reject` and the dangerous `trust`.',
+ w:'A missing or wrong rule is the most common cause of "no pg_hba.conf entry". Check the file with `pg_hba_file_rules` before you reload.',
+ c:`SELECT line_number, type, database, user_name, address, auth_method, error FROM pg_hba_file_rules;`,see:[6,1,'Authentication and authorization']},
+{t:'SCRAM-SHA-256',s:'Password authentication that never sends the password.',
+ a:'The server stores a salted, iterated verifier and the client proves it knows the password through a challenge. It is the default for new passwords since version 14; `md5` is deprecated in 18.',
+ w:'A stored hash cannot be converted, so each user must set the password again when you migrate.',
+ c:`SHOW password_encryption;
+SELECT rolname FROM pg_authid WHERE rolpassword LIKE 'md5%';`,see:[6,9,'Passwords, SCRAM and TLS']},
+{t:'The PUBLIC role',s:'A pseudo-role that contains every role, now and in the future.',
+ a:'Privileges granted to `PUBLIC` apply to everyone. A new database gives `PUBLIC` the right to connect and create temporary tables, and new functions are executable by everyone.',
+ w:'Revoke what you do not want shared, then grant to named roles. Since version 15 only the database owner can create objects in the `public` schema by default.',
+ c:`SELECT datname, datacl FROM pg_database;`,see:[6,2,'Public role']},
+{t:'Row-level security',s:'Per-row access rules inside one table.',
+ a:'Once enabled on a table, every access must be allowed by a **policy**. `USING` filters existing rows; `WITH CHECK` validates new or changed ones. With no policy, nobody sees any row. Owners and superusers bypass it unless `FORCE ROW LEVEL SECURITY` is set.',
+ w:'It is the standard tool for multi-tenant tables. With connection pooling set the tenant with `SET LOCAL` inside a transaction.',
+ c:`SELECT schemaname, tablename, policyname, cmd FROM pg_policies;`,see:[6,6,'Row level security']},
+{t:'Ownership and default privileges',s:'Who owns objects, and what future objects receive.',
+ a:'Each object has one owner, who can alter and drop it and grant access. `GRANT ... ON ALL TABLES` only affects existing tables; `ALTER DEFAULT PRIVILEGES` decides what future tables receive.',
+ w:'Own objects with a `NOLOGIN` role and let applications hold only DML privileges, so a compromised app cannot drop or grant.',
+ c:`SELECT defaclrole::regrole, defaclobjtype, defaclacl FROM pg_default_acl;`,see:[6,8,'Ownership and default privileges']}
+]},
+
+{h:'Performance'},
+{acc:[
+{t:'Planner and statistics',s:'The cost-based optimizer chooses a plan from estimates.',
+ a:'For each query the planner compares possible plans and picks the cheapest according to table statistics gathered by `ANALYZE` and cost settings such as `random_page_cost`. If the row estimates are wrong, the plan is wrong.',
+ w:'Most "sudden slow query" cases are stale statistics or a changed plan. Compare estimated and actual rows in `EXPLAIN ANALYZE`.',
+ c:`SELECT attname, n_distinct, null_frac FROM pg_stats WHERE tablename = 'orders';`,see:[2,9,'Query planner and EXPLAIN']},
+{t:'EXPLAIN',s:'Shows the plan, and with ANALYZE the real timings.',
+ a:'`EXPLAIN` prints the plan the planner chose. `EXPLAIN (ANALYZE, BUFFERS)` runs the statement and adds actual rows, time and buffer use. Look for large gaps between estimated and actual rows, sequential scans on big tables and sorts that spill to disk.',
+ w:'`ANALYZE` really executes the statement, so wrap `INSERT`, `UPDATE` and `DELETE` in a transaction you roll back.',
+ c:`EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM orders WHERE customer_id = 42;`,see:[10,2,'Performance tuning workflow']},
+{t:'Index types',s:'Choose the structure that fits the query.',
+ a:'`btree` is the default and handles equality, ranges and sorting. `gin` suits arrays, `jsonb` and text search, `gist` geometry and ranges, `brin` huge naturally ordered tables, `hash` equality only. Partial, expression and covering indexes narrow or widen what an index serves.',
+ w:'Every index costs writes and space. Build with `CONCURRENTLY` on busy tables and remove unused ones.',
+ c:`SELECT indexrelname, idx_scan FROM pg_stat_user_indexes WHERE relname = 'orders';`,see:[10,0,'Indexing']},
+{t:'Isolation levels, locks and deadlocks',s:'How concurrent transactions see and block each other.',
+ a:'The default level is `READ COMMITTED`: each statement sees a fresh snapshot. `REPEATABLE READ` keeps one snapshot per transaction, and `SERIALIZABLE` adds conflict detection and can fail with a serialization error. Writers on the same row wait for each other; two transactions waiting in a circle are a **deadlock**, and one is cancelled.',
+ w:'Keep transactions short, lock rows in the same order and retry on `40001` and `40P01`.',
+ c:`SHOW default_transaction_isolation;
+SELECT pid, pg_blocking_pids(pid) AS blocked_by FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid)) > 0;`,see:[2,10,'Transactions, locking and deadlocks']},
+{t:'work_mem',s:'Memory for each sort or hash, not for each connection.',
+ a:'`work_mem` (4 MB by default) is granted per sort or hash operation in a query. A query with several such steps on many connections can use many times the value; when it does not fit, the operation spills to temporary files.',
+ w:'Keep the global value modest and raise it per role or session for reporting work. `Sort Method: external merge  Disk` in a plan means it spilled.',
+ c:`SHOW work_mem;
+SELECT datname, temp_files, pg_size_pretty(temp_bytes) FROM pg_stat_database;`,see:[5,5,'Memory tuning parameters']},
+{t:'Connection pooling',s:'Many clients, few server connections.',
+ a:'Each connection is a process, so a pooler such as PgBouncer sits in front and reuses a small number of server connections. In **transaction** mode a server connection returns to the pool at the end of each transaction.',
+ w:'Session state does not survive between transactions: use `SET LOCAL`, avoid session advisory locks and temporary tables.',
+ c:`SELECT count(*) AS used, current_setting('max_connections')::int AS max FROM pg_stat_activity;`,see:[10,3,'Connection pooling with PgBouncer']},
+{t:'Partitioning',s:'Split one big table into smaller physical pieces.',
+ a:'Declarative partitioning (range, list or hash) routes each row to a partition by the partition key. Queries that filter on the bare key read only the matching partitions (**pruning**), and old data is removed by detaching or dropping a partition.',
+ w:'Primary keys must include the partition key. Keep to tens or hundreds of partitions, and run `ANALYZE` on the parent yourself.',
+ c:`SELECT * FROM pg_partition_tree('orders');`,see:[10,4,'Table partitioning']}
+]},
+
+{h:'Operations'},
+{acc:[
+{t:'Reload vs restart',s:'The parameter context decides.',
+ a:'Each parameter has a **context**. `postmaster` parameters (for example `shared_buffers`, `max_connections`, `wal_level`) need a restart. `sighup` parameters and `pg_hba.conf` need only a reload. `user` and `superuser` parameters can also be set per session.',
+ w:'A needless restart drops every connection; a missed restart leaves the old value in force. `pending_restart` shows what is waiting.',
+ c:`SELECT name, setting, context, pending_restart FROM pg_settings WHERE pending_restart;
+SELECT pg_reload_conf();`,see:[5,3,'Parameter reload or restart']},
+{t:'Parameter precedence',s:'The most specific, latest setting wins.',
+ a:'From lowest to highest: built-in default, `postgresql.conf`, `postgresql.auto.conf` (from `ALTER SYSTEM`), command line, database setting, role setting, role-in-database, connection options and finally session `SET`.',
+ w:'This explains "I changed the file but `SHOW` still shows the old value". `pg_settings.source` and `pg_file_settings` show where a value came from.',
+ c:`SELECT name, setting, source, sourcefile FROM pg_settings WHERE name = 'work_mem';`,see:[5,9,'Parameter precedence']},
+{t:'Extensions',s:'Packaged add-ons installed per database.',
+ a:'An extension bundles SQL objects (and often a library) and is installed with `CREATE EXTENSION`, once per database. Files must exist on the server for that major version. Some, such as `pg_stat_statements`, also need `shared_preload_libraries` and a restart.',
+ w:'Check extension availability before an upgrade, because the new version needs its own libraries.',
+ c:`SELECT extname, extversion FROM pg_extension;
+SELECT name, default_version FROM pg_available_extensions ORDER BY 1 LIMIT 10;`,see:[4,7,'Contrib modules']},
+{t:'Minor vs major upgrade',s:'Replace binaries, or migrate the data.',
+ a:'A **minor** release (18.1 to 18.2) changes only code: install the new binaries and restart. A **major** release (17 to 18) can change the catalog format, so the old data directory cannot simply start: use `pg_upgrade`, dump and restore, or logical replication.',
+ w:'Apply minor releases promptly (security and corruption fixes). Plan major upgrades before a version reaches end of life, which is five years after its release.',
+ c:`SHOW server_version;`,see:[9,3,'Upgrade strategy']},
+{t:'pg_upgrade',s:'In-place major upgrade that reuses the user data files.',
+ a:'`pg_upgrade` creates the new catalogs and reuses (or copies, or hard-links with `--link`) the old data files, so even large databases upgrade in minutes. Run `--check` first, and refresh planner statistics afterwards.',
+ w:'The new cluster needs its own binaries, matching extension libraries and compatible settings. Take a verified backup before you start.',
+ c:`pg_upgrade --check -b /usr/pgsql-17/bin -B /usr/pgsql-18/bin -d /var/lib/pgsql/17/data -D /var/lib/pgsql/18/data`,see:[9,0,'Upgrade from 17 to 18']}
+]}
+]},
+
+
+
 /* 1 ---------------------------------------------------------------- processes */
 {t:'Server processes',d:'Every process in a running cluster, how it appears in pg_stat_activity and where to look when it misbehaves.',see:[[2,0,'Postmaster'],[2,2,'Background processes']],b:[
 {t:[['Process','`backend_type`','Job','Look here'],
