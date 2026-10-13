@@ -312,9 +312,9 @@ src:[['Oracle Database 19c documentation',D],['Database Error Messages',O.ERR],[
 
 /* ---------- 7: Sub-course map ---------- */
 L['ora-core:0:7']={blocks:[
-{p:'Oracle is too large for one course. LearnSphere splits it into **nine sub-courses**. This one, **Core DBA**, comes first and teaches what every other course assumes.'},
+{p:'Oracle is too large for one course. LearnSphere splits it into **ten sub-courses**. This one, **Core DBA**, comes first and teaches what every other course assumes.'},
 {svg:subs},
-{h:'The nine sub-courses'},
+{h:'The ten sub-courses'},
 {t:[['Sub-course','You learn','Take it when'],
 ['**Core DBA**','Install, architecture, storage, users, data movement, troubleshooting','First, always'],
 ['**Backup, Recovery & Flashback**','RMAN, restore, point-in-time recovery, Flashback','Right after Core. Most important for production.'],
@@ -324,7 +324,8 @@ L['ora-core:0:7']={blocks:[
 ['**RAC & ASM**','Clusters, Grid Infrastructure, Cache Fusion','After Core and Backup'],
 ['**Data Guard**','Standby databases, failover, switchover','After Core and Backup'],
 ['**GoldenGate**','Real-time replication between databases','After Core, for migrations and integration'],
-['**Exadata**','Engineered system, smart scan, storage cells','When your site runs Exadata']]},
+['**Exadata**','Engineered system, smart scan, storage cells','When your site runs Exadata'],
+['**Oracle in the Cloud**','OCI, Autonomous, RDS, migration, DR, cost','When databases move to or live in a cloud']]},
 {h:'How the high-availability pieces fit'},
 {t:[['Technology','Protects against','How'],
 ['**RAC**','Server or instance failure','Many instances share one database'],

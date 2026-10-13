@@ -2234,7 +2234,7 @@ sections:[
 ['Open Source Contribution and Staying Current','0:00','Follow release notes, advisories and communities. (Any)',5],
 ['Moving On: SRE, Platform Engineering and Security Paths','0:00','Next steps after this course. (Any)',6]]}
 ]},
-{id:'ora',name:'Oracle',tag:'OR',color:'var(--ora)',level:'9 sub-courses · 19c baseline with 26ai',blurb:'Core DBA, backup and recovery, tuning, security, upgrades, RAC, Exadata, Data Guard and GoldenGate, each a full course.',outcomes:[],sections:[],start:'Start with Oracle Core DBA; the others build on it.',soon:{ico:'CL',name:'Oracle in the Cloud',blurb:'OCI, Autonomous Database, multicloud and cloud migration and DR.'},subs:["ora-core", "ora-bkp", "ora-perf", "ora-sec", "ora-upg", "ora-rac", "ora-exa", "ora-dg", "ora-gg"]},
+{id:'ora',name:'Oracle',tag:'OR',color:'var(--ora)',level:'10 sub-courses · 19c baseline with 26ai',blurb:'Core DBA, backup and recovery, tuning, security, upgrades, RAC, Exadata, Data Guard and GoldenGate, each a full course.',outcomes:[],sections:[],start:'Start with Oracle Core DBA; the others build on it.',subs:["ora-core", "ora-bkp", "ora-perf", "ora-sec", "ora-upg", "ora-rac", "ora-exa", "ora-dg", "ora-gg", "ora-cloud"]},
 {id:"ora-core",parent:'ora',name:"Oracle Core DBA",tag:"OC",color:'var(--ora)',level:'Oracle sub-course',blurb:"Install, configure, secure, move data and operate Oracle Database (19c baseline, 26ai differences marked).",outcomes:["Architecture & multitenant", "Install & create CDBs", "Storage, redo & archiving", "Users & privileges", "Data Pump & automation", "Troubleshooting"],
 sections:[{t:"Introduction & Oracle Foundations",q:"Introduction Quiz",cka:"Foundations · supports every Oracle sub-course",l:[["Course Overview, Prerequisites and How Lectures Are Tagged",'8:00',''],
 ["What Oracle Database Is: Engine, Editions and the Converged Database",'8:00',''],
@@ -3364,6 +3364,51 @@ sections:[{t:"GoldenGate Foundations & Use Cases",q:"GoldenGate Foundations Quiz
 ["GoldenGate Game Day",'0:00','',1],
 ["Cost and Licensing Review",'0:00','',2],
 ["Roadmap and Staying Current",'0:00','',3]]}]},
+{id:'ora-cloud',parent:'ora',name:'Oracle in the Cloud',tag:'CL',color:'var(--ora)',level:'Oracle sub-course',blurb:'Run Oracle Database in OCI, Autonomous Database and Amazon RDS: choose a service, connect, migrate, protect, secure and control cost.',outcomes:['Service choice','Responsibility and licensing','Autonomous Database','RDS for Oracle','Migration and DR','Security and cost'],
+sections:[{t:'Cloud Foundations for Oracle Databases',q:'Cloud Foundations Quiz',cka:'Foundations · Cloud',l:[['Why Oracle Databases Move to the Cloud: Models and Trade-offs','8:00','The four ways to run Oracle in the cloud (VM you manage, managed database service, engineered service, autonomous service), what you gain and give up with each, and how to decide.'],
+['The Shared Responsibility Model for Oracle Databases','8:00','Who is responsible for what at each layer, from hardware to data, across a self-managed VM, a managed service, an engineered service and Autonomous Database.'],
+['The Oracle Database Cloud Landscape: OCI, Autonomous, Exadata, Multicloud and Amazon RDS','8:00','A map of every common way to run Oracle in the cloud, what each service is, where it runs, how much access you get and what it fits.'],
+['Licensing in the Cloud: License Included, BYOL and Support Rules','8:00','How Oracle licensing works in the cloud: license-included vs bring your own license, which options come with which service, and the rules that catch teams out.'],
+['Cloud Building Blocks: Regions, Compartments, Networks and Identity','8:00','The cloud concepts a DBA must know before creating a database: regions and availability, compartments and tenancy, virtual networks, identity and access, object storage and keys, with a comparison of OCI, AWS and Azure terms.'],
+['Practical: Choose a Service for Three Workloads','8:00','Apply the models and the landscape to three realistic workloads and justify the choice against requirements.'],
+['Cloud Cost Basics: Compute, Storage, I/O and Data Transfer','0:00','What an Oracle database costs in the cloud: compute, storage, backups, I/O and network transfer, and the habits that keep the bill predictable.',1]]},
+{t:'OCI Base Database and Exadata Database Service',q:'OCI Database Services Quiz',cka:'Services · OCI',l:[['Base Database Architecture: DB Systems, Shapes and Storage','8:00','The structure of an OCI Base Database service: the DB system, VM and bare metal shapes, storage management, database homes, and how clients reach it.'],
+['Creating and Connecting to a DB System','8:00','The decisions and steps to create a Base Database DB system and connect to it, with the OCI CLI example and the first checks.'],
+['Backups, Restore and Recovery with Object Storage','8:00','How automatic and manual backups work on Base Database, retention and restore options, and the recovery procedures.'],
+['Patching and Upgrading from the Console and CLI','8:00','How OCI patches the Grid Infrastructure and database homes, the precheck and apply sequence, out-of-place patching and version upgrades.'],
+['Scaling, Data Guard and High Availability','8:00','Scaling compute and storage of a DB system, RAC on VM, and Data Guard associations with switchover and failover from the console or CLI.'],
+['Exadata Database Service in the Cloud','8:00','What Exadata Database Service is, its resource model (infrastructure, VM cluster, databases), who manages what and how it differs from Base Database.'],
+['Practical: Create, Back Up and Fail Over a DB System','8:00','A guided exercise that builds a DB system, takes and restores a backup, and performs a Data Guard switchover.'],
+['Automation with the OCI CLI and Terraform','0:00','Creating and changing database resources as code: the OCI CLI for scripts and the Terraform provider for repeatable environments.',1]]},
+{t:'Autonomous Database',q:'Autonomous Database Quiz',cka:'Services · Autonomous',l:[['What Autonomous Means: Self-Driving, Self-Securing, Self-Repairing','8:00','What Autonomous Database automates, how it is built on Exadata, and the work that is still yours.'],
+['Workload Types and Deployment Options: Serverless and Dedicated','8:00','The Autonomous Database workload types, the serverless and dedicated infrastructure options, compute and storage units, and the free tier.'],
+['Connecting: Wallets, TLS and Network Access','8:00','How clients connect to Autonomous Database: mutual TLS with a wallet, TLS without a wallet, service names and the network access options.'],
+['Loading and Moving Data with DBMS_CLOUD','8:00','The DBMS_CLOUD package: credentials, loading from Object Storage, external tables, exporting and Data Pump into Autonomous Database.'],
+['Scaling, Consumer Groups and Performance','8:00','Auto scaling and manual scaling of compute and storage, consumer groups and their services, and how to check performance on Autonomous.'],
+['Backups, Clones and Autonomous Data Guard','8:00','Automatic backups and restore, the clone types, and the local and cross-region standby options.'],
+['What You Cannot Do: Restrictions and Differences','8:00','The main restrictions of Autonomous Database compared with a self-managed database, and the Autonomous way to do each task.'],
+['Practical: Create an Autonomous Database and Load Data','8:00','A guided exercise: create an Always Free or small database, connect with a wallet, create a user and load data from Object Storage.'],
+['Autonomous Operations Cheat Sheet: Lifecycle, Monitoring and Common Tasks','0:00','The operations you will repeat on Autonomous: stop and start, scale, clone, monitor, and where to look when something is slow.',1]]},
+{t:'Oracle Database on AWS, Azure and Google Cloud',q:'Other Clouds Quiz',cka:'Services · Multicloud',l:[['Options on Other Clouds: RDS for Oracle, Oracle Database@Hyperscaler and Self-Managed','8:00','Which ways exist to run Oracle on AWS, Azure and Google Cloud, what each one is, and how to choose between them.'],
+['Amazon RDS for Oracle: Architecture and Editions','8:00','How RDS for Oracle is built, which editions and licence models it offers and how it compares with OCI services.'],
+['RDS for Oracle Administration: rdsadmin, Option Groups and Parameters','8:00','The administrative model of RDS for Oracle: the master user, the rdsadmin package, option groups, parameter groups and common tasks.'],
+['RDS for Oracle: Backup, Multi-AZ and Read Replicas','8:00','Automated backups, snapshots and point-in-time restore, Multi-AZ failover, and read replicas (including Active Data Guard).'],
+['Oracle Database@Azure, @AWS and @Google Cloud','8:00','What the multicloud Oracle Database services are, how they are connected and billed, and where they fit.'],
+['RDS Custom and Self-Managed Oracle on Virtual Machines','8:00','When you need more control than a managed service: RDS Custom for Oracle and Oracle on IaaS, and what you take on.'],
+['Practical: Create RDS for Oracle and Import a Schema','8:00','A guided exercise: create an RDS for Oracle instance, connect, and import a schema with Data Pump using S3 integration.']]},
+{t:'Migration and Disaster Recovery',q:'Migration and DR Quiz',cka:'Migration · DR',l:[['Choosing a Migration Method to the Cloud','8:00','How size, allowed downtime, platform and version decide the migration method, with a table of methods and the questions to ask first.'],
+['Data Pump to the Cloud: Base Database, Autonomous and RDS','8:00','How Data Pump is used for each target: file transfer paths, the commands, and the differences in each service.'],
+['Data Guard and ZDM for Low-Downtime Migration','8:00','Using a physical standby for large databases, and how Zero Downtime Migration automates the workflow.'],
+['GoldenGate and DMS for Near-Zero Downtime','8:00','Logical replication for migrations that cannot tolerate hours of downtime, or that change platform, with a fallback.'],
+['Disaster Recovery in the Cloud: Cross-Region and Hybrid','8:00','DR designs for cloud Oracle databases: in-region, cross-region and hybrid, with RPO and RTO per option and a runbook outline.'],
+['Backup Strategy in the Cloud','8:00','A layered backup strategy for cloud databases: automatic backups, long-term copies, cross-region copies, protection from deletion, and restore tests.'],
+['Practical: Plan a Migration and a DR Design','8:00','A planning exercise: choose a method, a timeline and a DR design for a given database, and write the cut-over runbook outline.']]},
+{t:'Security, Operations and Cost',q:'Operations and Cost Quiz',cka:'Operations · Cost',l:[['Security in the Cloud: Identity, Network and Encryption','8:00','The layers of security for a cloud Oracle database: IAM, network isolation, encryption and keys, database security features and audit.'],
+['Monitoring and Diagnostics: Metrics, Logs and Database Management','8:00','The monitoring tools for cloud databases on OCI and AWS, what to alarm on, and how classic diagnostics (AWR, ASH, alert log) still apply.'],
+['Patching, Maintenance and Lifecycle in the Cloud','8:00','How patching works on each service, how to control maintenance windows, and how to test updates before production.'],
+['Automation and Infrastructure as Code','8:00','Using Terraform, the CLIs, resource managers and events to build and change cloud databases in a controlled way.'],
+['Cost Governance and Right-Sizing','8:00','How to keep cloud database cost under control: tagging, budgets, right-sizing, scheduling, licences and reservations.'],
+['Cloud Runbook and Capstone','8:00','A cloud DBA operating checklist, and a capstone project that ties together selection, build, protection, migration and operations.']]}]},
 {id:'mss',name:'Microsoft SQL Server',tag:'MS',color:'var(--mss)',level:'8 sub-courses · 2022 baseline with 2019 and 2025',blurb:'Core DBA, backup and recovery, tuning, security, HA and DR, upgrades, operations and Azure SQL, each a full course.',outcomes:[],sections:[],start:'Start with SQL Server Core DBA; the others build on it.',subs:["mss-core", "mss-bkp", "mss-perf", "mss-sec", "mss-ha", "mss-upg", "mss-ops", "mss-az"]},
 {id:"mss-core",parent:'mss',name:"SQL Server Core DBA",tag:"SC",color:'var(--mss)',level:'SQL Server sub-course',blurb:"Install, configure and operate SQL Server on Windows and Linux (2022 baseline, 2019 and 2025 differences marked).",outcomes:["Architecture", "Install & configure", "Files & transaction log", "Indexes & data types", "Concurrency", "Maintenance"],
 sections:[{t:"Introduction & SQL Server Foundations",q:"Introduction Quiz",cka:"Foundations · SQL Server",l:[["Course Overview, Prerequisites and How Lectures Are Tagged",'8:00',''],
@@ -4254,7 +4299,7 @@ const LAZY={rs:si=>{const n=String(si+1).padStart(2,'0');return['rs-common.js','
  docker:si=>{const n=String(si+1).padStart(2,'0');return['docker-common.js','docker-s'+n+'.js','docker-q'+n+'.js']},
  tf:si=>{const n=String(si+1).padStart(2,'0');return['tf-common.js','tf-s'+n+'.js','tf-q'+n+'.js']},
  'ora-core':si=>{const n=String(si+1).padStart(2,'0');return['ora-common.js','ora-core-s'+n+'.js','ora-core-q'+n+'.js']}};
-for(const sub of['bkp','perf','sec','upg','rac','exa','dg','gg'])LAZY['ora-'+sub]=si=>{const n=String(si+1).padStart(2,'0');return['ora-common.js','ora-'+sub+'-s'+n+'.js','ora-'+sub+'-q'+n+'.js']};
+for(const sub of['bkp','perf','sec','upg','rac','exa','dg','gg','cloud'])LAZY['ora-'+sub]=si=>{const n=String(si+1).padStart(2,'0');return['ora-common.js','ora-'+sub+'-s'+n+'.js','ora-'+sub+'-q'+n+'.js']};
 LAZY.mongo=si=>{const n=String(si+1).padStart(2,'0');return['mongo-common.js','mongo-s'+n+'.js','mongo-q'+n+'.js']};
 LAZY.prom=si=>{const n=String(si+1).padStart(2,'0');return['prom-common.js','prom-s'+n+'.js','prom-q'+n+'.js']};
 LAZY.ansible=si=>{const n=String(si+1).padStart(2,'0');return['ansible-common.js','ansible-s'+n+'.js','ansible-q'+n+'.js']};
@@ -4264,9 +4309,15 @@ function ensure(id,si){const k=id+':'+si;if(_ld[k])return _ld[k];
  const one=f=>_ld[f]||(_ld[f]=new Promise(r=>{const s=document.createElement('script');s.src=f;s.onload=s.onerror=()=>r();document.head.appendChild(s)}));
  return _ld[k]=LAZY[id](si).reduce((p,f)=>p.then(()=>one(f)),Promise.resolve()).then(()=>{_rdy[k]=1})}
 /* Oracle quick references: one data file per sub-course, loaded when the reference is opened (window.QREF['ora-core'] ...) */
-const REFLAZY={};['core','bkp','perf','sec','upg','rac','exa','dg','gg'].forEach(s=>REFLAZY['ora-'+s]='ora-ref-'+s+'.js');
+const REFLAZY={};['core','bkp','perf','sec','upg','rac','exa','dg','gg','cloud'].forEach(s=>REFLAZY['ora-'+s]='ora-ref-'+s+'.js');
 REFLAZY.rs='rs-ref.js';
 REFLAZY.mongo='mongo-ref.js';
+['core','bkp','perf','sec','ha','upg','ops','az'].forEach(s=>REFLAZY['mss-'+s]='mss-ref-'+s+'.js');
+REFLAZY.prom='prom-ref.js';
+REFLAZY.ansible='ansible-ref.js';
+REFLAZY.tf='tf-ref.js';
+REFLAZY.k8s='k8s-ref.js';
+REFLAZY.docker='docker-ref.js';
 function refEnsure(id){const f=REFLAZY[id];if(!f||(window.QREF||{})[id])return Promise.resolve();
  return _ld[f]||(_ld[f]=new Promise(r=>{const s=document.createElement('script');s.src=f;s.onload=s.onerror=()=>r();document.head.appendChild(s)}))}
 /* ---------- QUIZZES (data in pg-quiz.js: window.QUIZZES['<course>:<section>']) ---------- */
