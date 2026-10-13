@@ -4380,18 +4380,28 @@ function bmReset(u){BMST[u]=-1;bmClear(u);
    A map icon or chip opens the map in a window (mapWin). A section lists all of its maps, a lecture only its own.
    The same map can be opened inside the quick reference with #/c/<id>/ref/<page>/<mapIndex>. ---------- */
 const MAPSVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="6" rx="1.5"/><rect x="14" y="14" width="7" height="6" rx="1.5"/><path d="M10 7h4a3 3 0 0 1 3 3v4"/></svg>';
-function mapLinksFor(cid,si,li){
+/* keys of the maps for a lecture (li given) or for a whole section (li null): the section lists every map its lectures link to,
+   in the order the maps are defined, so the list at the top of a section always matches the icons on its rows */
+function mapKeysFor(cid,si,li){
  const M=(window.MAPLINKS||{})[cid];if(!M||!M.m)return[];
- const ks=li==null?(M.s||{})[si]:(M.l||{})[si+':'+li];
- return(ks||[]).map(k=>M.m[k]).filter(Boolean)}
+ if(li!=null)return((M.l||{})[si+':'+li]||[]).filter(k=>M.m[k]);
+ const u=new Set(),pre=si+':';
+ Object.keys(M.l||{}).forEach(k=>{if(k.indexOf(pre)===0)(M.l[k]||[]).forEach(x=>u.add(x))});
+ if(!u.size)((M.s||{})[si]||[]).forEach(x=>u.add(x));
+ return Object.keys(M.m).filter(k=>u.has(k))}
+function mapLinksFor(cid,si,li){const M=(window.MAPLINKS||{})[cid];return M?mapKeysFor(cid,si,li).map(k=>M.m[k]):[]}
+/* how many lectures of a section link to a map (shown in the section's map list) */
+function mapLecCount(cid,si,key){const M=(window.MAPLINKS||{})[cid];if(!M)return 0;const pre=si+':';
+ return Object.keys(M.l||{}).filter(k=>k.indexOf(pre)===0&&(M.l[k]||[]).indexOf(key)>=0).length}
 const mapHref=(cid,m)=>`#/c/${cid}/ref/${m[0]}/${m[1]}`;
 const mapArgs=(cid,si,li)=>`'${cid}',${si},${li==null?'null':li}`;
-const mapBtn=(cid,si,li)=>{const n=mapLinksFor(cid,si,li).length;
- return n?`<button type="button" class="mapic" title="Related maps (${n})" aria-label="Related maps: ${n}" onclick="mapWin(event,${mapArgs(cid,si,li)},0)">${MAPSVG}${n>1?`<i>${n}</i>`:''}</button>`:''};
-const mapRow=(cid,si,li)=>{const ml=mapLinksFor(cid,si,li);if(!ml.length)return'';
- const go1=i=>`mapWin(event,${mapArgs(cid,si,li)},${i})`;
+const mapBtn=(cid,si,li)=>{const ml=mapLinksFor(cid,si,li),n=ml.length;
+ return n?`<button type="button" class="mapic" title="${esc((n>1?n+' related maps: ':'Related map: ')+ml.map(m=>m[2]).join('; '))}" aria-label="Related maps: ${n}" onclick="mapWin(event,${mapArgs(cid,si,li)},0)">${MAPSVG}${n>1?`<i>${n}</i>`:''}</button>`:''};
+const mapRow=(cid,si,li)=>{const keys=mapKeysFor(cid,si,li);if(!keys.length)return'';
+ const M=window.MAPLINKS[cid],ml=keys.map(k=>M.m[k]),go1=i=>`mapWin(event,${mapArgs(cid,si,li)},${i})`;
  if(ml.length===1)return`<div class="maprow"><b>Maps</b><button type="button" class="mapchip" title="${esc(ml[0][3]||'Map')}" onclick="${go1(0)}">${MAPSVG}${esc(ml[0][2])}</button></div>`;
- return`<details class="rlist maplist"><summary><span>Related maps</span><b>${ml.length} maps</b></summary><div class="rl">${ml.map((m,i)=>`<button type="button" title="${esc(m[3]||'Map')}" onclick="this.closest('details').open=false;${go1(i)}">${MAPSVG}<span class="mn">${esc(m[2])}</span><small>${esc(m[3]||'Map')}</small></button>`).join('')}</div></details>`};
+ const note=(k,m)=>{if(li!=null)return esc(m[3]||'Map');const c=mapLecCount(cid,si,k);return esc(m[3]||'Map')+(c>1?' · '+c+' lectures':'')};
+ return`<details class="rlist maplist"><summary><span>Related maps</span><b>${ml.length} maps</b></summary><div class="rl">${ml.map((m,i)=>`<button type="button" title="${esc(m[3]||'Map')}" onclick="this.closest('details').open=false;${go1(i)}">${MAPSVG}<span class="mn">${esc(m[2])}</span><small>${note(keys[i],m)}</small></button>`).join('')}</div></details>`};
 let MW=null;
 function closeMapWin(){const d=document.getElementById('mapwin');if(d)d.remove();document.body.classList.remove('mw-open');MW=null}
 function mapWinShow(){
