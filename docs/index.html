@@ -235,6 +235,14 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 .rlist{margin:0 0 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.rlist>summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;justify-content:space-between;gap:10px;align-items:center;font-weight:600}.rlist>summary::-webkit-details-marker{display:none}.rlist>summary span{font-size:12px;font-weight:500;color:var(--mute,#8A93A3)}.rlist>summary b{flex:1;text-align:right;color:var(--tx)}.rlist>summary:after{content:"▾";color:var(--accent)}.rlist[open]>summary:after{content:"▴"}
 .rlist .rl{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px;padding:0 10px 10px}.rlist .rl button{text-align:left;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--tx);font:inherit;font-size:13px;cursor:pointer}.rlist .rl button:hover{border-color:var(--accent)}.rlist .rl button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--panel2));font-weight:700}
 .bmap{margin:0 0 26px}
+.rm-hide{display:none!important}
+.rmv{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 16px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.rmv>span:first-child{color:var(--mut);font-size:13px}
+.rmv>button{padding:6px 12px;border-radius:99px;border:1px solid var(--line);background:transparent;color:var(--tx);font:inherit;font-size:13px;cursor:pointer}
+.rmv>button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,var(--panel));font-weight:600}
+.rmv-nav{display:none;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+.rmv-nav span{color:var(--mut);font-size:13px;min-width:48px;text-align:center}
+.rmv-nav .btn{padding:7px 12px;font-size:13px}
 .bmap svg{display:block;max-width:100%;height:auto}
 @media(max-width:640px){.bm-sv{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px}.bm-sv svg{max-width:none;min-width:560px}}
 .bm-nd{cursor:pointer;transition:opacity .2s;outline:none}
@@ -4482,7 +4490,26 @@ function mapWin(e,cid,si,li,k){
  const x=d.querySelector('.mw-x');if(x)x.focus({preventScroll:true})}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&MW)closeMapWin()});
 addEventListener('hashchange',closeMapWin);
-function refFocus(i){const m=document.querySelectorAll('#refbody .bmap')[i];if(!m)return;
+/* Map pages: show every map, or one at a time with Previous / Next (choice remembered) */
+const rmvMaps=()=>[...document.querySelectorAll('#refbody .bmap')];
+const rmvHead=m=>{const h=m.previousElementSibling;return h&&h.tagName==='H4'?h:null};
+function refMapInit(){const bar=document.getElementById('rmv');if(!bar){window.RMV=null;return}
+ let mode='all';try{if(localStorage.getItem('ls_mapview')==='one')mode='one'}catch(e){}
+ const ms=rmvMaps();window.RMV={mode,i:0,f:false};
+ refMapApply()}
+function refMapApply(){const R=window.RMV;if(!R)return;const ms=rmvMaps(),one=R.mode==='one'&&!R.f;
+ R.i=Math.min(Math.max(R.i,0),ms.length-1);
+ ms.forEach((m,k)=>{const hide=one&&k!==R.i;m.classList.toggle('rm-hide',hide);const h=rmvHead(m);if(h)h.classList.toggle('rm-hide',hide)});
+ const set=(id,on)=>{const e=document.getElementById(id);if(e)e.classList.toggle('on',on)};
+ set('rmv-all',R.mode==='all');set('rmv-one',R.mode==='one');
+ const nav=document.getElementById('rmv-nav');if(nav)nav.style.display=R.mode==='one'?'flex':'none';
+ const pos=document.getElementById('rmv-pos');if(pos)pos.textContent=(R.i+1)+' of '+ms.length}
+function refMapMode(m){const R=window.RMV;if(!R)return;R.mode=m;try{localStorage.setItem('ls_mapview',m)}catch(e){}refMapApply()}
+function refMapGo(i,noScroll){const R=window.RMV;if(!R)return;R.i=i;if(R.mode!=='one'){R.mode='one';try{localStorage.setItem('ls_mapview','one')}catch(e){}}R.f=false;refMapApply();
+ if(!noScroll){const b=document.getElementById('rmv');if(b)b.scrollIntoView({behavior:'smooth',block:'nearest'})}}
+function refMapStep(d){const R=window.RMV;if(!R)return;const n=rmvMaps().length;refMapGo((R.i+d+n)%n)}
+function refFocus(i){if(window.RMV&&RMV.mode==='one'){refMapGo(i,true);const m0=rmvMaps()[i];if(m0){m0.classList.remove('bm-hl');void m0.offsetWidth;m0.classList.add('bm-hl')}return}
+ const m=document.querySelectorAll('#refbody .bmap')[i];if(!m)return;
  const h=m.previousElementSibling,t=h&&h.tagName==='H4'?h:m;
  t.scrollIntoView({behavior:'smooth',block:'start'});
  m.classList.remove('bm-hl');void m.offsetWidth;m.classList.add('bm-hl')}
@@ -4520,8 +4547,8 @@ function refFilter(q){
  document.querySelectorAll('#refbody .bmap').forEach(m=>{const ok=!q||(m.dataset.t||'').includes(q);m.style.display=ok?'':'none';if(ok)hit++});
  document.querySelectorAll('#refbody .accg').forEach(g=>{g.style.display=[...g.querySelectorAll('details.acc')].some(d=>d.style.display!=='none')?'':'none'});
  document.querySelectorAll('#refbody h4').forEach(h=>{const nx=h.nextElementSibling;h.style.display=(nx&&(nx.classList.contains('tw')||nx.classList.contains('accg')||nx.classList.contains('bmap'))&&nx.style.display==='none')?'none':''});
- const n=document.getElementById('rnone');if(n)n.style.display=(q&&!hit)?'block':'none'}
-function refJump(i){const h=document.querySelectorAll('#refbody h4')[i];if(h)h.scrollIntoView({behavior:'smooth',block:'start'})}
+ const n=document.getElementById('rnone');if(n)n.style.display=(q&&!hit)?'block':'none';if(window.RMV){RMV.f=!!q;refMapApply()}}
+function refJump(i){const h=document.querySelectorAll('#refbody h4')[i];if(window.RMV&&RMV.mode==='one'&&h&&h.nextElementSibling&&h.nextElementSibling.classList.contains('bmap')){refMapGo(rmvMaps().indexOf(h.nextElementSibling));return}if(h)h.scrollIntoView({behavior:'smooth',block:'start'})}
 function refToggleAll(open){document.querySelectorAll('#refbody details.acc').forEach(d=>{if(d.style.display!=='none')d.open=open})}
 function vRef(c,pi){
  const R=qrefOf(c);
@@ -4540,6 +4567,7 @@ function vRef(c,pi){
  return crumbs+`<h1>${esc(p.t)}</h1><p class="sub">${esc(p.d)}</p>${tabs}
   <input class="rsearch" type="search" placeholder="Filter this page, for example ${esc(R.hint||'wal or autovacuum')}" oninput="refFilter(this.value)" aria-label="Filter rows">
   ${jump}
+  ${p.b.filter(b=>b.map).length>=2?`<div class="rmv" id="rmv"><span>View</span><button type="button" id="rmv-all" onclick="refMapMode('all')">All maps</button><button type="button" id="rmv-one" onclick="refMapMode('one')">One at a time</button><span class="rmv-nav" id="rmv-nav"><button type="button" class="btn ghost" onclick="refMapStep(-1)">&#9666; Previous</button><span id="rmv-pos" aria-live="polite"></span><button type="button" class="btn" onclick="refMapStep(1)">Next &#9656;</button></span></div>`:''}
   ${hasAcc?`<p class="rsee"><a onclick="refToggleAll(true)">Expand all</a><a onclick="refToggleAll(false)">Collapse all</a></p>`:''}
   ${(p.see&&p.see.length)?`<p class="rsee">Learn more: ${p.see.map(s=>`<a onclick="go('#/c/${c.id}/${s[0]}/${s[1]}')">${esc(s[2])}</a>`).join('')}</p>`:''}
   <div id="refbody">${p.b.map(blk).join('')}<p class="rnone" id="rnone">No rows match.</p></div>
@@ -4553,6 +4581,7 @@ function render(keep,noTrack){
  app.innerHTML=r==='c'&&c&&c.subs?vSubCourses(c):r==='c'&&c?(si==='ref'?vRef(c,li):li==='quiz'?vQuiz(c,+si):li!==undefined?vLesson(c,+si,+li):si!==undefined?vSub(c,+si):vTopics(c)):vCourses();
  if(!keep)window.scrollTo(0,0);
  readerAfterRender(r,c,si,li);
+ if(r==='c'&&c&&si==='ref')refMapInit();
  if(!keep&&r==='c'&&c&&si==='ref'){const mp=location.hash.split('/')[5];if(mp!==undefined&&mp!==''&&!isNaN(+mp))refFocus(+mp)}
  if(!noTrack&&r==='c'&&c&&!c.subs&&li!==undefined&&c.sections[+si]&&c.sections[+si].l[+li]){startTrack(c,+si,+li);recHist('view',c,+si,+li)}}
 addEventListener('hashchange',()=>render());
