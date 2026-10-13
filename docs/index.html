@@ -247,6 +247,15 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 .bm-info h5{margin:0 0 6px;font:700 15px var(--sans)}
 .bm-info p{margin:0 0 8px;line-height:1.6}
 .bm-info .cb{margin:8px 0 0}
+.bm-d{margin:8px 0 0;border-top:1px solid var(--line)}
+.bm-d summary{cursor:pointer;padding:9px 0;font:600 12px var(--mono);color:var(--mut);list-style:none;display:flex;justify-content:space-between}
+.bm-d summary::-webkit-details-marker{display:none}
+.bm-d summary:after{content:"\25BE"}
+.bm-d[open] summary:after{transform:rotate(180deg)}
+.bm-d p{margin:0 0 8px}
+.rjump{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+.rjump a{padding:6px 11px;border-radius:99px;border:1px solid var(--line);background:var(--panel);font-size:13px;cursor:pointer}
+.rjump a:hover{border-color:var(--accent)}
 .accg{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:0 0 20px}
 details.acc{min-width:0;max-width:100%;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
 details.acc[open]{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
@@ -4293,7 +4302,9 @@ function bmPick(u,id){if(BMST[u]>=0)return;const m=BMREG[u],n=m.nodes.find(x=>x.
 function bmStep(u){const m=BMREG[u],s=m.steps[BMST[u]];bmClear(u);
  m.nodes.forEach(n=>{if(s.ids.indexOf(n.id)<0)bmEl(u,n.id).classList.add('dim')});
  document.getElementById('bms'+u).textContent='Step '+(BMST[u]+1)+' of '+m.steps.length;
- document.getElementById('bmi'+u).innerHTML=`<p>${esc(s.t)}</p>`;
+ const sec=(lab,body)=>`<details class="bm-d"><summary>${lab}</summary><div>${body}</div></details>`;
+ document.getElementById('bmi'+u).innerHTML=`<p>${fx(s.t)}</p>`+(s.w?`<p class="aw"><b>Why:</b> ${fx(s.w)}</p>`:'')+
+  (s.s?sec('Controlled by',`<p>${fx(s.s)}</p>`):'')+(s.x?sec('What can go wrong',`<p>${fx(s.x)}</p>`):'')+(s.c?sec('See it',blk({code:s.c})):'');
  document.getElementById('bmn'+u).textContent=BMST[u]===m.steps.length-1?'Start again':'Next step'}
 function bmStart(u){BMST[u]=0;document.getElementById('bmt'+u).style.display='none';document.getElementById('bmn'+u).style.display='';document.getElementById('bmr'+u).style.display='';bmStep(u)}
 function bmNext(u){BMST[u]=(BMST[u]+1)%BMREG[u].steps.length;bmStep(u)}
@@ -4336,6 +4347,7 @@ function refFilter(q){
  document.querySelectorAll('#refbody .accg').forEach(g=>{g.style.display=[...g.querySelectorAll('details.acc')].some(d=>d.style.display!=='none')?'':'none'});
  document.querySelectorAll('#refbody h4').forEach(h=>{const nx=h.nextElementSibling;h.style.display=(nx&&(nx.classList.contains('tw')||nx.classList.contains('accg')||nx.classList.contains('bmap'))&&nx.style.display==='none')?'none':''});
  const n=document.getElementById('rnone');if(n)n.style.display=(q&&!hit)?'block':'none'}
+function refJump(i){const h=document.querySelectorAll('#refbody h4')[i];if(h)h.scrollIntoView({behavior:'smooth',block:'start'})}
 function refToggleAll(open){document.querySelectorAll('#refbody details.acc').forEach(d=>{if(d.style.display!=='none')d.open=open})}
 function vRef(c,pi){
  const R=qrefOf(c);
@@ -4349,8 +4361,11 @@ function vRef(c,pi){
  const tabs=subSel+pgSel;
  const p=R.pages[n];window.QCUR=c.id;
  const hasAcc=p.b.some(b=>b.acc);
+ const hs=p.b.filter(b=>b.h);
+ const jump=(p.jump||hs.length>=4)&&hs.length>1?`<div class="rjump">${hs.map((b,i)=>`<a onclick="refJump(${i})">${esc(b.h.replace(/^\d+\.\s*/,''))}</a>`).join('')}</div>`:'';
  return crumbs+`<h1>${esc(p.t)}</h1><p class="sub">${esc(p.d)}</p>${tabs}
   <input class="rsearch" type="search" placeholder="Filter this page, for example ${esc(R.hint||'wal or autovacuum')}" oninput="refFilter(this.value)" aria-label="Filter rows">
+  ${jump}
   ${hasAcc?`<p class="rsee"><a onclick="refToggleAll(true)">Expand all</a><a onclick="refToggleAll(false)">Collapse all</a></p>`:''}
   ${(p.see&&p.see.length)?`<p class="rsee">Learn more: ${p.see.map(s=>`<a onclick="go('#/c/${c.id}/${s[0]}/${s[1]}')">${esc(s[2])}</a>`).join('')}</p>`:''}
   <div id="refbody">${p.b.map(blk).join('')}<p class="rnone" id="rnone">No rows match.</p></div>
