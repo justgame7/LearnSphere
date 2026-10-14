@@ -229,6 +229,7 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 .hero.course .tools{grid-column:1/-1;grid-row:5}
 }
 .refbtn{display:inline-flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);color:var(--tx);font-size:13px;font-weight:600;cursor:pointer}.refbtn:hover{border-color:var(--accent)}.refbtn b{color:var(--accent)}
+.rcmds code{display:inline-block;margin:1px 0}
 .rsearch{width:100%;padding:12px 14px;margin:0 0 16px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--tx);font:inherit}.rsearch:focus{outline:2px solid var(--accent);border-color:transparent}
 .rsel{display:block;width:100%;padding:12px 40px 12px 14px;margin:0 0 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238A93A3' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center;color:var(--tx);font:inherit;font-weight:600;cursor:pointer;-webkit-appearance:none;appearance:none}.rsel:focus{outline:2px solid var(--accent);border-color:transparent}.rsel option{background:var(--panel);color:var(--tx)}
 .rmode{display:flex;gap:6px;align-items:center;margin:0 0 10px;font-size:12px;color:var(--mute,#8A93A3)}.rmode button{padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--tx);font:inherit;font-size:12px;cursor:pointer}.rmode button.on{border-color:var(--accent);color:var(--accent);font-weight:700}
@@ -3937,8 +3938,10 @@ const fmt=s=>{const h=Math.floor(s/3600),m=Math.round(s%3600/60);return h?`${h}h
 const key=(si,li)=>si+'-'+li,done=(c,si,li)=>!!(P[c.id]||{})[key(si,li)];
 /* Additional content = lectures whose 4th element is a number (their display order). They keep their original index, so saved progress and lesson keys are unchanged, but they are listed in their own optional group and never count toward progress. */
 const isX=x=>typeof x[3]==='number';
+/* Additional (optional) lectures are switched off for now: set to true to list them, count them and include their quiz questions again. */
+const SHOW_ADDITIONAL=false;
 const coreIdx=s=>s.l.map((_,i)=>i).filter(i=>!isX(s.l[i]));
-const xIdx=s=>s.l.map((_,i)=>i).filter(i=>isX(s.l[i])).sort((a,b)=>s.l[a][3]-s.l[b][3]||a-b);
+const xIdx=s=>s.l.map((_,i)=>i).filter(i=>SHOW_ADDITIONAL&&isX(s.l[i])).sort((a,b)=>s.l[a][3]-s.l[b][3]||a-b);
 const dur=l=>l.reduce((a,x)=>a+sec2(x[1]),0);
 const cnt=c=>c.sections.reduce((a,s)=>a+coreIdx(s).length,0);
 const cntX=c=>c.sections.reduce((a,s)=>a+xIdx(s).length,0);
@@ -4080,7 +4083,7 @@ async function renderSearch(){
   c.sections.forEach((s,si)=>{
    if(SQ.si!==undefined&&si!==SQ.si)return;
    if(SQ.kind!=='section'){const n=sc(s.t,'');if(n)out.push({k:1,n:n+2,t:s.t,s:c.name,tag:'Section',href:'#/c/'+c.id+'/'+si,col:c.color})}
-   s.l.forEach((x,li)=>{
+   s.l.forEach((x,li)=>{if(isX(x)&&!SHOW_ADDITIONAL)return;
     const bod=body?sqBody(c,si,li):null,n=sc(x[0],x[2],bod);
     if(!n)return;
     const tl=x[0].toLowerCase(),inMeta=ws.every(w=>sqHas(tl,w)||sqHas((x[2]||'').toLowerCase(),w));
@@ -4265,7 +4268,7 @@ function ntFill(from){
  const c=COURSES.find(x=>x.id===(p.subs?cs.value:p.id));if(!c||!c.sections)return;
  if(from==='c'||from==='s'){ss.innerHTML=c.sections.map((s,i)=>`<option value="${i}">${i+1}. ${esc(s.t)}</option>`).join('')}
  const s=c.sections[+ss.value];
- ls.innerHTML='<option value="-1">Whole section (general)</option>'+(s?s.l.map((l,i)=>`<option value="${i}">${i+1}. ${esc(l[0])}</option>`).join(''):'');ntSum()}
+ ls.innerHTML='<option value="-1">Whole section (general)</option>'+(s?s.l.map((l,i)=>isX(l)&&!SHOW_ADDITIONAL?'':`<option value="${i}">${i+1}. ${esc(l[0])}</option>`).join(''):'');ntSum()}
 function ntSet(cid,si,li){
  const E=id=>document.getElementById(id),ps=E('ntP'),top=ntTop();
  ps.innerHTML=top.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
@@ -4517,9 +4520,9 @@ const par=c=>{const p=c.parent&&COURSES.find(x=>x.id===c.parent);return p?`<a on
 function vSubCourses(c){
  const L=subsOf(c),N=aCnt(c),D=aDn(c),Pc=aPct(c),X=L.reduce((a,x)=>a+cntX(x),0),S=L.reduce((a,x)=>a+x.sections.length,0);
  let h=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›<span>${c.name}</span></div>
- <div class="hero course" style="--c:${c.color}"><div class="tx"><span class="chip">${c.level}</span><h1 style="margin:10px 0 6px">${c.name}</h1><div class="stats"><div><b>${L.length}</b>sub-courses</div><div><b>${S}</b>sections</div><div><b>${N}</b>lectures</div><div><b>${X}</b>additional</div></div></div><div class="ring" style="--p:${Pc}"><span>${Pc}%</span></div></div>
+ <div class="hero course" style="--c:${c.color}"><div class="tx"><span class="chip">${c.level}</span><h1 style="margin:10px 0 6px">${c.name}</h1><div class="stats"><div><b>${L.length}</b>sub-courses</div><div><b>${S}</b>sections</div><div><b>${N}</b>lectures</div>${X?`<div><b>${X}</b>additional</div>`:''}</div></div><div class="ring" style="--p:${Pc}"><span>${Pc}%</span></div></div>
  <p class="sub">Pick a sub-course. Each has its own sections, lectures, quizzes and progress. ${c.start||''}</p>${(c.subs||[]).some(x=>REFLAZY[x])?`<div class="tools" style="margin:0 0 18px"><a class="refbtn" onclick="go('#/c/${c.subs.find(x=>REFLAZY[x])}/ref/0')">&#9889; <b>Quick reference</b> &middot; choose a sub-course</a></div>`:''}${h2row('Sub-courses')}<div class="grid courses">`;
- h+=L.map((x,i)=>`<div class="card" style="--c:${x.color};animation-delay:${i*45}ms" onclick="go('#/c/${x.id}')"><div class="ico">${x.tag}</div><h3>${esc(x.name)}</h3><p>${x.blurb}</p><div class="meta"><span class="chip">${x.sections.length} sections</span><span class="chip">${cnt(x)} lectures</span><span class="chip">+${cntX(x)} additional</span></div><div class="bt"><b style="width:${pct(x)}%"></b></div><div class="pct"><span>${dn(x)}/${cnt(x)} done</span><span>${pct(x)}%</span></div></div>`).join('');
+ h+=L.map((x,i)=>`<div class="card" style="--c:${x.color};animation-delay:${i*45}ms" onclick="go('#/c/${x.id}')"><div class="ico">${x.tag}</div><h3>${esc(x.name)}</h3><p>${x.blurb}</p><div class="meta"><span class="chip">${x.sections.length} sections</span><span class="chip">${cnt(x)} lectures</span>${cntX(x)?`<span class="chip">+${cntX(x)} additional</span>`:''}</div><div class="bt"><b style="width:${pct(x)}%"></b></div><div class="pct"><span>${dn(x)}/${cnt(x)} done</span><span>${pct(x)}%</span></div></div>`).join('');
  h+=(c.soon?`<div class="card off" style="--c:${c.color}"><div class="ico">${c.soon.ico}</div><h3>${c.soon.name}</h3><p>${c.soon.blurb}</p><div class="meta"><span class="chip">Curriculum coming soon</span></div></div>`:'')+`</div>`;
  return h}
 function vTopics(c){
@@ -4628,7 +4631,7 @@ const qBest=(c,si)=>Math.max(-1,...['core','all'].map(m=>{const r=qRec(c,si,m);r
 const qXWanted=()=>!!QZ.__x;
 /* The quiz is a POOL: each attempt draws nCore core questions (default 10) and, when additional content is included, nExt more (default 5). Questions not yet seen are drawn first, so a retake gives new questions until the pool is used up. */
 const qSets=(c,si)=>{const d=qData(c,si),all=d.qs.map((q,i)=>Object.assign({_i:i},q));
- const core=all.filter(q=>!q.x),ext=all.filter(q=>q.x);return{core,ext,nCore:Math.min(core.length,d.nCore||10),nExt:Math.min(ext.length,d.nExt||5)}};
+ const core=all.filter(q=>!q.x),ext=SHOW_ADDITIONAL?all.filter(q=>q.x):[];return{core,ext,nCore:Math.min(core.length,d.nCore||10),nExt:Math.min(ext.length,d.nExt||5)}};
 const qDraw=(arr,n,seen)=>{const un=arr.filter(q=>!seen.includes(q._i));let out=shuf(un).slice(0,n);
  if(out.length<n){const last=seen.slice(-n),more=f=>shuf(arr.filter(q=>!out.includes(q)&&f(q)));
   out=out.concat(more(q=>!last.includes(q._i))).slice(0,n);if(out.length<n)out=out.concat(more(()=>true)).slice(0,n);
@@ -4840,6 +4843,10 @@ function refFilter(q){
  const n=document.getElementById('rnone');if(n)n.style.display=(q&&!hit)?'block':'none';if(window.RMV){RMV.f=!!q;refMapApply()}}
 function refJump(i){const h=document.querySelectorAll('#refbody h4')[i];if(window.RMV&&RMV.mode==='one'&&h&&h.nextElementSibling&&h.nextElementSibling.classList.contains('bmap')){refMapGo(rmvMaps().indexOf(h.nextElementSibling));return}if(h)h.scrollIntoView({behavior:'smooth',block:'start'})}
 function refToggleAll(open){document.querySelectorAll('#refbody details.acc').forEach(d=>{if(d.style.display!=='none')d.open=open})}
+/* "Commands by task" style pages: a cell that is only a list of commands, one per line instead of comma-separated */
+function refCmdLines(p,html){
+ if(!/command|cheat sheet|CLI/i.test(p.t||'')&&!/by task/i.test(p.d||''))return html;
+ return html.replace(/<td([^>]*)>((?:<code>[^<]*<\/code>)(?:,\s*<code>[^<]*<\/code>)+)<\/td>/g,(m,at,x)=>'<td'+at+' class="rcmds">'+x.replace(/<\/code>,\s*<code>/g,'</code><br><code>')+'</td>')}
 function vRef(c,pi){
  const R=qrefOf(c);
  const crumbs=`<div class="crumbs"><a onclick="go('#/')">Courses</a>›${par(c)}<a onclick="go('#/c/${c.id}')">${c.name}</a>›<span>Quick reference</span></div>`;
@@ -4859,8 +4866,8 @@ function vRef(c,pi){
   ${jump}
   ${p.b.filter(b=>b.map).length>=2?`<div class="rmv" id="rmv"><span>View</span><button type="button" id="rmv-all" onclick="refMapMode('all')">All maps</button><button type="button" id="rmv-one" onclick="refMapMode('one')">One at a time</button><span class="rmv-nav" id="rmv-nav"><button type="button" class="btn ghost" onclick="refMapStep(-1)">&#9666; Previous</button><span id="rmv-pos" aria-live="polite"></span><button type="button" class="btn" onclick="refMapStep(1)">Next &#9656;</button></span></div>`:''}
   ${hasAcc?`<p class="rsee"><a onclick="refToggleAll(true)">Expand all</a><a onclick="refToggleAll(false)">Collapse all</a></p>`:''}
-  ${(p.see&&p.see.length)?`<p class="rsee">Learn more: ${p.see.map(s=>`<a onclick="go('#/c/${c.id}/${s[0]}/${s[1]}')">${esc(s[2])}</a>`).join('')}</p>`:''}
-  <div id="refbody">${p.b.map(blk).join('')}<p class="rnone" id="rnone">No rows match.</p></div>
+  ${(p.see&&p.see.length)?`<p class="rsee">Learn more: ${p.see.filter(s=>{const t=c.sections[s[0]],l=t&&t.l[s[1]];return !l||SHOW_ADDITIONAL||!isX(l)}).map(s=>`<a onclick="go('#/c/${c.id}/${s[0]}/${s[1]}')">${esc(s[2])}</a>`).join('')}</p>`:''}
+  <div id="refbody">${refCmdLines(p,p.b.map(blk).join(''))}<p class="rnone" id="rnone">No rows match.</p></div>
   <div class="pn">${n>0?`<button class="btn ghost" onclick="go('#/c/${c.id}/ref/${n-1}')">◂ ${esc(R.pages[n-1].t)}</button>`:`<button class="btn ghost" onclick="go('#/c/${c.id}')">◂ Back to course</button>`}${n<R.pages.length-1?`<button class="btn" onclick="go('#/c/${c.id}/ref/${n+1}')">${esc(R.pages[n+1].t)} ▸</button>`:`<button class="btn" onclick="go('#/c/${c.id}')">Back to course</button>`}</div>`}
 function render(keep,noTrack){
  stopTrack();
