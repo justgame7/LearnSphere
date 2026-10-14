@@ -407,11 +407,21 @@ html[data-tbl="pinned"] .tw th:first-child,html[data-tbl="pinned"] .tw td:first-
 .qsr{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 6px}.qs{padding:10px 14px;border-radius:12px;background:var(--panel2);border:1px solid var(--line)}.qs b{font-size:20px;display:block}.qs span{font:12px var(--mono);color:var(--mut)}
 .qres{display:inline-flex;flex-direction:column;padding:14px 22px;border-radius:16px;margin:6px 0 14px;border:1px solid var(--line);background:var(--panel)}.qres b{font-size:34px}.qres.ok{border-color:#4ADE80}.qres.no{border-color:#FB7185}.qres span{color:var(--mut);font:12px var(--mono)}
 .qmiss{padding:12px 14px;margin:0 0 12px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}.qmiss p{margin:4px 0}.qmiss .why{color:var(--mut);font-size:14px}
+.ntb{min-height:170px;max-height:46vh;overflow:auto;padding:12px;border-radius:12px;border:1px dashed var(--line);background:var(--panel2);color:var(--tx);outline:none;line-height:1.6}
+.ntb:focus{border-color:var(--accent)}.ntb:empty:before{content:attr(data-ph);color:var(--mut)}
+.ntb img,.nt-body img{max-width:100%;height:auto;border-radius:8px}.ntb table,.nt-body table{border-collapse:collapse;max-width:100%;display:block;overflow:auto}
+.ntb td,.ntb th,.nt-body td,.nt-body th{border:1px solid var(--line);padding:6px 10px}.ntb pre,.nt-body pre{overflow:auto;padding:10px;border-radius:10px;background:var(--panel2)}
+.nti{display:block;width:100%;box-sizing:border-box;padding:12px 14px;margin:0 0 10px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--tx);font:inherit}
+.ntl{display:block;margin:12px 0 5px;font:600 11px var(--mono);color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+.nt-card{margin:0 0 12px;padding:14px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}.nt-card>b{display:block;margin:0 0 6px}
+.nt-ref{font:12px var(--mono);color:var(--mut);margin:2px 0 8px}.nts-blk{margin-top:30px;padding-top:6px;border-top:1px solid var(--line)}
+.nt-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.nt-acts .btn{padding:7px 12px;font-size:13px}
 </style></head>
 <body>
 <header><div class="bar"><div class="logo" onclick="location.hash='#/'"><i>L</i>LearnSphere</div><div class="sp"></div>
 <button class="ib" id="inst" title="Install app" aria-label="Install app" hidden style="width:auto;padding:0 12px;font:600 12px var(--mono)">Install</button>
 <button class="ib" id="aa" title="Settings: theme, text size, width and tables" aria-label="Settings" onclick="toggleReader(event)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+<button class="ib" id="nts" title="My notes: paste anything and file it under a lesson" aria-label="My notes" onclick="openNotes()"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><line x1="12" y1="10" x2="12" y2="16"/><line x1="9" y1="13" x2="15" y2="13"/></svg></button>
 <button class="ib" id="bm" title="Saved lessons" aria-label="Saved lessons" onclick="openBm()"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg></button>
 <button class="ib" id="hist" title="Learning history" aria-label="Learning history" onclick="openHist()"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/></svg></button>
 <button class="ib" id="srch" title="Search" aria-label="Search" onclick="openSearch()"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg></button></div></header>
@@ -427,7 +437,7 @@ html[data-tbl="pinned"] .tw th:first-child,html[data-tbl="pinned"] .tw td:first-
  <div class="sec2" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"><h5>Backup &amp; restore</h5>
   <div class="seg" style="grid-template-columns:1fr 1fr"><button type="button" onclick="exportProgress()">⬇ Export</button><button type="button" onclick="document.getElementById('impFile').click()">⬆ Import</button></div>
   <input type="file" id="impFile" accept=".json,application/json" hidden onchange="importProgress(this)">
-  <p class="sub" style="margin:8px 0 0;font:11px/1.5 var(--mono)">Progress, quizzes, bookmarks, history and settings. Move them between devices.</p></div>
+  <p class="sub" style="margin:8px 0 0;font:11px/1.5 var(--mono)">Progress, quizzes, bookmarks, notes, history and settings. Move them between devices.</p></div>
 </div>
 <div class="hm" id="bmM" onclick="if(event.target===this)closeBm()"><div class="hd" role="dialog" aria-modal="true" aria-label="Saved lessons">
  <div class="hd-top"><div><h2>⭐ Saved lessons</h2><p id="bmS">—</p></div><button class="ib" aria-label="Close" onclick="closeBm()">×</button></div>
@@ -442,6 +452,18 @@ html[data-tbl="pinned"] .tw th:first-child,html[data-tbl="pinned"] .tw td:first-
  <div class="hd-top"><div><h2 id="histT">🕘 Learning history</h2><p id="histS">—</p></div><button class="ib" aria-label="Close" onclick="closeHist()">×</button></div>
  <div class="hd-tb"><div class="hd-f" id="histF"></div><button class="hclr" id="histClr" onclick="clearHist()">Clear</button></div>
  <div class="hl" id="histL"></div></div></div>
+<div class="hm" id="ntM" onclick="if(event.target===this)closeNotes()"><div class="hd" role="dialog" aria-modal="true" aria-label="My notes">
+ <div class="hd-top"><div><h2 id="ntT">&#128203; My notes</h2><p id="ntS">&mdash;</p></div><button class="ib" aria-label="Close" onclick="closeNotes()">&times;</button></div>
+ <div class="hl" id="ntL" style="margin-top:14px"></div>
+ <div id="ntEd" hidden style="overflow:auto;margin-top:6px">
+  <label class="ntl" for="ntC">Course</label><select class="rsel" id="ntC" onchange="ntFill('s')"></select>
+  <label class="ntl" for="ntSe">Section</label><select class="rsel" id="ntSe" onchange="ntFill('l')"></select>
+  <label class="ntl" for="ntLe">Lesson</label><select class="rsel" id="ntLe"></select>
+  <label class="ntl" for="ntTi">Title</label><input class="nti" id="ntTi" maxlength="160" placeholder="e.g. How background processes cooperate" autocomplete="off">
+  <label class="ntl" for="ntBody">Paste here (text, tables, images, a whole answer)</label>
+  <div class="ntb" id="ntBody" contenteditable="true" role="textbox" aria-multiline="true" data-ph="Click here, then paste with Ctrl+V (or long-press, Paste). Formatting and images are kept."></div>
+  <div class="nt-acts"><button class="btn" onclick="ntSaveNote()">Save note</button><button class="btn ghost" onclick="ntList()">Cancel</button></div>
+ </div></div></div>
 <script src="pg-lesson.js"></script>
 <script src="pg-quiz.js"></script>
 <script src="pg-ref.js"></script>
@@ -1939,7 +1961,7 @@ sections:[
 ['Well-Architected Tool and Review Cadence','0:00','Track reviews over time. (Cloud)',5],
 ['Moving On: DevOps Engineer, Solutions Architect and Specialty Paths','0:00','Next steps after the administrator course. (Cloud)',6]]}
 ]},
-{id:'devops',hold:1,name:'DevOps & CI/CD',tag:'DO',color:'var(--do)',level:'Beginner → Production (DORA and CGOA-informed)',blurb:'Build, secure, operate and scale delivery pipelines like a production administrator: Git workflows, GitHub Actions, GitLab CI, Jenkins, GitOps, supply-chain security and DORA metrics, anchored on DORA research and the CNCF GitOps (CGOA) exam.',
+{id:'devops',name:'DevOps & CI/CD',tag:'DO',color:'var(--do)',level:'Beginner → Production (DORA and CGOA-informed)',blurb:'Build, secure, operate and scale delivery pipelines like a production administrator: Git workflows, GitHub Actions, GitLab CI, Jenkins, GitOps, supply-chain security and DORA metrics, anchored on DORA research and the CNCF GitOps (CGOA) exam.',
 outcomes:['Git & CI fundamentals','GitHub Actions, GitLab & Jenkins','Containers & delivery strategies','GitOps & infrastructure automation','Supply-chain & secrets security','Observability & platform operations'],
 sections:[
 {t:'Introduction & DevOps Foundations',q:'DevOps Foundations Quiz',cka:'Foundations · supports every later section',l:[
@@ -4107,7 +4129,7 @@ function readerAfterRender(r,c,si,li){
   const h=document.querySelector('#app .ls h1');
   if(h&&!h.querySelector('.bmk')){const b=document.createElement('button');b.type='button';b.className='bmk';b.setAttribute('aria-label','Save lesson');
    b.onclick=()=>bmToggle(c.id,+si,+li);h.appendChild(b);bmSync()}}
- readerBar()}
+ ntLesson();readerBar()}
 function renderBm(){const a=bmLoad(),L=document.getElementById('bmL');
  document.getElementById('bmS').textContent=a.length?`${a.length} saved · kept on this device`:'Kept on this device';
  if(!a.length){L.innerHTML='<div class="hempty">☆<b>Nothing saved yet</b>Tap the star next to a lesson title to save it here.</div>';return}
@@ -4128,6 +4150,108 @@ function goBm(i){const e=bmLoad()[i];if(!e)return;closeBm();go(`#/c/${e.cid}/${e
 function openBm(){document.getElementById('bmM').classList.add('open');renderBm()}
 function closeBm(){document.getElementById('bmM').classList.remove('open')}
 
+/* ---------- My notes: paste anything and file it under course / section / lesson ---------- */
+const NK='ls_notes_v1';
+const ntNorm=x=>{if(!x||typeof x!=='object')return null;const si=Number.isInteger(x.si)&&x.si>=0&&x.si<500?x.si:null,li=Number.isInteger(x.li)&&x.li>=-1&&x.li<500?x.li:null;
+ if(typeof x.id!=='string'||!/^[\w-]{1,32}$/.test(x.id)||typeof x.cid!=='string'||!/^[\w-]{1,24}$/.test(x.cid)||si===null||li===null||typeof x.html!=='string')return null;
+ return{id:x.id,cid:x.cid,si,li,title:String(x.title||'').slice(0,160),html:x.html,ts:Number(x.ts)||Date.now()}};
+const ntLoad=()=>{try{const a=JSON.parse(localStorage.getItem(NK));return Array.isArray(a)?a.map(ntNorm).filter(Boolean):[]}catch(e){return[]}};
+const ntStore=a=>{try{localStorage.setItem(NK,JSON.stringify(a));return true}catch(e){toast('Not enough storage space: remove old notes or large images');return false}};
+const NT_OK='A,B,STRONG,I,EM,U,S,P,BR,DIV,SPAN,H1,H2,H3,H4,H5,H6,UL,OL,LI,BLOCKQUOTE,PRE,CODE,TABLE,THEAD,TBODY,TR,TH,TD,HR,IMG,SMALL,SUB,SUP'.split(','),
+ NT_DROP='SCRIPT,STYLE,IFRAME,OBJECT,EMBED,SVG,FORM,LINK,META,NOSCRIPT,TEXTAREA,BUTTON,INPUT,SELECT,TITLE,HEAD'.split(',');
+function ntClean(html){
+ const doc=new DOMParser().parseFromString('<body>'+html,'text/html');
+ const walk=n=>{[...n.childNodes].forEach(ch=>{
+  if(ch.nodeType===3)return;
+  if(ch.nodeType!==1){ch.remove();return}
+  const t=ch.tagName.toUpperCase();
+  if(NT_DROP.includes(t)){ch.remove();return}
+  walk(ch);
+  if(!NT_OK.includes(t)){ch.replaceWith(...ch.childNodes);return}
+  [...ch.attributes].forEach(a=>{const k=a.name.toLowerCase(),v=a.value;
+   const ok=(k==='href'&&t==='A'&&/^(https?:|mailto:)/i.test(v.trim()))||(k==='src'&&t==='IMG'&&/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(v))||(k==='alt'&&t==='IMG')||((k==='colspan'||k==='rowspan')&&/^\d{1,2}$/.test(v));
+   if(!ok)ch.removeAttribute(a.name)});
+  if(t==='IMG'&&!ch.getAttribute('src')){ch.remove();return}
+  if(t==='A'){ch.setAttribute('target','_blank');ch.setAttribute('rel','noopener noreferrer')}})};
+ walk(doc.body);return doc.body.innerHTML}
+function ntImg(file){return new Promise(res=>{const r=new FileReader();r.onerror=()=>res(null);
+ r.onload=()=>{const im=new Image();im.onerror=()=>res(null);
+  im.onload=()=>{const s=Math.min(1,1100/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(im.width*s));cv.height=Math.max(1,Math.round(im.height*s));
+   const x=cv.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,cv.width,cv.height);x.drawImage(im,0,0,cv.width,cv.height);res(cv.toDataURL('image/jpeg',.82))};
+  im.src=r.result};r.readAsDataURL(file)})}
+async function ntPaste(e){
+ const cd=e.clipboardData;if(!cd)return;e.preventDefault();
+ const html=cd.getData('text/html'),txt=cd.getData('text/plain'),imgs=[...(cd.files||[])].filter(f=>/^image\//.test(f.type));
+ let out='';
+ if(html)out=ntClean(html);
+ else if(txt)out=txt.split(/\n{2,}/).map(p=>'<p>'+esc(p).replace(/\n/g,'<br>')+'</p>').join('');
+ for(const f of imgs){const u=await ntImg(f);if(u)out+='<p><img src="'+u+'" alt="pasted image"></p>'}
+ const b=document.getElementById('ntBody');b.focus();
+ if(!document.execCommand('insertHTML',false,out))b.insertAdjacentHTML('beforeend',out)}
+const ntCourses=()=>COURSES.filter(c=>c.sections&&c.sections.length&&!c.subs&&!c.hold);
+const ntCName=c=>{const p=c&&c.parent&&COURSES.find(x=>x.id===c.parent);return(p?p.name+' \u203A ':'')+(c?c.name:'')};
+function ntRef(n){const c=COURSES.find(x=>x.id===n.cid),s=c&&c.sections[n.si],l=s&&n.li>=0&&s.l[n.li];
+ return(c?ntCName(c):n.cid)+(s?' \u203A Section '+(n.si+1)+': '+s.t:'')+(l?' \u203A '+l[0]:(s?' \u203A Whole section':''))}
+let ntEditId=null;
+function ntFill(from,cid,si,li){
+ const cs=document.getElementById('ntC'),ss=document.getElementById('ntSe'),ls=document.getElementById('ntLe');
+ if(from==='c'){cs.innerHTML=ntCourses().map(c=>`<option value="${esc(c.id)}">${esc(ntCName(c))}</option>`).join('');if(cid)cs.value=cid}
+ const c=COURSES.find(x=>x.id===cs.value);if(!c)return;
+ if(from==='c'||from==='s'){ss.innerHTML=c.sections.map((s,i)=>`<option value="${i}">${i+1}. ${esc(s.t)}</option>`).join('');if(from==='c'&&si!==undefined)ss.value=String(si)}
+ const s=c.sections[+ss.value];
+ ls.innerHTML='<option value="-1">Whole section (general)</option>'+(s?s.l.map((l,i)=>`<option value="${i}">${i+1}. ${esc(l[0])}</option>`).join(''):'');
+ if(li!==undefined)ls.value=String(li)}
+function ntShow(ed){document.getElementById('ntEd').hidden=!ed;document.getElementById('ntL').hidden=ed;
+ document.getElementById('ntT').innerHTML=ed?'&#128203; '+(ntEditId?'Edit note':'New note'):'&#128203; My notes'}
+function ntList(){ntEditId=null;ntShow(false);
+ const a=ntLoad().sort((x,y)=>y.ts-x.ts),L=document.getElementById('ntL');
+ document.getElementById('ntS').textContent=a.length?`${a.length} note${a.length===1?'':'s'} · kept on this device`:'Kept on this device';
+ let h='<div class="nt-acts" style="margin:0 0 12px"><button class="btn" onclick="ntNew()">+ Paste a new note</button></div>';
+ if(!a.length)h+='<div class="hempty">&#128203;<b>No notes yet</b>Paste an explanation, a table or a screenshot and file it under the lesson it belongs to.</div>';
+ const g={};a.forEach(n=>(g[n.cid]=g[n.cid]||[]).push(n));
+ Object.keys(g).sort((x,y)=>{const k=id=>{const i=COURSES.findIndex(c=>c.id===id);return i<0?9999:i};return k(x)-k(y)}).forEach(id=>{
+  const c=COURSES.find(x=>x.id===id);h+=`<div class="bmg bmg-top" style="--c:${c&&c.color||'var(--accent)'}"><span class="bmg-dot"></span><span>${esc(c?ntCName(c):id)}</span><small>${g[id].length}</small></div>`;
+  g[id].forEach(n=>{h+=`<div class="nt-card"><b>${esc(n.title||'Untitled note')}</b><div class="nt-ref">${esc(ntRef(n))}</div>
+   <details><summary style="cursor:pointer;color:var(--mut);font-size:13px">Show note</summary><div class="nt-body">${ntClean(n.html)}</div></details>
+   <div class="nt-acts"><button class="btn ghost" onclick="ntOpen('${n.id}')">Open lesson</button><button class="btn ghost" onclick="ntEdit('${n.id}')">Edit</button><button class="btn ghost" onclick="ntDl('${n.id}')">Download file</button><button class="btn ghost" onclick="ntDel('${n.id}')">Delete</button></div></div>`})});
+ L.innerHTML=h}
+function openNotes(){document.getElementById('ntM').classList.add('open');ntList()}
+function closeNotes(){document.getElementById('ntM').classList.remove('open')}
+function ntNew(cid,si,li){
+ if(cid===undefined){const[,r,id,s2,l2]=location.hash.split('/');if(r==='c'&&COURSES.some(c=>c.id===id&&c.sections&&c.sections.length)&&/^\d+$/.test(s2||'')){cid=id;si=+s2;li=/^\d+$/.test(l2||'')?+l2:-1}}
+ ntEditId=null;document.getElementById('ntM').classList.add('open');ntShow(true);
+ ntFill('c',cid,si,li);document.getElementById('ntTi').value='';document.getElementById('ntBody').innerHTML='';
+ document.getElementById('ntBody').focus()}
+function ntEdit(id){const n=ntLoad().find(x=>x.id===id);if(!n)return;
+ document.getElementById('ntM').classList.add('open');ntEditId=id;ntShow(true);
+ ntFill('c',n.cid,n.si,n.li);document.getElementById('ntTi').value=n.title;document.getElementById('ntBody').innerHTML=ntClean(n.html)}
+function ntSaveNote(){
+ const cid=document.getElementById('ntC').value,si=+document.getElementById('ntSe').value,li=+document.getElementById('ntLe').value;
+ const html=ntClean(document.getElementById('ntBody').innerHTML).trim();
+ if(!html||(!document.getElementById('ntBody').textContent.trim()&&!/<img/.test(html))){toast('Paste or type something first');return}
+ let title=document.getElementById('ntTi').value.trim();
+ if(!title){const t=document.getElementById('ntBody').textContent.trim().replace(/\s+/g,' ');title=t.slice(0,60)||'Pasted image'}
+ const keep=ntEditId;let a=ntLoad();
+ if(keep){const n=a.find(x=>x.id===keep);if(n)Object.assign(n,{cid,si,li,title,html,ts:Date.now()});else a.unshift({id:keep,cid,si,li,title,html,ts:Date.now()})}
+ else a.unshift({id:'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),cid,si,li,title,html,ts:Date.now()});
+ if(!ntStore(a.slice(0,500)))return;
+ toast('Note saved');ntList();ntLesson()}
+function ntDel(id){if(!confirm('Delete this note?'))return;ntStore(ntLoad().filter(n=>n.id!==id));ntList();ntLesson()}
+function ntOpen(id){const n=ntLoad().find(x=>x.id===id);if(!n)return;closeNotes();go(`#/c/${n.cid}/${n.si}${n.li>=0?'/'+n.li:''}`)}
+function ntDl(id){const n=ntLoad().find(x=>x.id===id);if(!n)return;
+ const doc=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(n.title)}</title><style>body{font:16px/1.65 system-ui,sans-serif;max-width:780px;margin:30px auto;padding:0 16px;color:#1b2430}img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #c9d1dc;padding:6px 10px}pre{background:#f2f4f8;padding:12px;overflow:auto;border-radius:8px}.ref{color:#667085;font-size:13px}</style></head><body><h1>${esc(n.title)}</h1><p class="ref">LearnSphere note &middot; ${esc(ntRef(n))}</p>${ntClean(n.html)}</body></html>`;
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([doc],{type:'text/html'}));
+ a.download=(n.title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,50)||'note')+'.html';
+ document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
+function ntLesson(){document.querySelectorAll('#app .nts-blk').forEach(e=>e.remove());
+ const[,r,id,si,li]=location.hash.split('/');if(r!=='c'||!/^\d+$/.test(si||'')||!/^\d+$/.test(li||''))return;
+ const ls=document.querySelector('#app .ls'),dn=document.getElementById('dnb');if(!ls)return;
+ const a=ntLoad().filter(n=>n.cid===id&&n.si===+si&&n.li===+li);
+ const b=document.createElement('div');b.className='nts-blk';
+ b.innerHTML=`<h3 style="margin:14px 0">My notes${a.length?' ('+a.length+')':''}</h3>`+a.map(n=>`<div class="nt-card"><b>${esc(n.title||'Untitled note')}</b><div class="nt-body">${ntClean(n.html)}</div><div class="nt-acts"><button class="btn ghost" onclick="ntEdit('${n.id}')">Edit</button><button class="btn ghost" onclick="ntDl('${n.id}')">Download file</button></div></div>`).join('')+`<button class="btn ghost" onclick="ntNew('${esc(id)}',${+si},${+li})">+ Add a note to this lesson</button>`;
+ const row=dn&&dn.parentElement;row&&row.parentElement===ls?ls.insertBefore(b,row):ls.appendChild(b)}
+document.getElementById('ntBody').addEventListener('paste',ntPaste);
+
 /* ---------- No "Tap to search" on single taps (mobile Chrome) ----------
    Chrome's Tap to Search only fires for a tap the page did not handle. Marking the touch-generated
    mouse events as handled (preventDefault) stops it, while long-press text selection and links keep working. */
@@ -4140,7 +4264,7 @@ function closeBm(){document.getElementById('bmM').classList.remove('open')}
   if(!el||el.closest(keep))return;
   e.preventDefault()},true))})();
 /* ---------- Export / import progress ---------- */
-const BKEYS=['ls_prog','ls_quiz','ls_auto','ls_hist_v1','ls_bookmarks'],SKEYS=['ls_theme','ls_dark','ls_nightauto','ls_accent','ls_reader','ls_dens','ls_tblmode'];
+const BKEYS=['ls_prog','ls_quiz','ls_auto','ls_hist_v1','ls_bookmarks','ls_notes_v1'],SKEYS=['ls_theme','ls_dark','ls_nightauto','ls_accent','ls_reader','ls_dens','ls_tblmode'];
 function toast(msg){const o=document.getElementById('hundo');if(o)o.remove();
  const u=document.createElement('div');u.className='hundo';u.id='hundo';u.innerHTML='<span></span>';u.firstChild.textContent=msg;
  document.body.appendChild(u);setTimeout(()=>u.remove(),4000)}
@@ -4155,13 +4279,13 @@ const jp=v=>{try{return JSON.parse(v)}catch(e){return null}};
 const normMapKeys=(o,fn)=>{const r={};if(o&&typeof o==='object'&&!Array.isArray(o))Object.keys(o).forEach(k=>{if(/^[\w-]{1,24}$/.test(k))r[k]=fn(o[k])});return r};
 function importProgress(inp){
  const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
- if(f.size>3e6){toast('That file is too large to be a LearnSphere backup');return}
+ if(f.size>14e6){toast('That file is too large to be a LearnSphere backup');return}
  const rd=new FileReader();
  rd.onerror=()=>toast('Could not read that file');
  rd.onload=()=>{
   const o=jp(rd.result);
   if(!o||o.app!=='LearnSphere'||!o.data||typeof o.data!=='object'){toast('Not a LearnSphere backup file');return}
-  const d={};BKEYS.concat(SKEYS).forEach(k=>{if(typeof o.data[k]==='string'&&o.data[k].length<=1.5e6)d[k]=o.data[k]});
+  const d={};BKEYS.concat(SKEYS).forEach(k=>{if(typeof o.data[k]==='string'&&o.data[k].length<=(k==='ls_notes_v1'?12e6:1.5e6))d[k]=o.data[k]});
  const normMap=(o,fn)=>{const r={};if(o&&typeof o==='object'&&!Array.isArray(o))Object.keys(o).forEach(k=>{if(SAFE_ID.test(k)){const v=fn(o[k]);if(v!==undefined)r[k]=v}});return r};
  const KEY=/^[\w-]{1,24}$/;
  if(d.ls_prog)d.ls_prog=JSON.stringify(normMap(jp(d.ls_prog),c=>normMapKeys(c,()=>1)));
@@ -4171,6 +4295,7 @@ function importProgress(inp){
    Object.keys(c[si]).forEach(m=>{if(!KEY.test(m))return;const q=c[si][m]||{},b=sInt(q.best,0,100);if(b===null)return;
     r[si][m]={best:b,att:sInt(q.att,0,9999)||0,last:sInt(q.last,0,100)||0}})});return r}));
  if(d.ls_bookmarks){const a=jp(d.ls_bookmarks);d.ls_bookmarks=JSON.stringify((Array.isArray(a)?a:[]).map(sBm).filter(Boolean).slice(0,500))}
+ if(d.ls_notes_v1){const a=jp(d.ls_notes_v1);d.ls_notes_v1=JSON.stringify((Array.isArray(a)?a:[]).map(ntNorm).filter(Boolean).slice(0,500))}
  if(d.ls_hist_v1){const a=jp(d.ls_hist_v1);d.ls_hist_v1=JSON.stringify((Array.isArray(a)?a:[]).map(sHist).filter(Boolean).slice(0,HMAX))}
  if('ls_theme' in d&&!['dark','light','tinted'].includes(d.ls_theme))delete d.ls_theme;
  if('ls_dark' in d&&!['dark','tinted'].includes(d.ls_dark))delete d.ls_dark;
@@ -4196,6 +4321,8 @@ function applyImport(d,mode){
      const x=a[c][si][m],y=b[c][si][m];if(!x||(y&&y.best>x.best)||(y&&y.best===x.best&&(y.att||0)>(x.att||0)))a[c][si][m]=y})})});lsSet('ls_quiz',JSON.stringify(a))}
    if(d.ls_bookmarks){const a=arr(cur('ls_bookmarks')),seen={};a.forEach(x=>seen[x.cid+':'+x.si+':'+x.li]=1);
     arr(d.ls_bookmarks).forEach(x=>{if(x&&!seen[x.cid+':'+x.si+':'+x.li])a.push(x)});lsSet('ls_bookmarks',JSON.stringify(a))}
+   if(d.ls_notes_v1){const a=arr(cur('ls_notes_v1')),seen={};a.forEach(x=>seen[x.id]=1);
+    arr(d.ls_notes_v1).forEach(x=>{if(x&&x.id&&!seen[x.id])a.push(x)});lsSet('ls_notes_v1',JSON.stringify(a.slice(0,500)))}
    if(d.ls_hist_v1){const a=arr(cur('ls_hist_v1')),seen={};a.forEach(x=>seen[x.id]=1);
     arr(d.ls_hist_v1).forEach(x=>{if(x&&x.id&&!seen[x.id])a.push(x)});a.sort((x,y)=>y.ts-x.ts);lsSet('ls_hist_v1',JSON.stringify(a.slice(0,HMAX)))}
   }
@@ -4310,6 +4437,7 @@ const LAZY={rs:si=>{const n=String(si+1).padStart(2,'0');return['rs-common.js','
 for(const sub of['bkp','perf','sec','upg','rac','exa','dg','gg','cloud'])LAZY['ora-'+sub]=si=>{const n=String(si+1).padStart(2,'0');return['ora-common.js','ora-'+sub+'-s'+n+'.js','ora-'+sub+'-q'+n+'.js']};
 LAZY.mongo=si=>{const n=String(si+1).padStart(2,'0');return['mongo-common.js','mongo-s'+n+'.js','mongo-q'+n+'.js']};
 LAZY.prom=si=>{const n=String(si+1).padStart(2,'0');return['prom-common.js','prom-s'+n+'.js','prom-q'+n+'.js']};
+LAZY.devops=si=>{const n=String(si+1).padStart(2,'0');return['devops-common.js','devops-s'+n+'.js','devops-q'+n+'.js']};
 LAZY.ansible=si=>{const n=String(si+1).padStart(2,'0');return['ansible-common.js','ansible-s'+n+'.js','ansible-q'+n+'.js']};
 for(const sub of['core','bkp','perf','sec','ha','upg','ops','az'])LAZY['mss-'+sub]=si=>{const n=String(si+1).padStart(2,'0');return['mss-common.js','mss-'+sub+'-s'+n+'.js','mss-'+sub+'-q'+n+'.js']};
 const _ld={},_rdy={};
@@ -4323,6 +4451,7 @@ REFLAZY.mongo='mongo-ref.js';
 ['core','bkp','perf','sec','ha','upg','ops','az'].forEach(s=>REFLAZY['mss-'+s]='mss-ref-'+s+'.js');
 REFLAZY.prom='prom-ref.js';
 REFLAZY.ansible='ansible-ref.js';
+REFLAZY.devops='devops-ref.js';
 REFLAZY.tf='tf-ref.js';
 REFLAZY.k8s='k8s-ref.js';
 REFLAZY.docker='docker-ref.js';

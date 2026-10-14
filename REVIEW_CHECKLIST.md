@@ -122,6 +122,15 @@ The `see` links, map layouts and lecture indexes are validated automatically. On
 - [ ] Azure SQL statements: Entra authentication syntax, Log Replay Service commands and `az sql` parameters against the current CLI
 - [ ] Edition limits for Basic Availability Groups, distributed AGs and readable secondaries
 
+## DevOps and CI/CD (`docs/devops-*.js`)
+- [ ] GitHub Actions: action major versions (`checkout@v4`, `upload-artifact@v4`, `attest-build-provenance@v2`, `trivy-action@0.28.0`), the pinned checkout SHA comment, current runner labels and the current billing and pricing page (it changed recently)
+- [ ] GitLab CI/CD: `rules`, `needs`, `id_tokens`, CI/CD component syntax and merge train settings on your GitLab version
+- [ ] Jenkins: supported Java versions for current LTS (lesson says 21, with 25 on newer lines), `jenkins/jenkins:lts-jdk21` tag, plugin names
+- [ ] Argo CD and Flux: install manifest URL, `ApplicationSet` generators, `flux bootstrap` flags, Argo Rollouts analysis syntax
+- [ ] OIDC: subject claim formats and cloud trust-policy JSON for AWS, Azure and Google Cloud
+- [ ] cosign keyless flags, `--certificate-identity-regexp`, SLSA level wording and `gh attestation verify`
+- [ ] Terraform S3 backend `use_lockfile` (Terraform 1.10 or later) and `-detailed-exitcode` meanings
+
 ## Generic items for every course
 - [ ] Every command in a `chk` or `c` field runs on a scratch system without side effects (they are read-only unless the text says otherwise)
 - [ ] Version and edition notes still match the course version in the course title

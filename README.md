@@ -16,6 +16,8 @@ docs/                    <- GitHub Pages root
                          (lesson key = docker:<section>:<lecture>, quiz key = docker:<section>)
   tf-common.js, tf-s01.js ... tf-s15.js, tf-q01.js ... tf-q15.js  Terraform lessons and quizzes (core lectures; additional topics later), lazy-loaded
                          (lesson key = tf:<section>:<lecture>, quiz key = tf:<section>)
+  devops-common.js, devops-s01.js ... devops-s18.js, devops-q01.js ... devops-q18.js, devops-ref.js  DevOps & CI/CD lessons, quizzes and quick reference (core lectures; additional topics later), lazy-loaded
+                         (lesson key = devops:<section>:<lecture>, quiz key = devops:<section>)
   manifest.webmanifest   PWA manifest
   sw.js                  service worker (offline cache)
   icons/                 app icons (any + maskable)
