@@ -456,7 +456,9 @@ html[data-tbl="pinned"] .tw th:first-child,html[data-tbl="pinned"] .tw td:first-
  <div class="hd-top"><div><h2 id="ntT">&#128203; My notes</h2><p id="ntS">&mdash;</p></div><button class="ib" aria-label="Close" onclick="closeNotes()">&times;</button></div>
  <div class="hl" id="ntL" style="margin-top:14px"></div>
  <div id="ntEd" hidden style="overflow:auto;margin-top:6px">
-  <label class="ntl" for="ntC">Course</label><select class="rsel" id="ntC" onchange="ntFill('s')"></select>
+  <p class="sub" id="ntDet" style="margin:0;font:12px/1.5 var(--mono)"></p>
+  <label class="ntl" for="ntP">Course</label><select class="rsel" id="ntP" onchange="ntFill('c')"></select>
+  <div id="ntCw"><label class="ntl" for="ntC">Sub-course</label><select class="rsel" id="ntC" onchange="ntFill('s')"></select></div>
   <label class="ntl" for="ntSe">Section</label><select class="rsel" id="ntSe" onchange="ntFill('l')"></select>
   <label class="ntl" for="ntLe">Lesson</label><select class="rsel" id="ntLe"></select>
   <label class="ntl" for="ntTi">Title</label><input class="nti" id="ntTi" maxlength="160" placeholder="e.g. How background processes cooperate" autocomplete="off">
@@ -4188,19 +4190,43 @@ async function ntPaste(e){
  for(const f of imgs){const u=await ntImg(f);if(u)out+='<p><img src="'+u+'" alt="pasted image"></p>'}
  const b=document.getElementById('ntBody');b.focus();
  if(!document.execCommand('insertHTML',false,out))b.insertAdjacentHTML('beforeend',out)}
-const ntCourses=()=>COURSES.filter(c=>c.sections&&c.sections.length&&!c.subs&&!c.hold);
+const ntTop=()=>COURSES.filter(c=>!c.parent&&!c.hold&&(c.subs||(c.sections&&c.sections.length)));
+const ntSubs=p=>COURSES.filter(c=>c.parent===p.id&&!c.hold&&c.sections&&c.sections.length);
 const ntCName=c=>{const p=c&&c.parent&&COURSES.find(x=>x.id===c.parent);return(p?p.name+' \u203A ':'')+(c?c.name:'')};
 function ntRef(n){const c=COURSES.find(x=>x.id===n.cid),s=c&&c.sections[n.si],l=s&&n.li>=0&&s.l[n.li];
  return(c?ntCName(c):n.cid)+(s?' \u203A Section '+(n.si+1)+': '+s.t:'')+(l?' \u203A '+l[0]:(s?' \u203A Whole section':''))}
+const ntCid=()=>{const p=COURSES.find(x=>x.id===document.getElementById('ntP').value);
+ return p&&p.subs?document.getElementById('ntC').value:(p?p.id:'')};
 let ntEditId=null;
-function ntFill(from,cid,si,li){
- const cs=document.getElementById('ntC'),ss=document.getElementById('ntSe'),ls=document.getElementById('ntLe');
- if(from==='c'){cs.innerHTML=ntCourses().map(c=>`<option value="${esc(c.id)}">${esc(ntCName(c))}</option>`).join('');if(cid)cs.value=cid}
- const c=COURSES.find(x=>x.id===cs.value);if(!c)return;
- if(from==='c'||from==='s'){ss.innerHTML=c.sections.map((s,i)=>`<option value="${i}">${i+1}. ${esc(s.t)}</option>`).join('');if(from==='c'&&si!==undefined)ss.value=String(si)}
+function ntFill(from){
+ const E=id=>document.getElementById(id),ps=E('ntP'),cs=E('ntC'),ss=E('ntSe'),ls=E('ntLe');
+ const p=COURSES.find(x=>x.id===ps.value);if(!p)return;
+ if(from==='c'){const subs=ntSubs(p);E('ntCw').hidden=!p.subs;
+  cs.innerHTML=subs.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}
+ const c=COURSES.find(x=>x.id===(p.subs?cs.value:p.id));if(!c||!c.sections)return;
+ if(from==='c'||from==='s'){ss.innerHTML=c.sections.map((s,i)=>`<option value="${i}">${i+1}. ${esc(s.t)}</option>`).join('')}
  const s=c.sections[+ss.value];
- ls.innerHTML='<option value="-1">Whole section (general)</option>'+(s?s.l.map((l,i)=>`<option value="${i}">${i+1}. ${esc(l[0])}</option>`).join(''):'');
- if(li!==undefined)ls.value=String(li)}
+ ls.innerHTML='<option value="-1">Whole section (general)</option>'+(s?s.l.map((l,i)=>`<option value="${i}">${i+1}. ${esc(l[0])}</option>`).join(''):'')}
+function ntSet(cid,si,li){
+ const E=id=>document.getElementById(id),ps=E('ntP'),top=ntTop();
+ ps.innerHTML=top.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+ let c=COURSES.find(x=>x.id===cid),p=c&&(c.parent?COURSES.find(x=>x.id===c.parent):c);
+ if(!p||!top.includes(p)){p=top[0];c=null}
+ ps.value=p.id;ntFill('c');
+ if(p.subs){const sub=c&&c.parent?c:ntSubs(p)[0];if(sub){E('ntC').value=sub.id;c=sub}}
+ else c=p;
+ ntFill('s');
+ if(c&&c.sections&&si!==undefined&&si>=0&&si<c.sections.length){E('ntSe').value=String(si);ntFill('l');
+  if(li!==undefined&&li>=-1)E('ntLe').value=String(li)}
+ return !!(cid&&c&&c.id===cid)}
+function ntWhere(){const[,r,id,s2,l2]=location.hash.split('/');
+ if(r!=='c'||!id)return{};
+ const out={cid:id};
+ if(/^\d+$/.test(s2||''))out.si=+s2;
+ if(out.si!==undefined)out.li=/^\d+$/.test(l2||'')?+l2:-1;
+ return out}
+function ntDetected(ok){const e=document.getElementById('ntDet');
+ e.textContent=ok?'Detected from the page you were on. Change any box below if it is wrong.':'Pick where this note belongs.'}
 function ntShow(ed){document.getElementById('ntEd').hidden=!ed;document.getElementById('ntL').hidden=ed;
  document.getElementById('ntT').innerHTML=ed?'&#128203; '+(ntEditId?'Edit note':'New note'):'&#128203; My notes'}
 function ntList(){ntEditId=null;ntShow(false);
@@ -4218,15 +4244,16 @@ function ntList(){ntEditId=null;ntShow(false);
 function openNotes(){document.getElementById('ntM').classList.add('open');ntList()}
 function closeNotes(){document.getElementById('ntM').classList.remove('open')}
 function ntNew(cid,si,li){
- if(cid===undefined){const[,r,id,s2,l2]=location.hash.split('/');if(r==='c'&&COURSES.some(c=>c.id===id&&c.sections&&c.sections.length)&&/^\d+$/.test(s2||'')){cid=id;si=+s2;li=/^\d+$/.test(l2||'')?+l2:-1}}
+ if(cid===undefined){const w=ntWhere();cid=w.cid;si=w.si;li=w.li}
  ntEditId=null;document.getElementById('ntM').classList.add('open');ntShow(true);
- ntFill('c',cid,si,li);document.getElementById('ntTi').value='';document.getElementById('ntBody').innerHTML='';
+ const ok=ntSet(cid,si,li);ntDetected(ok);
+ document.getElementById('ntTi').value='';document.getElementById('ntBody').innerHTML='';
  document.getElementById('ntBody').focus()}
 function ntEdit(id){const n=ntLoad().find(x=>x.id===id);if(!n)return;
  document.getElementById('ntM').classList.add('open');ntEditId=id;ntShow(true);
- ntFill('c',n.cid,n.si,n.li);document.getElementById('ntTi').value=n.title;document.getElementById('ntBody').innerHTML=ntClean(n.html)}
+ ntSet(n.cid,n.si,n.li);document.getElementById('ntDet').textContent='Editing: change any box to move this note.';document.getElementById('ntTi').value=n.title;document.getElementById('ntBody').innerHTML=ntClean(n.html)}
 function ntSaveNote(){
- const cid=document.getElementById('ntC').value,si=+document.getElementById('ntSe').value,li=+document.getElementById('ntLe').value;
+ const cid=ntCid(),si=+document.getElementById('ntSe').value,li=+document.getElementById('ntLe').value;
  const html=ntClean(document.getElementById('ntBody').innerHTML).trim();
  if(!html||(!document.getElementById('ntBody').textContent.trim()&&!/<img/.test(html))){toast('Paste or type something first');return}
  let title=document.getElementById('ntTi').value.trim();
