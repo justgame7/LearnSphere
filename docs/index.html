@@ -417,9 +417,9 @@ html[data-tbl="pinned"] .tw th:first-child,html[data-tbl="pinned"] .tw td:first-
 .nt-ref{font:12px var(--mono);color:var(--mut);margin:2px 0 8px}.nts-blk{margin-top:30px;padding-top:6px;border-top:1px solid var(--line)}
 .ntsum{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;box-sizing:border-box;padding:11px 14px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--tx);text-align:left;font:inherit;cursor:pointer}
 #ntDet:empty{display:none}.ntsum-t{font-size:13px;line-height:1.45;word-break:break-word}.ntsum-c{flex:none;font:600 12px var(--mono);color:var(--accent)}
-.ntb,.nt-body{background:#fff;color:#1b2430}.ntb a,.nt-body a{color:#0b63c5}
-.ntb td,.ntb th,.nt-body td,.nt-body th{border-color:#c9d1dc}.ntb pre,.nt-body pre{background:#f2f4f8;color:#1b2430}
-.nt-body{padding:12px;border-radius:10px;margin-top:8px;overflow:auto;line-height:1.6}.ntb:empty:before{color:#667085}
+.ntb a,.nt-body a{color:var(--accent)}
+.nt-body{padding:12px;border-radius:10px;margin-top:8px;overflow:auto;line-height:1.6;background:var(--panel2);color:var(--tx);border:1px solid var(--line)}
+.nt-body :is(h1,h2,h3,h4,h5,h6){color:var(--tx);margin:12px 0 6px}.nt-body blockquote{margin:8px 0;padding-left:12px;border-left:3px solid var(--line);color:var(--mut)}
 .nt-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.nt-acts .btn{padding:7px 12px;font-size:13px}.nt-ic{display:inline-grid;place-items:center;padding:0!important;width:36px;height:34px}
 </style></head>
 <body>
@@ -4190,6 +4190,28 @@ function ntAttr(el,t){[...el.attributes].forEach(a=>{const k=a.name.toLowerCase(
  else if(k==='start'&&t==='OL')ok=/^\d{1,4}$/.test(v);
  else if(k==='style'){const st=ntStyle(v);if(st){el.setAttribute('style',st);return}}
  if(!ok)el.removeAttribute(a.name)})}
+function ntRGB(v){v=String(v||'').trim().toLowerCase();let m;
+ if(m=/^#([0-9a-f]{3})$/.exec(v))return m[1].split('').map(x=>parseInt(x+x,16));
+ if(m=/^#([0-9a-f]{6})([0-9a-f]{2})?$/.exec(v))return[0,2,4].map(i=>parseInt(m[1].substr(i,2),16));
+ if(m=/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/.exec(v))return[+m[1],+m[2],+m[3]];
+ const N={black:[0,0,0],white:[255,255,255],gray:[128,128,128],grey:[128,128,128],silver:[192,192,192],lightgray:[211,211,211],lightgrey:[211,211,211],darkgray:[169,169,169],dimgray:[105,105,105],whitesmoke:[245,245,245],gainsboro:[220,220,220],transparent:[0,0,0],red:[255,0,0],green:[0,128,0],blue:[0,0,255],orange:[255,165,0],yellow:[255,255,0],purple:[128,0,128],navy:[0,0,128],teal:[0,128,128],maroon:[128,0,0],olive:[128,128,0],lime:[0,255,0],aqua:[0,255,255],fuchsia:[255,0,255]};
+ return N[v]||null}
+const ntSat=c=>{const mx=Math.max(...c),mn=Math.min(...c);return mx?(mx-mn)/mx:0},ntLum=c=>(0.299*c[0]+0.587*c[1]+0.114*c[2])/255;
+function ntMid(c){let[r,g,b]=c.map(x=>x/255);const mx=Math.max(r,g,b),mn=Math.min(r,g,b);let h=0,sat=0,l=(mx+mn)/2;
+ if(mx!==mn){const d=mx-mn;sat=l>.5?d/(2-mx-mn):d/(mx+mn);h=mx===r?(g-b)/d+(g<b?6:0):mx===g?(b-r)/d+2:(r-g)/d+4;h*=60}
+ l=Math.min(.68,Math.max(.5,l));const q=l<.5?l*(1+sat):l+sat-l*sat,pp=2*l-q,f=t=>{t=(t+360)%360;return t<60?pp+(q-pp)*t/60:t<180?q:t<240?pp+(q-pp)*(240-t)/60:pp};
+ return'#'+[f(h+120),f(h),f(h-120)].map(x=>Math.round(x*255).toString(16).padStart(2,'0')).join('')}
+function ntTone(el){
+ const st=el.style,isF=el.tagName==='FONT';
+ const bgA=el.getAttribute('bgcolor'),fgA=isF?el.getAttribute('color'):null;
+ if(!(st&&st.length)&&!bgA&&!fgA)return;
+ const bg=st.backgroundColor?ntRGB(st.backgroundColor):(bgA?ntRGB(bgA):null),fg=st.color?ntRGB(st.color):(fgA?ntRGB(fgA):null);
+ let setFg=null;
+ if(bg){if(ntSat(bg)<.2){st.removeProperty('background-color');st.removeProperty('background');el.removeAttribute('bgcolor')}
+  else setFg=ntLum(bg)>.55?'#14181f':'#f4f7fb'}
+ if(fg&&!setFg){if(ntSat(fg)<.2){st.removeProperty('color');if(isF)el.removeAttribute('color')}else setFg=ntMid(fg)}
+ if(setFg){st.color=setFg;if(isF)el.removeAttribute('color')}
+ if(el.getAttribute('style')!==null){const c=st.cssText;if(c)el.setAttribute('style',c);else el.removeAttribute('style')}}
 function ntClean(html){
  const doc=new DOMParser().parseFromString('<body>'+html,'text/html');
  const walk=n=>{[...n.childNodes].forEach(ch=>{
@@ -4200,6 +4222,7 @@ function ntClean(html){
   walk(ch);
   if(!NT_OK.includes(t)){ch.replaceWith(...ch.childNodes);return}
   ntAttr(ch,t);
+  ntTone(ch);
   if(t==='IMG'&&!ch.getAttribute('src')){ch.remove();return}
   if(t==='A'){ch.setAttribute('target','_blank');ch.setAttribute('rel','noopener noreferrer')}})};
  walk(doc.body);return doc.body.innerHTML}
@@ -4307,7 +4330,7 @@ function ntSaveNote(){
 function ntDel(id){if(!confirm('Delete this note?'))return;ntStore(ntLoad().filter(n=>n.id!==id));ntList();ntLesson()}
 function ntOpen(id){const n=ntLoad().find(x=>x.id===id);if(!n)return;closeNotes();go(`#/c/${n.cid}/${n.si}${n.li>=0?'/'+n.li:''}`)}
 function ntDl(id){const n=ntLoad().find(x=>x.id===id);if(!n)return;
- const doc=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(n.title)}</title><style>body{font:16px/1.65 system-ui,sans-serif;max-width:780px;margin:30px auto;padding:0 16px;color:#1b2430}img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #c9d1dc;padding:6px 10px}pre{background:#f2f4f8;padding:12px;overflow:auto;border-radius:8px}.ref{color:#667085;font-size:13px}</style></head><body><h1>${esc(n.title)}</h1><p class="ref">LearnSphere note &middot; ${esc(ntRef(n))}</p>${ntClean(n.html)}</body></html>`;
+ const doc=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(n.title)}</title><style>${ntDocCss()}</style></head><body><h1>${esc(n.title)}</h1><p class="ref">LearnSphere note &middot; ${esc(ntRef(n))}</p><div class="nt-b">${ntClean(n.html)}</div></body></html>`;
  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([doc],{type:'text/html'}));
  a.download=(n.title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,50)||'note')+'.html';
  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
@@ -4326,6 +4349,9 @@ const ntTopId=n=>{const c=COURSES.find(x=>x.id===n.cid);return c&&c.parent?c.par
 function ntOrdered(){return ntLoad().sort((x,y)=>ntIdx(ntTopId(x))-ntIdx(ntTopId(y))||ntIdx(x.cid)-ntIdx(y.cid)||x.si-y.si||x.li-y.li||x.ts-y.ts)}
 function ntNames(n){const c=COURSES.find(x=>x.id===n.cid),p=c&&c.parent?COURSES.find(x=>x.id===c.parent):null,s=c&&c.sections&&c.sections[n.si],l=s&&n.li>=0&&s.l[n.li];
  return{course:c?c.name:n.cid,parent:p?p.name:'',section:s?s.t:'',lesson:l?l[0]:''}}
+function ntDocCss(){const cs=getComputedStyle(document.documentElement),v=(k,d)=>(cs.getPropertyValue(k)||'').trim()||d;
+ const bg=v('--bg','#0A0C10'),pn=v('--panel','#12151B'),p2=v('--panel2','#181C24'),ln=v('--line','#232832'),tx=v('--tx','#E8ECF2'),mu=v('--mut','#8A93A3'),ac=v('--accent','#35E0C0');
+ return `:root{color-scheme:${(ntLum(ntRGB(bg)||[10,12,16])<.5)?'dark':'light'}}body{font:16px/1.65 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:860px;margin:0 auto;padding:24px 16px 60px;color:${tx};background:${bg}}h1{margin:0 0 4px}h2{margin:38px 0 6px;padding-top:14px;border-top:2px solid ${ln}}h3{margin:22px 0 4px;color:${mu}}h4{margin:20px 0 4px;font-size:17px}h5{margin:14px 0 8px;font-size:13px;color:${mu};text-transform:uppercase;letter-spacing:.06em}.sub,.ref{color:${mu};margin:0 0 18px;font-size:14px}nav{background:${pn};border:1px solid ${ln};border-radius:12px;padding:6px 18px;margin:0 0 10px}nav ul{padding-left:18px;margin:4px 0}.note{background:${pn};border:1px solid ${ln};border-radius:12px;padding:14px 16px;margin:0 0 14px;page-break-inside:avoid}.nt-t{font-weight:700;font-size:17px}.nt-m{font-size:12px;color:${mu};margin:2px 0 10px}.nt-b{overflow:auto;background:${p2};border-radius:10px;padding:12px}.nt-b img{max-width:100%;height:auto;border-radius:8px}.nt-b table{border-collapse:collapse;max-width:100%}.nt-b td,.nt-b th{border:1px solid ${ln};padding:6px 10px}.nt-b pre{background:${bg};padding:12px;overflow:auto;border-radius:8px}.nt-b code{font-family:ui-monospace,Menlo,Consolas,monospace}a{color:${ac}}img{max-width:100%}@media print{nav{display:none}}`}
 function ntExport(){
  const a=ntOrdered();if(!a.length){toast('No notes to export yet');return}
  const tree=[],find=(arr,k,mk)=>{let x=arr.find(y=>y.k===k);if(!x){x=mk();x.k=k;arr.push(x)}return x};
@@ -4345,7 +4371,7 @@ function ntExport(){
   notes:a.map(n=>Object.assign({id:n.id,cid:n.cid,si:n.si,li:n.li,title:n.title,html:ntClean(n.html),ts:n.ts},ntNames(n)))};
  const data=JSON.stringify(payload).replace(/</g,'\\u003c').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');
  const d=new Date(),z=x=>String(x).padStart(2,'0'),stamp=`${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
- const css='body{font:16px/1.65 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:860px;margin:0 auto;padding:24px 16px 60px;color:#1b2430;background:#f6f8fb}h1{margin:0 0 4px}h2{margin:38px 0 6px;padding-top:14px;border-top:2px solid #d7deea}h3{margin:22px 0 4px;color:#3a4a60}h4{margin:20px 0 4px;font-size:17px}h5{margin:14px 0 8px;font-size:14px;color:#667085;text-transform:uppercase;letter-spacing:.04em}.sub{color:#667085;margin:0 0 18px}nav{background:#fff;border:1px solid #d7deea;border-radius:12px;padding:6px 18px;margin:0 0 10px}nav ul{padding-left:18px;margin:4px 0}.note{background:#fff;border:1px solid #d7deea;border-radius:12px;padding:14px 16px;margin:0 0 14px;page-break-inside:avoid}.nt-t{font-weight:700;font-size:17px}.nt-m{font-size:12px;color:#667085;margin:2px 0 10px}.nt-b{overflow:auto}.nt-b img{max-width:100%;height:auto}.nt-b table{border-collapse:collapse;max-width:100%}.nt-b td,.nt-b th{border:1px solid #c9d1dc;padding:6px 10px}.nt-b pre{background:#f2f4f8;padding:12px;overflow:auto;border-radius:8px}a{color:#0b63c5}@media print{body{background:#fff}nav{display:none}}';
+ const css=ntDocCss();
  const html='<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LearnSphere notes</title><style>'+css+'</style></head><body>'
   +`<h1>LearnSphere notes</h1><p class="sub">${a.length} note${a.length===1?'':'s'} &middot; exported ${esc(stamp)} &middot; ordered by course, sub-course, section and lesson. To restore them on any device: LearnSphere &rsaquo; My notes &rsaquo; Import, and choose this file.</p><nav><b>Contents</b>${toc}</nav>${doc}`
   +'<script type="application/json" id="ls-notes-data">'+data+'<\/script></body></html>';
