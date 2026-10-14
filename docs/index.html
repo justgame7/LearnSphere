@@ -240,8 +240,8 @@ body.compact .grid.courses .bt{position:absolute;left:0;right:0;bottom:0;margin:
 .rmv>span:first-child{color:var(--mut);font-size:13px}
 .rmv>button{padding:6px 12px;border-radius:99px;border:1px solid var(--line);background:transparent;color:var(--tx);font:inherit;font-size:13px;cursor:pointer}
 .rmv>button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,var(--panel));font-weight:600}
-.rmv-nav{display:none;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
-.rmv-nav span{color:var(--mut);font-size:13px;min-width:48px;text-align:center}
+.rmv-nav{display:none;align-items:center;gap:8px;flex:1 1 100%;margin:4px 0 0}
+.rmv-nav span{color:var(--mut);font-size:13px;flex:1;text-align:center}.rmv-nav .btn{flex:0 0 auto;white-space:nowrap}
 .rmv-nav .btn{padding:7px 12px;font-size:13px}
 .bmap svg{display:block;max-width:100%;height:auto}
 @media(max-width:640px){.bm-sv{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px}.bm-sv svg{max-width:none;min-width:560px}}
@@ -417,6 +417,9 @@ html[data-tbl="pinned"] .tw th:first-child,html[data-tbl="pinned"] .tw td:first-
 .nt-ref{font:12px var(--mono);color:var(--mut);margin:2px 0 8px}.nts-blk{margin-top:30px;padding-top:6px;border-top:1px solid var(--line)}
 .ntsum{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;box-sizing:border-box;padding:11px 14px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--tx);text-align:left;font:inherit;cursor:pointer}
 #ntDet:empty{display:none}.ntsum-t{font-size:13px;line-height:1.45;word-break:break-word}.ntsum-c{flex:none;font:600 12px var(--mono);color:var(--accent)}
+.ntb,.nt-body{background:#fff;color:#1b2430}.ntb a,.nt-body a{color:#0b63c5}
+.ntb td,.ntb th,.nt-body td,.nt-body th{border-color:#c9d1dc}.ntb pre,.nt-body pre{background:#f2f4f8;color:#1b2430}
+.nt-body{padding:12px;border-radius:10px;margin-top:8px;overflow:auto;line-height:1.6}.ntb:empty:before{color:#667085}
 .nt-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.nt-acts .btn{padding:7px 12px;font-size:13px}.nt-ic{display:inline-grid;place-items:center;padding:0!important;width:36px;height:34px}
 </style></head>
 <body>
@@ -1343,7 +1346,7 @@ sections:[
 ['Disaster-Recovery Game Day: Lost State, Deleted Resources and a Bad Apply','0:00','Rehearse recovery from the incidents that really happen: a lost or corrupted state file, resources deleted by hand and an apply that went wrong, using backups, state versions, imports and rollbacks. (Both)',7],
 ['Practice Exam Walkthrough and Objective Checklist','0:00','Work through a full mixed-topic practice set for the Associate 004 exam, then tick off every objective from 1 to 8 against the lecture that teaches it and revisit the weak ones. (Both)',8]]}
 ]},
-{id:'az',hold:1,name:'Azure Administrator',tag:'AZ',color:'var(--az)',level:'Beginner → Production (AZ-104-aligned)',blurb:'Manage identities, governance, storage, compute, networking, monitoring and recovery in Microsoft Azure like a production administrator, aligned to the AZ-104 exam.',
+{id:'az',name:'Azure Administrator',tag:'AZ',color:'var(--az)',level:'Beginner → Production (AZ-104-aligned)',blurb:'Manage identities, governance, storage, compute, networking, monitoring and recovery in Microsoft Azure like a production administrator, aligned to the AZ-104 exam.',
 outcomes:['Entra ID & RBAC','Governance & cost','Storage & compute','Networking & security','Monitoring & recovery','Troubleshooting & exam prep'],
 sections:[
 {t:'Introduction & Azure Foundations',q:'Azure Foundations Quiz',cka:'Foundations · supports every AZ-104 domain',l:[
@@ -4164,8 +4167,29 @@ const ntNorm=x=>{if(!x||typeof x!=='object')return null;const si=Number.isIntege
  return{id:x.id,cid:x.cid,si,li,title:String(x.title||'').slice(0,160),html:x.html,ts:Number(x.ts)||Date.now()}};
 const ntLoad=()=>{try{const a=JSON.parse(localStorage.getItem(NK));return Array.isArray(a)?a.map(ntNorm).filter(Boolean):[]}catch(e){return[]}};
 const ntStore=a=>{try{localStorage.setItem(NK,JSON.stringify(a));return true}catch(e){toast('Not enough storage space: remove old notes or large images');return false}};
-const NT_OK='A,B,STRONG,I,EM,U,S,P,BR,DIV,SPAN,H1,H2,H3,H4,H5,H6,UL,OL,LI,BLOCKQUOTE,PRE,CODE,TABLE,THEAD,TBODY,TR,TH,TD,HR,IMG,SMALL,SUB,SUP'.split(','),
+const NT_OK='A,B,STRONG,I,EM,U,S,P,BR,DIV,SPAN,H1,H2,H3,H4,H5,H6,UL,OL,LI,BLOCKQUOTE,PRE,CODE,TABLE,THEAD,TBODY,TFOOT,TR,TH,TD,CAPTION,COLGROUP,COL,HR,IMG,SMALL,SUB,SUP,FONT,CENTER,FIGURE,FIGCAPTION,KBD,MARK,DEL,INS,Q,DL,DT,DD,ABBR,CITE,SAMP,VAR,BIG'.split(','),
  NT_DROP='SCRIPT,STYLE,IFRAME,OBJECT,EMBED,SVG,FORM,LINK,META,NOSCRIPT,TEXTAREA,BUTTON,INPUT,SELECT,TITLE,HEAD'.split(',');
+const NT_STY=new Set('color,background-color,background,font,font-family,font-size,font-weight,font-style,font-variant,text-align,text-decoration,text-decoration-line,text-decoration-color,text-decoration-style,text-indent,text-transform,line-height,letter-spacing,word-spacing,white-space,vertical-align,border,border-top,border-right,border-bottom,border-left,border-color,border-style,border-width,border-collapse,border-spacing,border-radius,padding,padding-top,padding-right,padding-bottom,padding-left,margin,margin-top,margin-right,margin-bottom,margin-left,width,height,min-width,max-width,list-style-type,list-style,tab-size,word-break,overflow-wrap'.split(','));
+const NT_COL=/^(#[0-9a-f]{3,8}|[a-z]{3,20}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%a-z]+\))$/i;
+function ntStyle(v){const out=[];String(v).split(';').forEach(d=>{const i=d.indexOf(':');if(i<1)return;
+ const k=d.slice(0,i).trim().toLowerCase(),val=d.slice(i+1).trim();
+ if(!NT_STY.has(k)||!val||val.length>200)return;
+ if(/url\s*\(|expression|javascript:|@import|[<>\\]|\/\*|var\(|attr\(|binding|behavior/i.test(val))return;
+ out.push(k+':'+val)});return out.join(';')}
+function ntAttr(el,t){[...el.attributes].forEach(a=>{const k=a.name.toLowerCase(),v=a.value.trim();let ok=false;
+ if(k==='href')ok=t==='A'&&/^(https?:|mailto:)/i.test(v);
+ else if(k==='src')ok=t==='IMG'&&/^data:image\/(png|jpe?g|gif|webp|bmp);base64,[a-z0-9+\/=\s]+$/i.test(v);
+ else if(k==='alt'||k==='title')ok=v.length<=300;
+ else if(k==='colspan'||k==='rowspan'||k==='border'||k==='cellpadding'||k==='cellspacing')ok=/^\d{1,3}$/.test(v);
+ else if(k==='width'||k==='height')ok=/^\d{1,4}(px|%)?$/.test(v);
+ else if(k==='align')ok=/^(left|right|center|justify)$/i.test(v);
+ else if(k==='valign')ok=/^(top|middle|bottom|baseline)$/i.test(v);
+ else if(k==='bgcolor'||(k==='color'&&t==='FONT'))ok=NT_COL.test(v);
+ else if(k==='face'&&t==='FONT')ok=/^[\w ,'"-]{1,100}$/.test(v);
+ else if(k==='size'&&t==='FONT')ok=/^[+-]?[1-7]$/.test(v);
+ else if(k==='start'&&t==='OL')ok=/^\d{1,4}$/.test(v);
+ else if(k==='style'){const st=ntStyle(v);if(st){el.setAttribute('style',st);return}}
+ if(!ok)el.removeAttribute(a.name)})}
 function ntClean(html){
  const doc=new DOMParser().parseFromString('<body>'+html,'text/html');
  const walk=n=>{[...n.childNodes].forEach(ch=>{
@@ -4175,16 +4199,14 @@ function ntClean(html){
   if(NT_DROP.includes(t)){ch.remove();return}
   walk(ch);
   if(!NT_OK.includes(t)){ch.replaceWith(...ch.childNodes);return}
-  [...ch.attributes].forEach(a=>{const k=a.name.toLowerCase(),v=a.value;
-   const ok=(k==='href'&&t==='A'&&/^(https?:|mailto:)/i.test(v.trim()))||(k==='src'&&t==='IMG'&&/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(v))||(k==='alt'&&t==='IMG')||((k==='colspan'||k==='rowspan')&&/^\d{1,2}$/.test(v));
-   if(!ok)ch.removeAttribute(a.name)});
+  ntAttr(ch,t);
   if(t==='IMG'&&!ch.getAttribute('src')){ch.remove();return}
   if(t==='A'){ch.setAttribute('target','_blank');ch.setAttribute('rel','noopener noreferrer')}})};
  walk(doc.body);return doc.body.innerHTML}
 function ntImg(file){return new Promise(res=>{const r=new FileReader();r.onerror=()=>res(null);
- r.onload=()=>{const im=new Image();im.onerror=()=>res(null);
-  im.onload=()=>{const s=Math.min(1,1100/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(im.width*s));cv.height=Math.max(1,Math.round(im.height*s));
-   const x=cv.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,cv.width,cv.height);x.drawImage(im,0,0,cv.width,cv.height);res(cv.toDataURL('image/jpeg',.82))};
+ r.onload=()=>{if(file.size<=1.2e6&&/^image\/(png|jpe?g|gif|webp)$/.test(file.type)){res(r.result);return}const im=new Image();im.onerror=()=>res(null);
+  im.onload=()=>{const s=Math.min(1,1600/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(im.width*s));cv.height=Math.max(1,Math.round(im.height*s));
+   const x=cv.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,cv.width,cv.height);x.drawImage(im,0,0,cv.width,cv.height);res(cv.toDataURL('image/jpeg',.88))};
   im.src=r.result};r.readAsDataURL(file)})}
 async function ntPaste(e){
  const cd=e.clipboardData;if(!cd)return;e.preventDefault();
@@ -4251,7 +4273,7 @@ function ntToggle(b){const body=b.closest('.nt-card').querySelector('.nt-body'),
 function ntList(){ntEditId=null;ntShow(false);
  const a=ntLoad().sort((x,y)=>y.ts-x.ts),L=document.getElementById('ntL');
  document.getElementById('ntS').textContent=a.length?`${a.length} note${a.length===1?'':'s'} · kept on this device`:'Kept on this device';
- let h='<div class="nt-acts" style="margin:0 0 12px"><button class="btn" onclick="ntNew()">+ New note</button></div>';
+ let h='<div class="nt-acts" style="margin:0 0 12px"><button class="btn" onclick="ntNew()">+ New note</button><button class="btn ghost" onclick="ntExport()" title="Download all notes in one file, sorted by course, section and lesson">&#11015; Export</button><button class="btn ghost" onclick="ntImportPick()" title="Restore notes from an exported file">&#11014; Import</button></div>';
  if(!a.length)h+='<div class="hempty">&#128203;<b>No notes yet</b>Paste an explanation, a table or a screenshot and file it under the lesson it belongs to.</div>';
  const g={};a.forEach(n=>(g[n.cid]=g[n.cid]||[]).push(n));
  Object.keys(g).sort((x,y)=>{const k=id=>{const i=COURSES.findIndex(c=>c.id===id);return i<0?9999:i};return k(x)-k(y)}).forEach(id=>{
@@ -4297,6 +4319,69 @@ function ntLesson(){document.querySelectorAll('#app .nts-blk').forEach(e=>e.remo
  b.innerHTML=`<h3 style="margin:14px 0">My notes${a.length?' ('+a.length+')':''}</h3>`+a.map(n=>`<div class="nt-card"><b>${esc(n.title||'Untitled note')}</b><div class="nt-body" hidden>${ntClean(n.html)}</div><div class="nt-acts"><button class="btn ghost" onclick="ntToggle(this)" aria-expanded="false">Show note</button>${ntIcons(n.id,0)}</div></div>`).join('')+`<button class="btn ghost" onclick="ntNew('${esc(id)}',${+si},${+li})">+ Add a note to this lesson</button>`;
  const row=dn&&dn.parentElement;row&&row.parentElement===ls?ls.insertBefore(b,row):ls.appendChild(b)}
 document.getElementById('ntBody').addEventListener('paste',ntPaste);
+
+/* ---------- Notes: export / import (one self-contained file: readable document + embedded data) ---------- */
+const ntIdx=id=>{const i=COURSES.findIndex(c=>c.id===id);return i<0?9999:i};
+const ntTopId=n=>{const c=COURSES.find(x=>x.id===n.cid);return c&&c.parent?c.parent:n.cid};
+function ntOrdered(){return ntLoad().sort((x,y)=>ntIdx(ntTopId(x))-ntIdx(ntTopId(y))||ntIdx(x.cid)-ntIdx(y.cid)||x.si-y.si||x.li-y.li||x.ts-y.ts)}
+function ntNames(n){const c=COURSES.find(x=>x.id===n.cid),p=c&&c.parent?COURSES.find(x=>x.id===c.parent):null,s=c&&c.sections&&c.sections[n.si],l=s&&n.li>=0&&s.l[n.li];
+ return{course:c?c.name:n.cid,parent:p?p.name:'',section:s?s.t:'',lesson:l?l[0]:''}}
+function ntExport(){
+ const a=ntOrdered();if(!a.length){toast('No notes to export yet');return}
+ const tree=[],find=(arr,k,mk)=>{let x=arr.find(y=>y.k===k);if(!x){x=mk();x.k=k;arr.push(x)}return x};
+ a.forEach(n=>{const c=COURSES.find(x=>x.id===n.cid),p=c&&c.parent?COURSES.find(x=>x.id===c.parent):null,top=p||c,nm=ntNames(n);
+  const T=find(tree,top?top.id:n.cid,()=>({name:top?top.name:n.cid,groups:[]}));
+  const G=find(T.groups,p?c.id:'-',()=>({name:p?c.name:'',secs:[]}));
+  const S=find(G.secs,n.si,()=>({name:nm.section?'Section '+(n.si+1)+': '+nm.section:'Section '+(n.si+1),lessons:[]}));
+  const L=find(S.lessons,n.li,()=>({name:n.li>=0?(nm.lesson||'Lesson '+(n.li+1)):'Whole section (general notes)',notes:[]}));
+  L.notes.push(n)});
+ let n0=0,toc='<ul>',doc='';const fmt=ts=>new Date(ts).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+ tree.forEach(T=>{const tid='c'+(n0++);toc+=`<li><a href="#${tid}">${esc(T.name)}</a><ul>`;doc+=`<h2 id="${tid}">${esc(T.name)}</h2>`;
+  T.groups.forEach(G=>{if(G.name){const gid='c'+(n0++);toc+=`<li><a href="#${gid}">${esc(G.name)}</a><ul>`;doc+=`<h3 id="${gid}">${esc(G.name)}</h3>`}
+   G.secs.forEach(S=>{const sid='c'+(n0++);toc+=`<li><a href="#${sid}">${esc(S.name)}</a></li>`;doc+=`<h4 id="${sid}">${esc(S.name)}</h4>`;
+    S.lessons.forEach(L=>{doc+=`<h5>${esc(L.name)}</h5>`;L.notes.forEach(n=>{doc+=`<article class="note"><div class="nt-t">${esc(n.title||'Untitled note')}</div><div class="nt-m">${esc(fmt(n.ts))}</div><div class="nt-b">${ntClean(n.html)}</div></article>`})})});
+   if(G.name)toc+='</ul></li>'});toc+='</ul></li>'});toc+='</ul>';
+ const payload={app:'LearnSphere',type:'notes',version:1,exported:new Date().toISOString(),
+  notes:a.map(n=>Object.assign({id:n.id,cid:n.cid,si:n.si,li:n.li,title:n.title,html:ntClean(n.html),ts:n.ts},ntNames(n)))};
+ const data=JSON.stringify(payload).replace(/</g,'\\u003c').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');
+ const d=new Date(),z=x=>String(x).padStart(2,'0'),stamp=`${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
+ const css='body{font:16px/1.65 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:860px;margin:0 auto;padding:24px 16px 60px;color:#1b2430;background:#f6f8fb}h1{margin:0 0 4px}h2{margin:38px 0 6px;padding-top:14px;border-top:2px solid #d7deea}h3{margin:22px 0 4px;color:#3a4a60}h4{margin:20px 0 4px;font-size:17px}h5{margin:14px 0 8px;font-size:14px;color:#667085;text-transform:uppercase;letter-spacing:.04em}.sub{color:#667085;margin:0 0 18px}nav{background:#fff;border:1px solid #d7deea;border-radius:12px;padding:6px 18px;margin:0 0 10px}nav ul{padding-left:18px;margin:4px 0}.note{background:#fff;border:1px solid #d7deea;border-radius:12px;padding:14px 16px;margin:0 0 14px;page-break-inside:avoid}.nt-t{font-weight:700;font-size:17px}.nt-m{font-size:12px;color:#667085;margin:2px 0 10px}.nt-b{overflow:auto}.nt-b img{max-width:100%;height:auto}.nt-b table{border-collapse:collapse;max-width:100%}.nt-b td,.nt-b th{border:1px solid #c9d1dc;padding:6px 10px}.nt-b pre{background:#f2f4f8;padding:12px;overflow:auto;border-radius:8px}a{color:#0b63c5}@media print{body{background:#fff}nav{display:none}}';
+ const html='<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LearnSphere notes</title><style>'+css+'</style></head><body>'
+  +`<h1>LearnSphere notes</h1><p class="sub">${a.length} note${a.length===1?'':'s'} &middot; exported ${esc(stamp)} &middot; ordered by course, sub-course, section and lesson. To restore them on any device: LearnSphere &rsaquo; My notes &rsaquo; Import, and choose this file.</p><nav><b>Contents</b>${toc}</nav>${doc}`
+  +'<script type="application/json" id="ls-notes-data">'+data+'<\/script></body></html>';
+ const el=document.createElement('a');el.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));el.download='learnsphere-notes-'+stamp+'.html';
+ document.body.appendChild(el);el.click();el.remove();setTimeout(()=>URL.revokeObjectURL(el.href),3000);
+ toast(a.length+' note'+(a.length===1?'':'s')+' exported')}
+function ntRemap(n){let cid=n.cid,si=n.si,li=n.li;
+ const byName=(nm,par)=>COURSES.find(x=>x.name===nm&&(!par||(COURSES.find(p=>p.id===x.parent)||{}).name===par));
+ let c=COURSES.find(x=>x.id===cid);
+ if(!c&&n.course){const c2=byName(n.course,n.parent);if(c2){c=c2;cid=c2.id}}
+ if(c&&c.sections){
+  if(n.section&&(!c.sections[si]||c.sections[si].t!==n.section)){const j=c.sections.findIndex(x=>x.t===n.section);if(j>=0)si=j}
+  const sec=c.sections[si];
+  if(sec&&li>=0&&n.lesson&&(!sec.l[li]||sec.l[li][0]!==n.lesson)){const k=sec.l.findIndex(x=>x[0]===n.lesson);if(k>=0)li=k}}
+ return Object.assign({},n,{cid,si,li})}
+function ntImportPick(){const i=document.createElement('input');i.type='file';i.accept='.html,.htm,.json,text/html,application/json';i.style.display='none';
+ i.onchange=()=>{const f=i.files&&i.files[0];i.remove();if(f)ntImportRead(f)};document.body.appendChild(i);i.click()}
+function ntImportRead(f){
+ if(f.size>40e6){toast('That file is too large');return}
+ const rd=new FileReader();rd.onerror=()=>toast('Could not read that file');
+ rd.onload=()=>{const text=String(rd.result);let data=null;const t=text.trim();
+  if(t[0]==='{'||t[0]==='[')data=jp(t);
+  else{const d=new DOMParser().parseFromString(text,'text/html'),sc=d.getElementById('ls-notes-data');data=sc&&jp(sc.textContent)}
+  let list=null;
+  if(data&&data.app==='LearnSphere'&&data.type==='notes'&&Array.isArray(data.notes))list=data.notes;
+  else if(data&&data.app==='LearnSphere'&&data.data&&typeof data.data.ls_notes_v1==='string'){const x=jp(data.data.ls_notes_v1);if(Array.isArray(x))list=x}
+  if(!list){toast('Not a LearnSphere notes file');return}
+  const inc=list.map(x=>{const n=ntNorm(ntRemap(x||{}));if(!n)return null;n.html=ntClean(n.html);return n}).filter(Boolean);
+  if(!inc.length){toast('That file has no notes');return}
+  const cur=ntLoad(),by={};cur.forEach(x=>by[x.id]=x);let add=0,upd=0,same=0;
+  inc.forEach(n=>{const o=by[n.id];if(!o){cur.push(n);by[n.id]=n;add++}else if(n.ts>o.ts){Object.assign(o,n);upd++}else same++});
+  if(!ntStore(cur.slice(0,500)))return;
+  toast(`Imported ${add} new${upd?', '+upd+' updated':''}${same?', '+same+' already here':''}`);
+  ntList();ntLesson()};
+ rd.readAsText(f)}
+
 
 /* ---------- No "Tap to search" on single taps (mobile Chrome) ----------
    Chrome's Tap to Search only fires for a tap the page did not handle. Marking the touch-generated
@@ -4484,6 +4569,7 @@ for(const sub of['bkp','perf','sec','upg','rac','exa','dg','gg','cloud'])LAZY['o
 LAZY.mongo=si=>{const n=String(si+1).padStart(2,'0');return['mongo-common.js','mongo-s'+n+'.js','mongo-q'+n+'.js']};
 LAZY.prom=si=>{const n=String(si+1).padStart(2,'0');return['prom-common.js','prom-s'+n+'.js','prom-q'+n+'.js']};
 LAZY.devops=si=>{const n=String(si+1).padStart(2,'0');return['devops-common.js','devops-s'+n+'.js','devops-q'+n+'.js']};
+LAZY.az=si=>{const n=String(si+1).padStart(2,'0');return['az-common.js','az-s'+n+'.js','az-q'+n+'.js']};
 LAZY.ansible=si=>{const n=String(si+1).padStart(2,'0');return['ansible-common.js','ansible-s'+n+'.js','ansible-q'+n+'.js']};
 for(const sub of['core','bkp','perf','sec','ha','upg','ops','az'])LAZY['mss-'+sub]=si=>{const n=String(si+1).padStart(2,'0');return['mss-common.js','mss-'+sub+'-s'+n+'.js','mss-'+sub+'-q'+n+'.js']};
 const _ld={},_rdy={};
@@ -4498,6 +4584,7 @@ REFLAZY.mongo='mongo-ref.js';
 REFLAZY.prom='prom-ref.js';
 REFLAZY.ansible='ansible-ref.js';
 REFLAZY.devops='devops-ref.js';
+REFLAZY.az='az-ref.js';
 REFLAZY.tf='tf-ref.js';
 REFLAZY.k8s='k8s-ref.js';
 REFLAZY.docker='docker-ref.js';

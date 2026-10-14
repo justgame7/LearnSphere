@@ -18,6 +18,8 @@ docs/                    <- GitHub Pages root
                          (lesson key = tf:<section>:<lecture>, quiz key = tf:<section>)
   devops-common.js, devops-s01.js ... devops-s18.js, devops-q01.js ... devops-q18.js, devops-ref.js  DevOps & CI/CD lessons, quizzes and quick reference (core lectures; additional topics later), lazy-loaded
                          (lesson key = devops:<section>:<lecture>, quiz key = devops:<section>)
+  az-common.js, az-s01.js ... az-s17.js, az-q01.js ... az-q17.js, az-ref.js  Azure Administrator lessons, quizzes and quick reference (core lectures; additional topics later), lazy-loaded
+                         (lesson key = az:<section>:<lecture>, quiz key = az:<section>)
   manifest.webmanifest   PWA manifest
   sw.js                  service worker (offline cache)
   icons/                 app icons (any + maskable)

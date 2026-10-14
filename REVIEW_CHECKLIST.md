@@ -131,6 +131,14 @@ The `see` links, map layouts and lecture indexes are validated automatically. On
 - [ ] cosign keyless flags, `--certificate-identity-regexp`, SLSA level wording and `gh attestation verify`
 - [ ] Terraform S3 backend `use_lockfile` (Terraform 1.10 or later) and `-detailed-exitcode` meanings
 
+## Azure Administrator (`docs/az-*.js`)
+- [ ] Retirement and policy dates stated in lessons: mandatory MFA phases, default outbound access (private subnets for new VNets), Basic public IP and Basic load balancer retirement, NSG flow logs replaced by VNet flow logs, Log Analytics agent retirement, Automation Update Management retirement
+- [ ] Portal paths and CLI flags (`az storage account or-policy`, `az maintenance configuration`, `az network bastion`, `az containerapp`) against the current Azure CLI
+- [ ] Limits and numbers: five reserved addresses per subnet, 50 tags, management group depth, soft delete defaults (blobs, vault 14 days), archive rehydration times, Bastion SKU features
+- [ ] Azure Disk Encryption retirement wording and encryption at host recommendation
+- [ ] Built-in policy ID for Allowed locations (`e56962a6-4747-49cd-b67b-bf8b01975c4c`) and the Microsoft Learn links in lesson `src` lists
+- [ ] AZ-104 skills-measured weights quoted in the overview lecture against the current study guide
+
 ## Generic items for every course
 - [ ] Every command in a `chk` or `c` field runs on a scratch system without side effects (they are read-only unless the text says otherwise)
 - [ ] Version and edition notes still match the course version in the course title
