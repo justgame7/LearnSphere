@@ -415,6 +415,8 @@ html[data-tbl="pinned"] .tw th:first-child,html[data-tbl="pinned"] .tw td:first-
 .ntl{display:block;margin:12px 0 5px;font:600 11px var(--mono);color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
 .nt-card{margin:0 0 12px;padding:14px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}.nt-card>b{display:block;margin:0 0 6px}
 .nt-ref{font:12px var(--mono);color:var(--mut);margin:2px 0 8px}.nts-blk{margin-top:30px;padding-top:6px;border-top:1px solid var(--line)}
+.ntsum{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;box-sizing:border-box;padding:11px 14px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--tx);text-align:left;font:inherit;cursor:pointer}
+.ntsum-t{font-size:13px;line-height:1.45;word-break:break-word}.ntsum-c{flex:none;font:600 12px var(--mono);color:var(--accent)}
 .nt-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.nt-acts .btn{padding:7px 12px;font-size:13px}
 </style></head>
 <body>
@@ -456,11 +458,14 @@ html[data-tbl="pinned"] .tw th:first-child,html[data-tbl="pinned"] .tw td:first-
  <div class="hd-top"><div><h2 id="ntT">&#128203; My notes</h2><p id="ntS">&mdash;</p></div><button class="ib" aria-label="Close" onclick="closeNotes()">&times;</button></div>
  <div class="hl" id="ntL" style="margin-top:14px"></div>
  <div id="ntEd" hidden style="overflow:auto;margin-top:6px">
-  <p class="sub" id="ntDet" style="margin:0;font:12px/1.5 var(--mono)"></p>
+  <button type="button" class="ntsum" id="ntSum" onclick="ntSelToggle()" aria-expanded="false"><span class="ntsum-t" id="ntSumT"></span><span class="ntsum-c" id="ntSumC">Change &#9662;</span></button>
+  <p class="sub" id="ntDet" style="margin:6px 0 0;font:12px/1.5 var(--mono)"></p>
+  <div id="ntSel" hidden>
   <label class="ntl" for="ntP">Course</label><select class="rsel" id="ntP" onchange="ntFill('c')"></select>
   <div id="ntCw"><label class="ntl" for="ntC">Sub-course</label><select class="rsel" id="ntC" onchange="ntFill('s')"></select></div>
   <label class="ntl" for="ntSe">Section</label><select class="rsel" id="ntSe" onchange="ntFill('l')"></select>
-  <label class="ntl" for="ntLe">Lesson</label><select class="rsel" id="ntLe"></select>
+  <label class="ntl" for="ntLe">Lesson</label><select class="rsel" id="ntLe" onchange="ntSum()"></select>
+  </div>
   <label class="ntl" for="ntTi">Title</label><input class="nti" id="ntTi" maxlength="160" placeholder="e.g. How background processes cooperate" autocomplete="off">
   <label class="ntl" for="ntBody">Paste here (text, tables, images, a whole answer)</label>
   <div class="ntb" id="ntBody" contenteditable="true" role="textbox" aria-multiline="true" data-ph="Click here, then paste with Ctrl+V (or long-press, Paste). Formatting and images are kept."></div>
@@ -4198,6 +4203,15 @@ function ntRef(n){const c=COURSES.find(x=>x.id===n.cid),s=c&&c.sections[n.si],l=
 const ntCid=()=>{const p=COURSES.find(x=>x.id===document.getElementById('ntP').value);
  return p&&p.subs?document.getElementById('ntC').value:(p?p.id:'')};
 let ntEditId=null;
+function ntSum(){const E=id=>document.getElementById(id),t=x=>x&&x.selectedOptions[0]?x.selectedOptions[0].text:'';
+ const p=COURSES.find(x=>x.id===E('ntP').value),parts=[t(E('ntP'))];
+ if(p&&p.subs)parts.push(t(E('ntC')));
+ parts.push(t(E('ntSe')));
+ const le=E('ntLe');parts.push(le.value==='-1'?'Whole section':t(le));
+ E('ntSumT').textContent=parts.filter(Boolean).join(' \u203A ')}
+function ntSelToggle(open){const w=document.getElementById('ntSel'),o=open===undefined?w.hidden:!!open;
+ w.hidden=!o;document.getElementById('ntSum').setAttribute('aria-expanded',o);
+ document.getElementById('ntSumC').innerHTML=o?'Done &#9652;':'Change &#9662;'}
 function ntFill(from){
  const E=id=>document.getElementById(id),ps=E('ntP'),cs=E('ntC'),ss=E('ntSe'),ls=E('ntLe');
  const p=COURSES.find(x=>x.id===ps.value);if(!p)return;
@@ -4206,7 +4220,7 @@ function ntFill(from){
  const c=COURSES.find(x=>x.id===(p.subs?cs.value:p.id));if(!c||!c.sections)return;
  if(from==='c'||from==='s'){ss.innerHTML=c.sections.map((s,i)=>`<option value="${i}">${i+1}. ${esc(s.t)}</option>`).join('')}
  const s=c.sections[+ss.value];
- ls.innerHTML='<option value="-1">Whole section (general)</option>'+(s?s.l.map((l,i)=>`<option value="${i}">${i+1}. ${esc(l[0])}</option>`).join(''):'')}
+ ls.innerHTML='<option value="-1">Whole section (general)</option>'+(s?s.l.map((l,i)=>`<option value="${i}">${i+1}. ${esc(l[0])}</option>`).join(''):'');ntSum()}
 function ntSet(cid,si,li){
  const E=id=>document.getElementById(id),ps=E('ntP'),top=ntTop();
  ps.innerHTML=top.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
@@ -4226,7 +4240,7 @@ function ntWhere(){const[,r,id,s2,l2]=location.hash.split('/');
  if(out.si!==undefined)out.li=/^\d+$/.test(l2||'')?+l2:-1;
  return out}
 function ntDetected(ok){const e=document.getElementById('ntDet');
- e.textContent=ok?'Detected from the page you were on. Change any box below if it is wrong.':'Pick where this note belongs.'}
+ e.textContent=ok?'Detected from the page you were on. Tap Change if it is wrong.':'Pick where this note belongs.';ntSelToggle(!ok)}
 function ntShow(ed){document.getElementById('ntEd').hidden=!ed;document.getElementById('ntL').hidden=ed;
  document.getElementById('ntT').innerHTML=ed?'&#128203; '+(ntEditId?'Edit note':'New note'):'&#128203; My notes'}
 function ntList(){ntEditId=null;ntShow(false);
@@ -4251,7 +4265,7 @@ function ntNew(cid,si,li){
  document.getElementById('ntBody').focus()}
 function ntEdit(id){const n=ntLoad().find(x=>x.id===id);if(!n)return;
  document.getElementById('ntM').classList.add('open');ntEditId=id;ntShow(true);
- ntSet(n.cid,n.si,n.li);document.getElementById('ntDet').textContent='Editing: change any box to move this note.';document.getElementById('ntTi').value=n.title;document.getElementById('ntBody').innerHTML=ntClean(n.html)}
+ ntSet(n.cid,n.si,n.li);document.getElementById('ntDet').textContent='Tap Change to move this note.';ntSelToggle(false);document.getElementById('ntTi').value=n.title;document.getElementById('ntBody').innerHTML=ntClean(n.html)}
 function ntSaveNote(){
  const cid=ntCid(),si=+document.getElementById('ntSe').value,li=+document.getElementById('ntLe').value;
  const html=ntClean(document.getElementById('ntBody').innerHTML).trim();
