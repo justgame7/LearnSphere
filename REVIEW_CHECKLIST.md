@@ -139,6 +139,15 @@ The `see` links, map layouts and lecture indexes are validated automatically. On
 - [ ] Built-in policy ID for Allowed locations (`e56962a6-4747-49cd-b67b-bf8b01975c4c`) and the Microsoft Learn links in lesson `src` lists
 - [ ] AZ-104 skills-measured weights quoted in the overview lecture against the current study guide
 
+## AWS Administrator (`docs/aws-*.js`)
+- [ ] Free Tier and credit rules for new accounts and current Support plan names (lesson 1.8)
+- [ ] Service limits quoted: 5 reserved subnet addresses, gp3 3,000 IOPS and 125 MiB/s baseline, S3 request rates per prefix, 35 day RDS backup retention, 7 instances per AZ in spread groups
+- [ ] Public IPv4 charge, S3 default SSE-S3 and ACLs disabled by default, Inspector Classic retirement wording
+- [ ] CLI syntax (`aws ec2`, `aws rds`, `aws backup`, `aws ssm`, `aws eks`) against the current AWS CLI v2
+- [ ] SOA-C03 domain weights in the overview lecture against the current exam guide
+- [ ] AWS documentation links in lesson `src` lists
+
+
 ## Generic items for every course
 - [ ] Every command in a `chk` or `c` field runs on a scratch system without side effects (they are read-only unless the text says otherwise)
 - [ ] Version and edition notes still match the course version in the course title

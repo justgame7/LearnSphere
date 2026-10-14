@@ -1628,7 +1628,7 @@ sections:[
 ['Azure Verified Modules and Landing Zone Accelerators','0:00','Reuse Microsoft-maintained modules and accelerators. (Cloud)',5],
 ['Moving On: AZ-500, AZ-305 and Specialty Paths','0:00','Next steps after the administrator course. (Cloud)',6]]}
 ]},
-{id:'aws',hold:1,name:'AWS Administrator',tag:'AW',color:'var(--aws)',level:'Beginner → Production (SOA-C03-aligned)',blurb:'Operate AWS like a production administrator: identity, governance, compute, storage, networking, monitoring, automation, security and recovery, aligned to the CloudOps Engineer Associate (SOA-C03) exam.',
+{id:'aws',name:'AWS Administrator',tag:'AW',color:'var(--aws)',level:'Beginner → Production (SOA-C03-aligned)',blurb:'Operate AWS like a production administrator: identity, governance, compute, storage, networking, monitoring, automation, security and recovery, aligned to the CloudOps Engineer Associate (SOA-C03) exam.',
 outcomes:['IAM & governance','Compute & storage','Networking & delivery','Monitoring & automation','Security & recovery','Troubleshooting & exam prep'],
 sections:[
 {t:'Introduction & AWS Foundations',q:'AWS Foundations Quiz',cka:'Foundations · supports every SOA-C03 domain',l:[
@@ -4596,6 +4596,7 @@ LAZY.mongo=si=>{const n=String(si+1).padStart(2,'0');return['mongo-common.js','m
 LAZY.prom=si=>{const n=String(si+1).padStart(2,'0');return['prom-common.js','prom-s'+n+'.js','prom-q'+n+'.js']};
 LAZY.devops=si=>{const n=String(si+1).padStart(2,'0');return['devops-common.js','devops-s'+n+'.js','devops-q'+n+'.js']};
 LAZY.az=si=>{const n=String(si+1).padStart(2,'0');return['az-common.js','az-s'+n+'.js','az-q'+n+'.js']};
+LAZY.aws=si=>{const n=String(si+1).padStart(2,'0');return['aws-common.js','aws-s'+n+'.js','aws-q'+n+'.js']};
 LAZY.ansible=si=>{const n=String(si+1).padStart(2,'0');return['ansible-common.js','ansible-s'+n+'.js','ansible-q'+n+'.js']};
 for(const sub of['core','bkp','perf','sec','ha','upg','ops','az'])LAZY['mss-'+sub]=si=>{const n=String(si+1).padStart(2,'0');return['mss-common.js','mss-'+sub+'-s'+n+'.js','mss-'+sub+'-q'+n+'.js']};
 const _ld={},_rdy={};
@@ -4611,6 +4612,7 @@ REFLAZY.prom='prom-ref.js';
 REFLAZY.ansible='ansible-ref.js';
 REFLAZY.devops='devops-ref.js';
 REFLAZY.az='az-ref.js';
+REFLAZY.aws='aws-ref.js';
 REFLAZY.tf='tf-ref.js';
 REFLAZY.k8s='k8s-ref.js';
 REFLAZY.docker='docker-ref.js';
