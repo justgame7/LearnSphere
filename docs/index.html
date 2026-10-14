@@ -416,8 +416,8 @@ html[data-tbl="pinned"] .tw th:first-child,html[data-tbl="pinned"] .tw td:first-
 .nt-card{margin:0 0 12px;padding:14px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}.nt-card>b{display:block;margin:0 0 6px}
 .nt-ref{font:12px var(--mono);color:var(--mut);margin:2px 0 8px}.nts-blk{margin-top:30px;padding-top:6px;border-top:1px solid var(--line)}
 .ntsum{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;box-sizing:border-box;padding:11px 14px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--tx);text-align:left;font:inherit;cursor:pointer}
-.ntsum-t{font-size:13px;line-height:1.45;word-break:break-word}.ntsum-c{flex:none;font:600 12px var(--mono);color:var(--accent)}
-.nt-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.nt-acts .btn{padding:7px 12px;font-size:13px}
+#ntDet:empty{display:none}.ntsum-t{font-size:13px;line-height:1.45;word-break:break-word}.ntsum-c{flex:none;font:600 12px var(--mono);color:var(--accent)}
+.nt-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.nt-acts .btn{padding:7px 12px;font-size:13px}.nt-ic{display:inline-grid;place-items:center;padding:0!important;width:36px;height:34px}
 </style></head>
 <body>
 <header><div class="bar"><div class="logo" onclick="location.hash='#/'"><i>L</i>LearnSphere</div><div class="sp"></div>
@@ -4232,6 +4232,7 @@ function ntSet(cid,si,li){
  ntFill('s');
  if(c&&c.sections&&si!==undefined&&si>=0&&si<c.sections.length){E('ntSe').value=String(si);ntFill('l');
   if(li!==undefined&&li>=-1)E('ntLe').value=String(li)}
+ ntSum();
  return !!(cid&&c&&c.id===cid)}
 function ntWhere(){const[,r,id,s2,l2]=location.hash.split('/');
  if(r!=='c'||!id)return{};
@@ -4240,20 +4241,24 @@ function ntWhere(){const[,r,id,s2,l2]=location.hash.split('/');
  if(out.si!==undefined)out.li=/^\d+$/.test(l2||'')?+l2:-1;
  return out}
 function ntDetected(ok){const e=document.getElementById('ntDet');
- e.textContent=ok?'Detected from the page you were on. Tap Change if it is wrong.':'Pick where this note belongs.';ntSelToggle(!ok)}
+ e.textContent=ok?'':'Pick where this note belongs.';ntSelToggle(!ok)}
 function ntShow(ed){document.getElementById('ntEd').hidden=!ed;document.getElementById('ntL').hidden=ed;
  document.getElementById('ntT').innerHTML=ed?'&#128203; '+(ntEditId?'Edit note':'New note'):'&#128203; My notes'}
+const NT_IC={e:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',d:'<path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/>',x:'<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/>'};
+const ntIc=(k,t,fn,id)=>`<button class="btn ghost nt-ic" title="${t}" aria-label="${t}" onclick="${fn}('${id}')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NT_IC[k]}</svg></button>`;
+const ntIcons=(id,del)=>ntIc('e','Edit','ntEdit',id)+ntIc('d','Download as file','ntDl',id)+(del?ntIc('x','Delete','ntDel',id):'');
+function ntToggle(b){const body=b.closest('.nt-card').querySelector('.nt-body'),o=body.hidden;body.hidden=!o;b.textContent=o?'Hide note':'Show note';b.setAttribute('aria-expanded',o)}
 function ntList(){ntEditId=null;ntShow(false);
  const a=ntLoad().sort((x,y)=>y.ts-x.ts),L=document.getElementById('ntL');
  document.getElementById('ntS').textContent=a.length?`${a.length} note${a.length===1?'':'s'} · kept on this device`:'Kept on this device';
- let h='<div class="nt-acts" style="margin:0 0 12px"><button class="btn" onclick="ntNew()">+ Paste a new note</button></div>';
+ let h='<div class="nt-acts" style="margin:0 0 12px"><button class="btn" onclick="ntNew()">+ New note</button></div>';
  if(!a.length)h+='<div class="hempty">&#128203;<b>No notes yet</b>Paste an explanation, a table or a screenshot and file it under the lesson it belongs to.</div>';
  const g={};a.forEach(n=>(g[n.cid]=g[n.cid]||[]).push(n));
  Object.keys(g).sort((x,y)=>{const k=id=>{const i=COURSES.findIndex(c=>c.id===id);return i<0?9999:i};return k(x)-k(y)}).forEach(id=>{
   const c=COURSES.find(x=>x.id===id);h+=`<div class="bmg bmg-top" style="--c:${c&&c.color||'var(--accent)'}"><span class="bmg-dot"></span><span>${esc(c?ntCName(c):id)}</span><small>${g[id].length}</small></div>`;
   g[id].forEach(n=>{h+=`<div class="nt-card"><b>${esc(n.title||'Untitled note')}</b><div class="nt-ref">${esc(ntRef(n))}</div>
-   <details><summary style="cursor:pointer;color:var(--mut);font-size:13px">Show note</summary><div class="nt-body">${ntClean(n.html)}</div></details>
-   <div class="nt-acts"><button class="btn ghost" onclick="ntOpen('${n.id}')">Open lesson</button><button class="btn ghost" onclick="ntEdit('${n.id}')">Edit</button><button class="btn ghost" onclick="ntDl('${n.id}')">Download file</button><button class="btn ghost" onclick="ntDel('${n.id}')">Delete</button></div></div>`})});
+   <div class="nt-body" hidden>${ntClean(n.html)}</div>
+   <div class="nt-acts"><button class="btn ghost" onclick="ntToggle(this)" aria-expanded="false">Show note</button><button class="btn ghost" onclick="ntOpen('${n.id}')">Open lesson</button>${ntIcons(n.id,1)}</div></div>`})});
  L.innerHTML=h}
 function openNotes(){document.getElementById('ntM').classList.add('open');ntList()}
 function closeNotes(){document.getElementById('ntM').classList.remove('open')}
@@ -4265,7 +4270,7 @@ function ntNew(cid,si,li){
  document.getElementById('ntBody').focus()}
 function ntEdit(id){const n=ntLoad().find(x=>x.id===id);if(!n)return;
  document.getElementById('ntM').classList.add('open');ntEditId=id;ntShow(true);
- ntSet(n.cid,n.si,n.li);document.getElementById('ntDet').textContent='Tap Change to move this note.';ntSelToggle(false);document.getElementById('ntTi').value=n.title;document.getElementById('ntBody').innerHTML=ntClean(n.html)}
+ ntSet(n.cid,n.si,n.li);document.getElementById('ntDet').textContent='';ntSelToggle(false);document.getElementById('ntTi').value=n.title;document.getElementById('ntBody').innerHTML=ntClean(n.html)}
 function ntSaveNote(){
  const cid=ntCid(),si=+document.getElementById('ntSe').value,li=+document.getElementById('ntLe').value;
  const html=ntClean(document.getElementById('ntBody').innerHTML).trim();
@@ -4289,7 +4294,7 @@ function ntLesson(){document.querySelectorAll('#app .nts-blk').forEach(e=>e.remo
  const ls=document.querySelector('#app .ls'),dn=document.getElementById('dnb');if(!ls)return;
  const a=ntLoad().filter(n=>n.cid===id&&n.si===+si&&n.li===+li);
  const b=document.createElement('div');b.className='nts-blk';
- b.innerHTML=`<h3 style="margin:14px 0">My notes${a.length?' ('+a.length+')':''}</h3>`+a.map(n=>`<div class="nt-card"><b>${esc(n.title||'Untitled note')}</b><div class="nt-body">${ntClean(n.html)}</div><div class="nt-acts"><button class="btn ghost" onclick="ntEdit('${n.id}')">Edit</button><button class="btn ghost" onclick="ntDl('${n.id}')">Download file</button></div></div>`).join('')+`<button class="btn ghost" onclick="ntNew('${esc(id)}',${+si},${+li})">+ Add a note to this lesson</button>`;
+ b.innerHTML=`<h3 style="margin:14px 0">My notes${a.length?' ('+a.length+')':''}</h3>`+a.map(n=>`<div class="nt-card"><b>${esc(n.title||'Untitled note')}</b><div class="nt-body" hidden>${ntClean(n.html)}</div><div class="nt-acts"><button class="btn ghost" onclick="ntToggle(this)" aria-expanded="false">Show note</button>${ntIcons(n.id,0)}</div></div>`).join('')+`<button class="btn ghost" onclick="ntNew('${esc(id)}',${+si},${+li})">+ Add a note to this lesson</button>`;
  const row=dn&&dn.parentElement;row&&row.parentElement===ls?ls.insertBefore(b,row):ls.appendChild(b)}
 document.getElementById('ntBody').addEventListener('paste',ntPaste);
 
