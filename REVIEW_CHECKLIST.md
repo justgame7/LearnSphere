@@ -148,6 +148,15 @@ The `see` links, map layouts and lecture indexes are validated automatically. On
 - [ ] AWS documentation links in lesson `src` lists
 
 
+## Redis (`docs/redis-*.js`)
+- [ ] Licence wording (RSALv2, SSPLv1, AGPLv3 for Redis 8 and later) and the Valkey comparison in lesson 1.4
+- [ ] Which capabilities ship in Redis Open Source 8 (JSON, Query Engine, time series, probabilistic types, vector sets) and the vector set beta note
+- [ ] Version notes: hash field expiration (7.4, HGETEX/HSETEX/HGETDEL 8.0), multi-part AOF and functions (7.0), WAITAOF (7.2), sharded Pub/Sub (7.0)
+- [ ] Defaults quoted: save points, appendfsync, maxmemory-policy, client-output-buffer-limit, repl-backlog-size, lazyfree settings, io-threads behaviour in Redis 8
+- [ ] Command syntax (`XAUTOCLAIM`, `FT.CREATE`, `VADD`/`VSIM`, `TS.CREATERULE`, `BF.RESERVE`, `redis-cli --cluster`) against the current command reference
+- [ ] Managed service names and capabilities (ElastiCache, MemoryDB, Azure Managed Redis, Memorystore, Redis Cloud) in lesson 15.4
+- [ ] Documentation links in lesson `src` lists (redis.io paths move)
+
 ## Generic items for every course
 - [ ] Every command in a `chk` or `c` field runs on a scratch system without side effects (they are read-only unless the text says otherwise)
 - [ ] Version and edition notes still match the course version in the course title

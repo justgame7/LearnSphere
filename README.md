@@ -22,6 +22,8 @@ docs/                    <- GitHub Pages root
                          (lesson key = az:<section>:<lecture>, quiz key = az:<section>)
   aws-common.js, aws-s01.js ... aws-s20.js, aws-q01.js ... aws-q20.js, aws-ref.js  AWS Administrator lessons, quizzes and quick reference (core lectures; additional topics later), lazy-loaded
                          (lesson key = aws:<section>:<lecture>, quiz key = aws:<section>)
+  redis-common.js, redis-s01.js ... redis-s16.js, redis-q01.js ... redis-q16.js, redis-ref.js  Redis lessons, quizzes and quick reference (core lectures; additional topics later), lazy-loaded
+                         (lesson key = redis:<section>:<lecture>, quiz key = redis:<section>)
   manifest.webmanifest   PWA manifest
   sw.js                  service worker (offline cache)
   icons/                 app icons (any + maskable)
