@@ -90,6 +90,10 @@ h1{font-size:clamp(26px,5vw,38px);letter-spacing:-1px;line-height:1.1;margin:14p
 .quiz .chk{border-radius:50%}.quiz .t{color:var(--mut)}
 .pn{display:flex;justify-content:space-between;gap:10px;margin-top:22px;flex-wrap:wrap}
 h2{font-size:14px;font:600 12px var(--mono);letter-spacing:.8px;text-transform:uppercase;color:var(--mut);margin:26px 0 12px}
+.h2btns{display:flex;gap:8px}
+.catH{display:flex;align-items:center;gap:10px;margin:24px 0 10px;font:700 17px var(--sans);letter-spacing:-.2px}
+.catH:before{content:'';width:4px;height:18px;border-radius:2px;background:var(--accent)}
+.catH small{margin-left:4px;font:600 11px var(--mono);color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
 .h2row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:26px 0 12px}.h2row h2{margin:0}
 .dens{width:32px;height:32px;border-radius:10px;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center;color:var(--mut)}
 .dens svg{width:14px;height:14px}.dens:hover,.dens.on{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
@@ -480,6 +484,7 @@ html[data-tbl="pinned"] .tw th:first-child,html[data-tbl="pinned"] .tw td:first-
 <script src="pg-ref.js"></script>
 <script src="maplinks.js"></script>
 <script src="pg-aws.js"></script>
+<script src="pg-patch.js"></script>
 <script>
 /* ---------- DATA ---------- */
 // lecture: [title, mm:ss, description]; quiz: section quiz title
@@ -575,7 +580,10 @@ sections:[
 ['Runbook: Day-Two Operations, Resize, Storage, Snapshot, Restore, Replicas and Passwords','0:00','Step-by-step procedures for the changes a DBA makes after go-live: take snapshots, restore, resize compute and storage, enable Multi-AZ, add replicas, rotate passwords and export logs, with the impact of each change and a change-management map.'],
 ['Migrating to RDS or Aurora: dump and restore, Logical Replication, DMS and Aurora Read Replicas','0:00','The migration paths into RDS and Aurora PostgreSQL, how to choose between them by downtime and size, and a step-by-step logical replication migration with a cutover and fallback map.',1],
 ['Aurora Extras: Serverless v2, Global Database, Cloning, I/O-Optimized and Cache Management','0:00','The Aurora-specific capabilities beyond basic clusters and when to use each: Serverless v2 scaling, Global Database, fast cloning, I/O-Optimized storage and cluster cache management.',2],
-['Day-2 Tasks, Troubleshooting and Cost Control on RDS and Aurora','0:00','The routine daily, weekly and monthly tasks on a managed PostgreSQL, a symptom-based troubleshooting guide for connection, capacity, replication and configuration problems, and the main cost levers.',3]]}
+['Day-2 Tasks, Troubleshooting and Cost Control on RDS and Aurora','0:00','The routine daily, weekly and monthly tasks on a managed PostgreSQL, a symptom-based troubleshooting guide for connection, capacity, replication and configuration problems, and the main cost levers.',3],
+['Patching Amazon RDS for PostgreSQL: Minor Versions, Windows and Multi-AZ','0:00','How minor engine versions and OS maintenance reach an RDS for PostgreSQL instance, how to control the timing, what happens on Single-AZ and Multi-AZ, and how to test and verify.'],
+['Patching Aurora PostgreSQL: Cluster Upgrades, Zero-Downtime Patching and Clones','0:00','How minor versions reach an Aurora PostgreSQL cluster, how readers and the writer are affected, zero-downtime patching, LTS versions, rehearsing on a clone, and global databases.'],
+['Patching Compared: On-Premises, RDS and Aurora (Runbook and Checklist)','0:00','One runbook and one comparison table for patching PostgreSQL on-premises, on Amazon RDS and on Aurora: who does what, downtime, testing, rollback and a printable checklist.']]}
 ]},
 {id:'rs',name:'Amazon Redshift',tag:'RS',color:'var(--rs)',level:'Beginner → Production',blurb:'Provision, design, load, secure, tune and protect Amazon Redshift like a production DBA.',
 outcomes:['Cluster & Serverless setup','Table design & loading','Workload management','Security & access control','Monitoring & tuning','Backup, DR & data sharing'],
@@ -4426,7 +4434,7 @@ function ntImportRead(f){
   if(!el||el.closest(keep))return;
   e.preventDefault()},true))})();
 /* ---------- Export / import progress ---------- */
-const BKEYS=['ls_prog','ls_quiz','ls_auto','ls_hist_v1','ls_bookmarks','ls_notes_v1'],SKEYS=['ls_theme','ls_dark','ls_nightauto','ls_accent','ls_reader','ls_dens','ls_tblmode'];
+const BKEYS=['ls_prog','ls_quiz','ls_auto','ls_hist_v1','ls_bookmarks','ls_notes_v1'],SKEYS=['ls_theme','ls_dark','ls_nightauto','ls_accent','ls_reader','ls_dens','ls_tblmode','ls_group'];
 function toast(msg){const o=document.getElementById('hundo');if(o)o.remove();
  const u=document.createElement('div');u.className='hundo';u.id='hundo';u.innerHTML='<span></span>';u.firstChild.textContent=msg;
  document.body.appendChild(u);setTimeout(()=>u.remove(),4000)}
@@ -4464,6 +4472,7 @@ function importProgress(inp){
  if('ls_nightauto' in d&&!['0','1'].includes(d.ls_nightauto))delete d.ls_nightauto;
  if('ls_accent' in d&&!(d.ls_accent===''||/^#[0-9a-f]{6}$/i.test(d.ls_accent)))delete d.ls_accent;
  if('ls_dens' in d&&!['compact','expanded'].includes(d.ls_dens))delete d.ls_dens;
+ if('ls_group' in d&&!['0','1'].includes(d.ls_group))delete d.ls_group;
  if('ls_reader' in d){const r=jp(d.ls_reader),fs=r&&sInt(r.fs,0,5),w=r&&sInt(r.w,0,2);if(fs===null||w===null||!r)delete d.ls_reader;else d.ls_reader=JSON.stringify({fs,w})}
   const prog=jp(d.ls_prog)||{},quiz=jp(d.ls_quiz)||{},bm=jp(d.ls_bookmarks),hs=jp(d.ls_hist_v1);
   const lec=Object.values(prog).reduce((n,c)=>n+(c&&typeof c==='object'?Object.keys(c).length:0),0);
@@ -4504,19 +4513,37 @@ function importDialog(sum,go2){
 /* ---------- Home card density (expanded / compact) ---------- */
 const isCompact=()=>document.body.classList.contains('compact');
 (function(){try{if(localStorage.getItem('ls_dens')==='compact')document.body.classList.add('compact')}catch(e){}})();
-const h2row=t=>`<div class="h2row"><h2>${t}</h2><button class="dens${isCompact()?' on':''}" id="dens" onclick="toggleDensity()" title="${isCompact()?'Switch to expanded cards':'Switch to compact cards'}" aria-label="Toggle compact cards" aria-pressed="${isCompact()}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1.2"/><rect x="3" y="10" width="18" height="4" rx="1.2"/><rect x="3" y="16" width="18" height="4" rx="1.2"/></svg></button></div>`;
+const h2row=(t,extra)=>`<div class="h2row"><h2>${t}</h2><div class="h2btns"><button class="dens${isCompact()?' on':''}" id="dens" onclick="toggleDensity()" title="${isCompact()?'Switch to expanded cards':'Switch to compact cards'}" aria-label="Toggle compact cards" aria-pressed="${isCompact()}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1.2"/><rect x="3" y="10" width="18" height="4" rx="1.2"/><rect x="3" y="16" width="18" height="4" rx="1.2"/></svg></button>${extra||''}</div></div>`;
+let GRP=false;try{GRP=localStorage.getItem('ls_group')==='1'}catch(e){}
+const GRP_BTN=()=>`<button class="dens${GRP?' on':''}" id="grp" onclick="toggleGroups()" title="${GRP?'Show courses without groups':'Group courses by technology'}" aria-label="Group courses by technology" aria-pressed="${GRP}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>`;
+function toggleGroups(){GRP=!GRP;try{localStorage.setItem('ls_group',GRP?'1':'0')}catch(e){}render(true)}
 function toggleDensity(){const on=document.body.classList.toggle('compact');try{localStorage.setItem('ls_dens',on?'compact':'expanded')}catch(e){}
  const b=document.getElementById('dens');if(b){b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);b.title=on?'Switch to expanded cards':'Switch to compact cards'}}
 /* ---------- VIEWS ---------- */
+/* Home page order: databases, then cloud, then DevOps (no group headings). Courses not listed here still appear, after these. */
+const CATS=[['Databases',['pg','mysql','ora','mss','mongo','redis','rs']],['Cloud',['aws','az']],['DevOps',['devops','docker','k8s','tf','ansible','prom']]];
+const courseCard=(c,i)=>{const sb=!!c.subs,on=(c.sections.length||sb)&&!c.hold,N=sb?aCnt(c):cnt(c),D=sb?aDn(c):dn(c),Pc=sb?aPct(c):pct(c);
+ return `<div class="card ${on?'':'off'}" style="--c:${c.color};animation-delay:${i*70}ms" ${on?`onclick="go('#/c/${c.id}')"`:''}><div class="ico">${c.tag}</div><h3>${c.name}</h3><p>${c.blurb}</p>
+  <div class="meta">${on?(sb?`<span class="chip">${c.subs.length} sub-courses</span>`:`<span class="chip">${c.sections.length} sections</span>`)+`<span class="chip">${N} lectures</span>`:`<span class="chip">Curriculum coming soon</span>`}</div>
+  ${on?`<div class="bt"><b style="width:${Pc}%"></b></div><div class="pct"><span>${D}/${N} done</span><span>${Pc}%</span></div>`:''}</div>`};
 function vCourses(){
  const live=COURSES.filter(c=>!c.hold&&c.sections.length&&dn(c)&&pct(c)<100)[0];
  let h=`<h1>Learn by course.<br><span style="color:var(--accent)">Pick up where you stopped.</span></h1><p class="sub">Structured, bite-sized lessons with progress saved on this device.</p>`;
  if(live){const n=nextUp(live),L=live.sections[n[0]].l[n[1]];
   h+=`<div class="hero" style="--c:${live.color}"><div class="ring" style="--p:${pct(live)}"><span>${pct(live)}%</span></div><div class="tx"><span class="chip live">● CONTINUE</span><h3 style="margin:10px 0 2px;font-size:22px">${live.name}</h3><div style="color:var(--mut)">Up next: ${esc(L[0])}</div><div class="row"><button class="btn" onclick="go('#/c/${live.id}/${n[0]}')">Resume ▸</button></div></div></div>`}
- h+=`<div class="h2row"><h2>Courses</h2><button class="dens${isCompact()?' on':''}" id="dens" onclick="toggleDensity()" title="${isCompact()?'Switch to expanded cards':'Switch to compact cards'}" aria-label="Toggle compact cards" aria-pressed="${isCompact()}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1.2"/><rect x="3" y="10" width="18" height="4" rx="1.2"/><rect x="3" y="16" width="18" height="4" rx="1.2"/></svg></button></div><div class="grid courses">`+(avail=>[...avail.filter(c=>(c.sections.length||c.subs)&&!c.hold),...avail.filter(c=>!((c.sections.length||c.subs)&&!c.hold))])(COURSES.filter(c=>!c.parent)).map((c,i)=>{const sb=!!c.subs,on=(c.sections.length||sb)&&!c.hold,N=sb?aCnt(c):cnt(c),D=sb?aDn(c):dn(c),Pc=sb?aPct(c):pct(c);
-  return `<div class="card ${on?'':'off'}" style="--c:${c.color};animation-delay:${i*70}ms" ${on?`onclick="go('#/c/${c.id}')"`:''}><div class="ico">${c.tag}</div><h3>${c.name}</h3><p>${c.blurb}</p>
-  <div class="meta">${on?(sb?`<span class="chip">${c.subs.length} sub-courses</span>`:`<span class="chip">${c.sections.length} sections</span>`)+`<span class="chip">${N} lectures</span>`:`<span class="chip">Curriculum coming soon</span>`}</div>
-  ${on?`<div class="bt"><b style="width:${Pc}%"></b></div><div class="pct"><span>${D}/${N} done</span><span>${Pc}%</span></div>`:''}</div>`}).join('')+`</div>`;
+ h+=h2row('Courses',GRP_BTN());
+ const top=COURSES.filter(c=>!c.parent);
+ const isOn=c=>(c.sections.length||c.subs)&&!c.hold,sortOn=l=>[...l.filter(isOn),...l.filter(c=>!isOn(c))];
+ if(GRP){
+  const used={},groups=CATS.map(g=>({name:g[0],list:g[1].map(id=>top.find(c=>c.id===id)).filter(Boolean)}));
+  groups.forEach(g=>g.list.forEach(c=>used[c.id]=1));
+  const rest=top.filter(c=>!used[c.id]);if(rest.length)groups.push({name:'More',list:rest});
+  groups.filter(g=>g.list.length).forEach(g=>{const l=sortOn(g.list);
+   h+=`<div class="catH"><span>${g.name}</span><small>${l.length} course${l.length===1?'':'s'}</small></div><div class="grid courses">`+l.map(courseCard).join('')+`</div>`})}
+ else{
+  const ordered=[];CATS.forEach(g=>g[1].forEach(id=>{const c=top.find(x=>x.id===id);if(c)ordered.push(c)}));
+  top.forEach(c=>{if(!ordered.includes(c))ordered.push(c)});
+  h+=`<div class="grid courses">`+sortOn(ordered).map(courseCard).join('')+`</div>`}
  return h}
 const par=c=>{const p=c.parent&&COURSES.find(x=>x.id===c.parent);return p?`<a onclick="go('#/c/${p.id}')">${p.name}</a>›`:''};
 function vSubCourses(c){

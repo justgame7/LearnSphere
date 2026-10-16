@@ -1067,3 +1067,51 @@ window.QUIZZES['pg:11']={nCore:10,nExt:4,qs:[
  o:['Delete the cluster','Group the cost by usage type and compare I/O charges with I/O-Optimized pricing','Disable backups','Move to a larger instance'],
  a:1,why:'Cost Explorer by usage type shows whether instance hours, storage, I/O, backup or data transfer dominates, and then you can choose the lever.',lec:15,x:1}
 ]};
+
+/* ---------------- Patching lectures: questions added to pg:9 and pg:11 ---------------- */
+window.QUIZZES['pg:9'].qs.push(
+{q:'How does a **minor** PostgreSQL release (17.5 to 17.6) differ from a major release?',
+ o:['It changes the data file format','It contains only bug and security fixes and keeps the same data format, so you install new binaries and restart','It needs pg_upgrade','It can only be applied with a dump and restore'],
+ a:1,why:'Minor releases never change the on-disk format. That is why a package update and a restart are enough, and why a downgrade is usually possible.',lec:16},
+{q:'How often are PostgreSQL minor releases normally published, and how long is a major version supported?',
+ o:['Quarterly, support for 5 years','Monthly, support for 1 year','Every two years, support for 10 years','Yearly, support for 2 years'],
+ a:0,why:'Planned minor releases come in February, May, August and November. Each major version is supported for five years, with the last minor release in the November of the fifth year.',lec:16},
+{q:'What must you read before installing a minor release?',
+ o:['Only the security advisories','The pg_upgrade manual','Nothing, minor releases are always safe','The release notes, especially the migration section, for extra steps such as REINDEX or ALTER EXTENSION'],
+ a:3,why:'Most minor releases need only a restart, but some require a follow-up step. The notes of every release between your version and the target say which.',lec:16},
+{q:'On a Red Hat family system you update the PostgreSQL packages but do not restart. What is running?',
+ o:['Both versions','The new version','The old version keeps running until you restart','Nothing, the server stops'],
+ a:2,why:'RPM updates replace the files on disk but do not restart the service. Check `pg_postmaster_start_time()` after the restart to prove the new code is running.',lec:17},
+{q:'Which command proves the running server restarted after your update?',
+ o:['SELECT 1;','SELECT version(), pg_postmaster_start_time();','SHOW port;','SELECT now();'],
+ a:1,why:'`version()` shows the running version, and the postmaster start time must be after your restart.',lec:17},
+{q:'In a primary with standbys, which node is normally patched first and why?',
+ o:['The standbys, because a newer standby can replay WAL from an older primary and production is untouched','The standby chosen at random, then the primary together','Always all nodes at once','The primary, to finish quickly'],
+ a:0,why:'Standbys first keeps production running and lets you validate the new version before the primary role moves to it.',lec:18},
+{q:'Why use a **switchover** rather than a failover when patching?',
+ o:['A failover is not possible with Patroni','A switchover does not interrupt clients','It is faster','A switchover waits until the standby has all the data, so no transactions are lost'],
+ a:3,why:'A planned switchover swaps roles cleanly with no data loss. A failover is meant for a primary that is already gone.',lec:18},
+{q:'An OS update changes glibc. What risk does this create for PostgreSQL?',
+ o:['The data directory format changes','Nothing','The sort order of text can change, so indexes on text columns may no longer match and need checking and REINDEX','WAL files become invalid'],
+ a:2,why:'Collation comes from the OS library. A different sort order can make existing indexes return wrong results until they are rebuilt.',lec:19}
+);
+window.QUIZZES['pg:11'].qs.push(
+{q:'On Amazon RDS, what does the pending action `system-update` represent?',
+ o:['A PostgreSQL major upgrade','Operating system or host maintenance','A parameter group change','A snapshot'],
+ a:1,why:'`system-update` is OS or host maintenance. A database engine upgrade appears as `db-upgrade`.',lec:16},
+{q:'What does **auto minor version upgrade** do on RDS?',
+ o:['Applies a designated minor version in the maintenance window','Disables maintenance','Installs extensions','Upgrades the major version automatically'],
+ a:0,why:'With the flag on, AWS upgrades the instance to the preferred minor version during the maintenance window. Many teams keep it on for test and off for production.',lec:16},
+{q:'How can you go back to an older minor engine version on RDS or Aurora after patching?',
+ o:['Run pg_downgrade','It is automatic','Downgrade in place from the console','Restore a snapshot or point in time to a new instance or cluster'],
+ a:3,why:'Engine versions cannot be downgraded in place, so take a snapshot first and rehearse beforehand.',lec:16},
+{q:'Why is a **clone** useful before patching an Aurora cluster?',
+ o:['It replaces the backup','It patches the cluster for you','It creates a copy of the cluster quickly using copy-on-write, so you can test the upgrade on real data','It increases the storage size'],
+ a:2,why:'A clone shares storage pages with the source, so it is created in minutes and costs only the changes.',lec:17},
+{q:'What is **zero-downtime patching** on Aurora?',
+ o:['A guarantee that no patch ever interrupts clients','A mechanism that can keep client connections open during some patches, depending on version and conditions','A way to skip the writer','A backup feature'],
+ a:1,why:'It reduces interruption when conditions allow. Otherwise Aurora falls back to a normal restart or failover.',lec:17},
+{q:'Which statement about patching is true for all three environments (on-premises, RDS, Aurora)?',
+ o:['Plan, test on a copy, protect with a backup, apply, verify and record','AWS applies everything without your input','Extensions update themselves','You never need to test'],
+ a:0,why:'The method is the same. The tools differ: packages on-premises, engine version changes on RDS and Aurora.',lec:18}
+);
