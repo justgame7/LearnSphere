@@ -157,6 +157,19 @@ The `see` links, map layouts and lecture indexes are validated automatically. On
 - [ ] Managed service names and capabilities (ElastiCache, MemoryDB, Azure Managed Redis, Memorystore, Redis Cloud) in lesson 15.4
 - [ ] Documentation links in lesson `src` lists (redis.io paths move)
 
+## MySQL (`docs/mysql-*.js`)
+- [ ] Release model statements: 8.0 end of life (April 2026), 8.4 LTS and 9.7 LTS release dates and support windows (lesson 1.3 and 17.3)
+- [ ] 8.4 defaults quoted: `innodb_adaptive_hash_index` OFF, `innodb_change_buffering` none, `binlog_expire_logs_seconds` 30 days, `max_connections` 151, `innodb_redo_log_capacity` behaviour
+- [ ] Removed or disabled in 8.4 and 9.0: `mysql_native_password`, master/slave statements (`SHOW MASTER STATUS`, `CHANGE MASTER TO`), `default_authentication_plugin`, `mysqlpump` deprecation (lessons 13.5, 15.1, 16.1, 17.3)
+- [ ] Statement and variable names: `CHANGE REPLICATION SOURCE TO`, `SHOW BINARY LOG STATUS`, `--source-data`, `replica_parallel_workers`, `binlog_transaction_dependency_tracking` (check whether still available), `rpl_semi_sync_source_*`
+- [ ] Keyring component setup for 8.4 (manifest file and component config) and which keyring components ship in Community (lesson 13.7)
+- [ ] Feature version notes: window functions and CTEs (8.0), INTERSECT and EXCEPT (8.0.31), LATERAL (8.0.14), hash join (8.0.18), EXPLAIN ANALYZE (8.0.18), functional indexes (8.0.13), multi-valued indexes (8.0.17), CHECK enforcement (8.0.16), clone plugin (8.0.17), SKIP LOCKED and NOWAIT (8.0.1), INSTANT DDL changes (8.0.12 and 8.0.29)
+- [ ] InnoDB Cluster and Router: AdminAPI calls, Router port numbers and the read/write splitting port in recent Router versions (lessons 16.3 and 16.4)
+- [ ] ClusterSet and ReplicaSet command names (`createClusterSet`, `forcePrimaryCluster`, `forcePrimaryInstance`)
+- [ ] Tool commands: XtraBackup 8.4 options, `util.dumpInstance` and `util.loadDump` options, `gh-ost` and `pt-online-schema-change` flags, `sysbench` options
+- [ ] Managed service details (RDS, Aurora, Azure, Cloud SQL, HeatWave): procedures such as `mysql.rds_kill`, feature availability and the vector support statements in lesson 17.7
+- [ ] Documentation links in lesson `src` lists (MySQL manual page names move between versions)
+
 ## Generic items for every course
 - [ ] Every command in a `chk` or `c` field runs on a scratch system without side effects (they are read-only unless the text says otherwise)
 - [ ] Version and edition notes still match the course version in the course title
