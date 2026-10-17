@@ -170,6 +170,18 @@ The `see` links, map layouts and lecture indexes are validated automatically. On
 - [ ] Managed service details (RDS, Aurora, Azure, Cloud SQL, HeatWave): procedures such as `mysql.rds_kill`, feature availability and the vector support statements in lesson 17.7
 - [ ] Documentation links in lesson `src` lists (MySQL manual page names move between versions)
 
+## Google Cloud (`docs/gcp-*.js`)
+- [ ] Product names and renames: Cloud Run functions (formerly Cloud Functions), Google Cloud Observability (formerly Operations suite), Sensitive Data Protection (formerly DLP), Well-Architected Framework (formerly Architecture Framework), Chrome Enterprise Premium (BeyondCorp Enterprise)
+- [ ] Retired or ending products: Container Registry (shut down 2025), Deployment Manager (end of support), Classic VPN, Cloud Source Repositories (closed to new customers), Cloud Debugger, Pub/Sub Lite
+- [ ] Numbers that change: free trial credit and length, Always Free allowances, soft delete default (7 days), log bucket retention (400 and 30 days), Cloud Run limits (concurrency, timeout, CPU and memory), quotas and SLAs (HA VPN 99.99, Spanner 99.999)
+- [ ] Machine families and series names (E2, N2, N4, C3, C4, Tau, M-series, A and G series), Hyperdisk types, and discount rules (sustained use, spend-based committed use)
+- [ ] Load balancer names and scopes against the current overview page (global external Application LB versus classic, proxy and passthrough Network LBs)
+- [ ] GKE: Autopilot and Standard pricing text, release channel names, Gateway API class names, Workload Identity Federation principal format
+- [ ] Organization policy constraint names and secure-by-default behaviour for new organizations
+- [ ] gcloud command syntax (alpha and beta groups such as `gcloud alpha monitoring`, `gcloud beta billing`, `gcloud run deploy --function`, `gcloud infra-manager`, `gcloud privateca`)
+- [ ] Associate Cloud Engineer exam facts in lesson 18.1: format, duration, validity and section list against the current exam guide
+- [ ] Documentation links in lesson `src` lists (cloud.google.com paths move)
+
 ## Generic items for every course
 - [ ] Every command in a `chk` or `c` field runs on a scratch system without side effects (they are read-only unless the text says otherwise)
 - [ ] Version and edition notes still match the course version in the course title

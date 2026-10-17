@@ -26,6 +26,8 @@ docs/                    <- GitHub Pages root
                          (lesson key = redis:<section>:<lecture>, quiz key = redis:<section>)
   mysql-common.js, mysql-s01.js ... mysql-s17.js, mysql-q01.js ... mysql-q17.js, mysql-ref.js  MySQL lessons, quizzes and quick reference (core lectures; additional topics later), lazy-loaded
                          (lesson key = mysql:<section>:<lecture>, quiz key = mysql:<section>)
+  gcp-common.js, gcp-s01.js ... gcp-s18.js, gcp-q01.js ... gcp-q18.js, gcp-ref.js  Google Cloud lessons, quizzes and quick reference (core lectures; additional topics later), lazy-loaded
+                         (lesson key = gcp:<section>:<lecture>, quiz key = gcp:<section>)
   manifest.webmanifest   PWA manifest
   sw.js                  service worker (offline cache)
   icons/                 app icons (any + maskable)
